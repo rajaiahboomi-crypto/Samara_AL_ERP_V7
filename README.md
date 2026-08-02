@@ -1,3 +1,7 @@
+## V7.4 Employee Photo Retention
+
+Keeps the latest three employee photographs and automatically removes older employee-photo files and records. Other documents remain untouched.
+
 # Samara Care ERP V7.3 — Persistent Employee Photo
 
 See `START_HERE_V7_3.md` for deployment instructions.

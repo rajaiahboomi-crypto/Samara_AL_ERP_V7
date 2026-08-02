@@ -402,19 +402,48 @@
       }
     }
 
+    async function pruneEmployeePhotos(profileId,keepCount=3){
+      if(!profileId)return;
+      const {data:photos,error}=await client.from('employee_documents')
+        .select('id,storage_path,file_path,created_at,document_type,category')
+        .or(`employee_id.eq.${profileId},profile_id.eq.${profileId}`)
+        .order('created_at',{ascending:false});
+      if(error){console.warn('Unable to check old employee photos:',error);return}
+      const employeePhotos=(photos||[]).filter(doc=>{
+        const type=String(doc.document_type||doc.category||'').trim().toLowerCase();
+        return type==='employee photo'||type==='employee photograph';
+      });
+      const oldPhotos=employeePhotos.slice(keepCount);
+      if(!oldPhotos.length)return;
+
+      const paths=[...new Set(oldPhotos.map(doc=>doc.storage_path||doc.file_path).filter(Boolean))];
+      if(paths.length){
+        const {error:storageError}=await client.storage.from('employee-documents').remove(paths);
+        if(storageError){
+          console.warn('Unable to delete one or more old employee photo files:',storageError);
+          return; // Keep database rows when the matching Storage cleanup fails.
+        }
+      }
+      const ids=oldPhotos.map(doc=>doc.id).filter(Boolean);
+      if(ids.length){
+        const {error:deleteError}=await client.from('employee_documents').delete().in('id',ids);
+        if(deleteError)console.warn('Unable to delete old employee photo records:',deleteError);
+      }
+    }
+
     async function uploadEmployeePhoto(userId,files){
       const file=(files||[])[0];
       if(!file)return null;
       const safe=String(file.name||'employee-photo.jpg').replace(/[^a-zA-Z0-9._-]/g,'_');
       const path=`${userId}/profile-${Date.now()}-${safe}`;
-      const {error:uploadError}=await client.storage.from('employee-documents').upload(path,file,{upsert:true,contentType:file.type||'image/jpeg'});
+      const {error:uploadError}=await client.storage.from('employee-documents').upload(path,file,{upsert:false,contentType:file.type||'image/jpeg'});
       if(uploadError)throw new Error(`Unable to upload employee photo: ${uploadError.message}`);
 
       const linkedProfile=await persistEmployeePhotoPath(userId,path);
-
+      const profileId=linkedProfile?.id||userId;
       const photoRecord={
-        employee_id:linkedProfile?.id||userId,
-        profile_id:linkedProfile?.id||userId,
+        employee_id:profileId,
+        profile_id:profileId,
         category:'Employee Photo',
         document_type:'Employee Photo',
         document_name:'Employee Photo',
@@ -423,28 +452,23 @@
         file_path:path,
         mime_type:file.type||'image/jpeg',
         file_size:file.size||null,
-        uploaded_by:profile.id
+        uploaded_by:profile.id,
+        created_at:new Date().toISOString(),
+        updated_at:new Date().toISOString()
       };
-      // Keep a single current photo record for each employee.
-      const {data:existingPhotos}=await client.from('employee_documents')
-        .select('id')
-        .or(`employee_id.eq.${linkedProfile?.id||userId},profile_id.eq.${linkedProfile?.id||userId}`)
-        .in('document_type',['Employee Photo','Employee Photograph']);
-      if(existingPhotos?.length){
-        const keepId=existingPhotos[0].id;
-        const {error:updateDocError}=await client.from('employee_documents').update(photoRecord).eq('id',keepId);
-        if(updateDocError)throw new Error(`Employee photo record could not be updated: ${updateDocError.message}`);
-        const extraIds=existingPhotos.slice(1).map(x=>x.id);
-        if(extraIds.length)await client.from('employee_documents').delete().in('id',extraIds);
-      }else{
-        const {error:docError}=await client.from('employee_documents').insert(photoRecord);
-        if(docError)throw new Error(`Employee photo record could not be saved: ${docError.message}`);
+      const {error:docError}=await client.from('employee_documents').insert(photoRecord);
+      if(docError){
+        await client.storage.from('employee-documents').remove([path]);
+        throw new Error(`Employee photo record could not be saved: ${docError.message}`);
       }
 
-      const resolved=await resolveEmployeePhoto(linkedProfile||{...detailsTarget,id:userId,photo_storage_path:path},900);
+      // Retain only the newest three Employee Photo records/files. Other document types are untouched.
+      await pruneEmployeePhotos(profileId,3);
+
+      const resolved=await resolveEmployeePhoto(linkedProfile||{...detailsTarget,id:profileId,photo_storage_path:path},900);
       if(resolved.url)setPhotoPreview(resolved.url);
-      setRows(current=>current.map(row=>row.id===userId?{...row,photo_storage_path:path,employee_photo_path:path}:row));
-      if(detailsTarget?.id===userId)setDetailsTarget(current=>current?{...current,photo_storage_path:path,employee_photo_path:path}:current);
+      setRows(current=>current.map(row=>row.id===profileId?{...row,photo_storage_path:path,employee_photo_path:path}:row));
+      if(detailsTarget?.id===profileId)setDetailsTarget(current=>current?{...current,photo_storage_path:path,employee_photo_path:path}:current);
       return path;
     }
 
