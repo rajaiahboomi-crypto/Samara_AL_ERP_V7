@@ -329,44 +329,64 @@
     }
     React.useEffect(()=>{load();const ch=client.channel('profiles-live').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},load).subscribe();return()=>client.removeChannel(ch)},[]);
 
+    async function persistEmployeePhotoPath(profileOrAuthId,path){
+      if(!profileOrAuthId||!path)return null;
+      const payload={photo_storage_path:path,employee_photo_path:path,updated_at:new Date().toISOString()};
+      let result=await client.from('profiles').update(payload).or(`id.eq.${profileOrAuthId},auth_user_id.eq.${profileOrAuthId}`).select('*');
+      if(result.error){
+        // Some earlier schemas do not contain updated_at or employee_photo_path.
+        const fallback={photo_storage_path:path};
+        result=await client.from('profiles').update(fallback).or(`id.eq.${profileOrAuthId},auth_user_id.eq.${profileOrAuthId}`).select('*');
+      }
+      if(result.error)throw new Error(`Employee photo could not be linked to the profile: ${result.error.message}`);
+      if(!result.data?.length)throw new Error('Employee photo was uploaded, but no matching employee profile could be updated.');
+      return result.data[0];
+    }
+
     async function resolveEmployeePhoto(rowOrId,expiresIn=900){
       const seed=typeof rowOrId==='object'&&rowOrId?rowOrId:{id:rowOrId};
-      const profileId=seed.id;
+      const profileId=seed.id||seed.auth_user_id;
       if(!profileId)return {path:'',url:'',profile:seed};
 
       let current=seed;
-      const {data:freshProfile}=await client.from('profiles').select('*').eq('id',profileId).maybeSingle();
+      const {data:freshProfile}=await client.from('profiles').select('*').or(`id.eq.${profileId},auth_user_id.eq.${profileId}`).maybeSingle();
       if(freshProfile)current=freshProfile;
 
       let path=current.photo_storage_path||current.employee_photo_path||'';
-      const candidateIds=[current.id,current.auth_user_id].filter(Boolean);
+      const candidateIds=[current.id,current.auth_user_id,seed.id,seed.auth_user_id].filter(Boolean);
 
-      if(!path){
-        let docs=[];
-        for(const id of candidateIds){
-          const {data}=await client.from('employee_documents').select('*').eq('employee_id',id).order('created_at',{ascending:false});
-          if(data?.length)docs.push(...data);
-          const {data:byProfile}=await client.from('employee_documents').select('*').eq('profile_id',id).order('created_at',{ascending:false});
-          if(byProfile?.length)docs.push(...byProfile);
-        }
-        const photoDoc=docs
-          .filter((doc,index,array)=>array.findIndex(x=>x.id===doc.id)===index)
-          .find(doc=>String(doc.document_type||doc.category||'').trim().toLowerCase()==='employee photo');
+      if(!path&&candidateIds.length){
+        const uniqueIds=[...new Set(candidateIds)];
+        const {data:docs,error:docsError}=await client.from('employee_documents')
+          .select('*')
+          .or(`employee_id.in.(${uniqueIds.join(',')}),profile_id.in.(${uniqueIds.join(',')})`)
+          .order('created_at',{ascending:false});
+        if(docsError)console.error('Unable to resolve employee photo document:',docsError);
+        const photoDoc=(docs||[]).find(doc=>{
+          const type=String(doc.document_type||doc.category||doc.document_name||'').trim().toLowerCase();
+          return type==='employee photo'||type==='employee photograph'||type.includes('employee photo');
+        });
         path=photoDoc?.storage_path||photoDoc?.file_path||'';
 
         if(path){
-          await client.from('profiles').update({photo_storage_path:path}).eq('id',profileId);
-          // Compatibility column used by some earlier Samara versions.
-          await client.from('profiles').update({employee_photo_path:path}).eq('id',profileId).then(()=>{}).catch(()=>{});
-          current={...current,photo_storage_path:path,employee_photo_path:path};
+          try{
+            const repaired=await persistEmployeePhotoPath(current.id||profileId,path);
+            current=repaired||{...current,photo_storage_path:path,employee_photo_path:path};
+          }catch(error){
+            console.warn(error);
+            current={...current,photo_storage_path:path,employee_photo_path:path};
+          }
         }
       }
 
       if(!path)return {path:'',url:'',profile:current};
       const {data,error}=await client.storage.from('employee-documents').createSignedUrl(path,expiresIn);
-      if(error||!data?.signedUrl)return {path,url:'',profile:current};
+      if(error||!data?.signedUrl){
+        console.error('Unable to create employee photo URL:',error);
+        return {path,url:'',profile:current};
+      }
       const joiner=data.signedUrl.includes('?')?'&':'?';
-      return {path,url:`${data.signedUrl}${joiner}t=${Date.now()}`,profile:current};
+      return {path,url:`${data.signedUrl}${joiner}t=${Date.now()}`,profile:{...current,photo_storage_path:path,employee_photo_path:path}};
     }
 
     async function uploadEmployeeFiles(userId,groups){
@@ -390,14 +410,11 @@
       const {error:uploadError}=await client.storage.from('employee-documents').upload(path,file,{upsert:true,contentType:file.type||'image/jpeg'});
       if(uploadError)throw new Error(`Unable to upload employee photo: ${uploadError.message}`);
 
-      const {error:profileError}=await client.from('profiles').update({photo_storage_path:path}).eq('id',userId);
-      if(profileError)throw new Error(`Employee photo could not be linked: ${profileError.message}`);
-      // Keep compatibility with earlier database versions without blocking the save.
-      await client.from('profiles').update({employee_photo_path:path}).eq('id',userId).then(()=>{}).catch(()=>{});
+      const linkedProfile=await persistEmployeePhotoPath(userId,path);
 
       const photoRecord={
-        employee_id:userId,
-        profile_id:userId,
+        employee_id:linkedProfile?.id||userId,
+        profile_id:linkedProfile?.id||userId,
         category:'Employee Photo',
         document_type:'Employee Photo',
         document_name:'Employee Photo',
@@ -408,10 +425,23 @@
         file_size:file.size||null,
         uploaded_by:profile.id
       };
-      const {error:docError}=await client.from('employee_documents').insert(photoRecord);
-      if(docError)throw new Error(`Employee photo record could not be saved: ${docError.message}`);
+      // Keep a single current photo record for each employee.
+      const {data:existingPhotos}=await client.from('employee_documents')
+        .select('id')
+        .or(`employee_id.eq.${linkedProfile?.id||userId},profile_id.eq.${linkedProfile?.id||userId}`)
+        .in('document_type',['Employee Photo','Employee Photograph']);
+      if(existingPhotos?.length){
+        const keepId=existingPhotos[0].id;
+        const {error:updateDocError}=await client.from('employee_documents').update(photoRecord).eq('id',keepId);
+        if(updateDocError)throw new Error(`Employee photo record could not be updated: ${updateDocError.message}`);
+        const extraIds=existingPhotos.slice(1).map(x=>x.id);
+        if(extraIds.length)await client.from('employee_documents').delete().in('id',extraIds);
+      }else{
+        const {error:docError}=await client.from('employee_documents').insert(photoRecord);
+        if(docError)throw new Error(`Employee photo record could not be saved: ${docError.message}`);
+      }
 
-      const resolved=await resolveEmployeePhoto({...detailsTarget,id:userId,photo_storage_path:path},900);
+      const resolved=await resolveEmployeePhoto(linkedProfile||{...detailsTarget,id:userId,photo_storage_path:path},900);
       if(resolved.url)setPhotoPreview(resolved.url);
       setRows(current=>current.map(row=>row.id===userId?{...row,photo_storage_path:path,employee_photo_path:path}:row));
       if(detailsTarget?.id===userId)setDetailsTarget(current=>current?{...current,photo_storage_path:path,employee_photo_path:path}:current);

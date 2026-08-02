@@ -1,3 +1,7 @@
+# Samara Care ERP V7.3 — Persistent Employee Photo
+
+See `START_HERE_V7_3.md` for deployment instructions.
+
 # Samara Care ERP V6.1
 
 Unified trial release with Login ID based authentication for legacy and newly created employee accounts.
