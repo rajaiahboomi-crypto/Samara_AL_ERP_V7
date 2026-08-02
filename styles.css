@@ -239,9 +239,3 @@ button,input,select,textarea{font-size:17px}
 .room-status-maintenance{background:#eeeeee!important;color:#555!important}
 .rooms-table tbody tr{transition:background .15s ease}
 .rooms-table tbody tr:hover{filter:brightness(.985)}
-
-/* V8.3 universal controlled Room / Bed selectors */
-.room-number-select,.bed-number-select{min-height:56px;font-size:18px;font-weight:700;background:#fff}
-.room-number-select:focus,.bed-number-select:focus{border-color:#0f8f7d;box-shadow:0 0 0 3px rgba(15,143,125,.14)}
-.room-bed-modal input[placeholder*="Deluxe"],.room-bed-modal input[placeholder*="Window"]{font-weight:700}
-@media (max-width:720px){.room-number-select,.bed-number-select{font-size:19px;min-height:58px}}
