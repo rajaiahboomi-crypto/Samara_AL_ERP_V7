@@ -18,7 +18,7 @@
     { title:'OVERVIEW', items:['Dashboard','Notifications'] },
     { title:'ADMIN', items:['Employees','Audit Trail'] },
     { title:'ADMISSION', items:['Enquiries','Admissions','Patients','Documents'] },
-    { title:'MANAGER', items:['Reports','Recovery Timeline'] },
+    { title:'MANAGER', items:['Reports','Intelligent Reports','Recovery Timeline'] },
     { title:'NURSING', items:['Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Shift Handover'] },
     { title:'OPERATIONS', items:['Rooms & Beds','Incidents'] },
     { title:'FOOD & DIET', items:['Food & Diet'] },
@@ -30,7 +30,7 @@
     Manager:ALL_NAV,
     Nurse:['Notifications','Patients','Documents','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Shift Handover','Rooms & Beds','Incidents','Recovery Timeline'],
     Caregiver:['Notifications','Patients','Shift Tasks','Daily Care','Shift Handover','Rooms & Beds','Incidents','Food & Diet','Recovery Timeline'],
-    Accounts:['Notifications','Patients','Rooms & Beds','Billing & Payments','Reports'],
+    Accounts:['Notifications','Patients','Rooms & Beds','Billing & Payments','Reports','Intelligent Reports'],
     Kitchen:['Notifications','Patients','Food & Diet']
   };
   const ROLE_HOME={Admin:'Dashboard',Manager:'Dashboard',Nurse:'Shift Tasks',Caregiver:'Shift Tasks',Accounts:'Billing & Payments',Kitchen:'Food & Diet'};
@@ -159,6 +159,7 @@
           page==='Billing & Payments'&&h(BillingPayments,{profile}),
           page==='Recovery Timeline'&&h(RecoveryTimeline,{profile}),
           page==='Reports'&&h(Reports),
+          page==='Intelligent Reports'&&h(IntelligentReports,{profile}),
           page==='Notifications'&&h(Notifications,{profile}),
           page==='Audit Trail'&&h(AuditTrail)
         )
@@ -1128,6 +1129,139 @@
   function RecoveryTimeline({profile}){
     const [patients]=usePatients(),[rows,setRows]=React.useState([]),[patient,setPatient]=React.useState(''),[event,setEvent]=React.useState('Walking with support'),[note,setNote]=React.useState('');async function load(){const {data}=await client.from('recovery_events').select('*,patients(full_name)').order('event_at',{ascending:false}).limit(100);setRows(data||[])}React.useEffect(()=>{load()},[]);async function save(e){e.preventDefault();const {error}=await client.from('recovery_events').insert({patient_id:patient,event_type:event,note,recorded_by:profile.id});if(error)return alert(error.message);setNote('');load()}
     return h(React.Fragment,null,h(Section,{title:'Recovery Progress Timeline',subtitle:'Track improvement from hospital discharge to return home'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,patient,setPatient),miniSelect('Milestone',event,['Admitted after hospital discharge','Pain reduced','Walking with support','Independent walking','Feeding improved','Restroom independence','Medicine reduced','Wound improved','Physiotherapy goal achieved','Ready for discharge','Other'],setEvent),miniInput('Progress note',note,setNote,true),h('button',{className:'btn btn-primary'},'Add milestone'))),h(LogTable,{title:'Recovery Events',heads:['Patient','Milestone','Note','Date'],rows:rows.map(r=>[r.patients?.full_name,r.event_type,r.note,fmt(r.event_at)])}))
+  }
+
+
+  function IntelligentReports({profile}){
+    const today=new Date().toISOString().slice(0,10);
+    const [patients,setPatients]=React.useState([]);
+    const [mode,setMode]=React.useState('Patient-wise');
+    const [patientId,setPatientId]=React.useState('');
+    const [reportDate,setReportDate]=React.useState(today);
+    const [busy,setBusy]=React.useState(false);
+    const [message,setMessage]=React.useState('');
+    const [report,setReport]=React.useState(null);
+
+    React.useEffect(()=>{
+      client.from('patients').select('*').order('full_name').then(({data,error})=>{
+        if(error)setMessage(error.message);else setPatients(data||[]);
+      });
+    },[]);
+
+    const dateOnly=value=>{
+      if(!value)return '';
+      const d=new Date(value);
+      if(Number.isNaN(d.getTime()))return String(value).slice(0,10);
+      return d.toISOString().slice(0,10);
+    };
+    const eventDate=(row,fields)=>{
+      for(const f of fields){if(row&&row[f])return dateOnly(row[f]);}
+      return '';
+    };
+    const patientName=id=>patients.find(p=>p.id===id)?.full_name||'Unknown patient';
+    const money=value=>`₹${Number(value||0).toLocaleString('en-IN')}`;
+    const isPatientRow=(row,id)=>row&&row.patient_id===id;
+    const isDayRow=(row,date,fields)=>eventDate(row,fields)===date;
+    const safeRows=result=>result?.data||[];
+
+    async function generate(e){
+      if(e)e.preventDefault();
+      setMessage('');setReport(null);
+      if(mode==='Patient-wise'&&!patientId){setMessage('Select a patient.');return;}
+      if(mode==='Day-wise'&&!reportDate){setMessage('Select a report date.');return;}
+      setBusy(true);
+      try{
+        const results=await Promise.all([
+          client.from('patients').select('*'),
+          client.from('vital_signs').select('*'),
+          client.from('care_logs').select('*'),
+          client.from('medication_orders').select('*'),
+          client.from('medication_administrations').select('*'),
+          client.from('meal_records').select('*'),
+          client.from('physiotherapy_orders').select('*'),
+          client.from('physiotherapy_sessions').select('*'),
+          client.from('incidents').select('*'),
+          client.from('billing_transactions').select('*'),
+          client.from('recovery_events').select('*'),
+          client.from('shift_handovers').select('*'),
+          client.from('patient_documents').select('*')
+        ]);
+        const [pats,vitals,care,orders,mar,meals,physioOrders,physioSessions,incidents,billing,recovery,handovers,documents]=results.map(safeRows);
+        const selectedPatient=pats.find(p=>p.id===patientId)||patients.find(p=>p.id===patientId)||null;
+        const filter=(rows,fields)=>mode==='Patient-wise'?rows.filter(r=>isPatientRow(r,patientId)):rows.filter(r=>isDayRow(r,reportDate,fields));
+        const data={
+          patients:mode==='Patient-wise'?(selectedPatient?[selectedPatient]:[]):pats.filter(p=>dateOnly(p.admission_date)===reportDate),
+          vitals:filter(vitals,['recorded_at','created_at']),
+          care:filter(care,['completed_at','created_at','care_date']),
+          medicationOrders:mode==='Patient-wise'?orders.filter(r=>isPatientRow(r,patientId)):[],
+          mar:filter(mar,['administered_at','created_at','scheduled_date']),
+          meals:filter(meals,['served_at','created_at','meal_date']),
+          physioOrders:mode==='Patient-wise'?physioOrders.filter(r=>isPatientRow(r,patientId)):[],
+          physioSessions:filter(physioSessions,['session_at','created_at','session_date']),
+          incidents:filter(incidents,['incident_at','created_at']),
+          billing:filter(billing,['transaction_date','created_at']),
+          recovery:filter(recovery,['event_at','created_at']),
+          handovers:mode==='Day-wise'?handovers.filter(r=>isDayRow(r,reportDate,['created_at','handover_date'])):handovers.filter(r=>String(r.patient_summary||'').toLowerCase().includes(String(selectedPatient?.full_name||'').toLowerCase())),
+          documents:mode==='Patient-wise'?documents.filter(r=>isPatientRow(r,patientId)):documents.filter(r=>isDayRow(r,reportDate,['created_at','report_date']))
+        };
+        const charges=data.billing.filter(x=>x.transaction_type==='Charge').reduce((a,x)=>a+Number(x.amount||0),0);
+        const payments=data.billing.filter(x=>x.transaction_type==='Payment').reduce((a,x)=>a+Number(x.amount||0),0);
+        const discounts=data.billing.filter(x=>x.transaction_type==='Discount').reduce((a,x)=>a+Number(x.amount||0),0);
+        const criticalVitals=data.vitals.filter(x=>String(x.alert_level||'').toLowerCase()==='critical');
+        const medicinesGiven=data.mar.filter(x=>String(x.status||'').toLowerCase()==='given').length;
+        const medicineExceptions=data.mar.filter(x=>String(x.status||'').toLowerCase()!=='given').length;
+        setReport({mode,patient:selectedPatient,date:reportDate,data,summary:{charges,payments,discounts,outstanding:charges-payments-discounts,criticalVitals:criticalVitals.length,medicinesGiven,medicineExceptions}});
+      }catch(error){setMessage(error.message||'Unable to generate report.');}
+      setBusy(false);
+    }
+
+    function printReport(){window.print();}
+    function section(title,items,renderer){
+      return h('div',{className:'intelligent-report-section'},h('h3',null,title),items.length?h('div',{className:'intelligent-report-list'},items.map((x,i)=>h('div',{className:'intelligent-report-item',key:i},renderer(x)))):h('p',{className:'small-note'},'No records for this report.'));
+    }
+    function narrative(){
+      if(!report)return '';
+      const d=report.data,s=report.summary;
+      if(report.mode==='Patient-wise'){
+        const p=report.patient||{};
+        const parts=[`${p.full_name||'The patient'} is recorded under ${p.patient_category||'assisted living care'}${p.room_no?` in Room ${p.room_no}${p.bed_no?` / Bed ${p.bed_no}`:''}`:''}.`];
+        if(p.diagnosis)parts.push(`Main diagnosis: ${p.diagnosis}.`);
+        parts.push(`${d.vitals.length} vital-sign record(s), ${d.care.length} care record(s), ${d.mar.length} medicine administration record(s), ${d.meals.length} meal record(s), and ${d.physioSessions.length} physiotherapy session(s) are included.`);
+        if(s.criticalVitals)parts.push(`${s.criticalVitals} critical vital-sign alert(s) require review.`);
+        if(d.incidents.length)parts.push(`${d.incidents.length} incident(s) are recorded.`);
+        parts.push(`Billing in the selected record shows ${money(s.charges)} charges, ${money(s.payments)} payments and ${money(s.outstanding)} outstanding.`);
+        return parts.join(' ');
+      }
+      return `Daily operations for ${report.date}: ${d.patients.length} admission(s), ${d.vitals.length} vital-sign entries, ${d.care.length} care activities, ${d.mar.length} medicine actions, ${d.meals.length} meal records, ${d.physioSessions.length} physiotherapy sessions and ${d.incidents.length} incidents. ${s.criticalVitals} critical vital alert(s) and ${s.medicineExceptions} medicine exception(s) require attention. Daily charges total ${money(s.charges)} and payments total ${money(s.payments)}.`;
+    }
+
+    return h(React.Fragment,null,
+      h(Section,{title:'Intelligent Reports',subtitle:'Generate a consolidated patient-wise report or a complete day-wise operational report'},
+        h('form',{className:'intelligent-report-controls',onSubmit:generate},
+          h('div',{className:'field'},h('label',null,'Report type'),h('select',{value:mode,onChange:e=>{setMode(e.target.value);setReport(null);setMessage('')}},h('option',null,'Patient-wise'),h('option',null,'Day-wise'))),
+          mode==='Patient-wise'?h('div',{className:'field'},h('label',null,'Patient'),h('select',{value:patientId,onChange:e=>setPatientId(e.target.value),required:true},h('option',{value:''},'Select patient'),patients.map(p=>h('option',{key:p.id,value:p.id},`${p.patient_id||'NO-ID'} · ${p.full_name}${p.room_no?` · Room ${p.room_no}${p.bed_no?`-${p.bed_no}`:''}`:''}`)))):h('div',{className:'field'},h('label',null,'Date'),h('input',{type:'date',value:reportDate,onChange:e=>setReportDate(e.target.value),required:true})),
+          h('button',{className:'btn btn-primary',disabled:busy},busy?'Generating…':'Generate Intelligent Report')
+        ),
+        message&&h('div',{className:'message error'},message)
+      ),
+      report&&h('div',{className:'card panel intelligent-report printable-report'},
+        h('div',{className:'panel-head'},h('div',null,h('h2',null,report.mode==='Patient-wise'?`Patient Report – ${report.patient?.full_name||''}`:`Daily Report – ${report.date}`),h('small',null,`Generated by ${profile.full_name} on ${new Date().toLocaleString()}`)),h('button',{className:'btn btn-secondary no-print',onClick:printReport},'Print / Save PDF')),
+        report.mode==='Patient-wise'&&report.patient&&h('div',{className:'patient-report-header'},h('div',null,h('strong',null,report.patient.patient_id||'—'),h('span',null,report.patient.full_name)),h('div',null,`Diagnosis: ${report.patient.diagnosis||'—'}`),h('div',null,`Room/Bed: ${report.patient.room_no||'—'} / ${report.patient.bed_no||'—'}`),h('div',null,`Emergency: ${report.patient.emergency_contact_name||report.patient.attendant_name||'—'} · ${report.patient.emergency_contact_number||report.patient.attendant_phone||'—'}`)),
+        h('div',{className:'intelligent-summary'},h('h3',null,'Intelligent Summary'),h('p',null,narrative())),
+        h('div',{className:'grid stats intelligent-stats'},[
+          ['Vitals',report.data.vitals.length],['Critical alerts',report.summary.criticalVitals],['Care activities',report.data.care.length],['Medicines given',report.summary.medicinesGiven],['Medicine exceptions',report.summary.medicineExceptions],['Incidents',report.data.incidents.length],['Charges',money(report.summary.charges)],['Outstanding',money(report.summary.outstanding)]
+        ].map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,b)))),
+        section('Vital Signs',report.data.vitals,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`BP ${r.systolic||'—'}/${r.diastolic||'—'} · Pulse ${r.pulse||'—'} · SpO₂ ${r.spo2||'—'} · Sugar ${r.blood_sugar||'—'} · ${r.alert_level||'Normal'} · ${fmt(r.recorded_at||r.created_at)}`))),
+        section('Medication Administration',report.data.mar,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.status||'—'} · Scheduled ${r.scheduled_time||'—'} · ${r.remarks||'No remarks'} · ${fmt(r.administered_at||r.created_at)}`))),
+        section('Daily Care',report.data.care,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.shift||'—'} · ${r.status||'—'} · ${r.remarks||'—'} · ${fmt(r.completed_at||r.created_at)}`))),
+        section('Food & Diet',report.data.meals,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.meal_type||'Meal'} · ${r.menu||'—'} · ${r.consumption_status||'—'} · ${fmt(r.served_at||r.created_at)}`))),
+        section('Physiotherapy',report.data.physioSessions,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.status||'—'} · ${r.notes||'—'} · ${fmt(r.session_at||r.created_at)}`))),
+        section('Incidents',report.data.incidents,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.incident_type||r.type||'Incident'} · ${r.severity||'—'} · ${r.description||r.remarks||'—'} · ${fmt(r.incident_at||r.created_at)}`))),
+        section('Recovery Timeline',report.data.recovery,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.event_type||'Milestone'} · ${r.note||'—'} · ${fmt(r.event_at||r.created_at)}`))),
+        section('Billing',report.data.billing,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.transaction_type||'—'} · ${r.category||'—'} · ${money(r.amount)} · ${r.description||'—'} · ${fmt(r.transaction_date||r.created_at)}`))),
+        section('Documents',report.data.documents,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.document_type||'Document'} · ${r.document_name||r.file_name||'—'} · ${r.report_date||dateOnly(r.created_at)||'—'}`)))
+      )
+    );
   }
 
   function Reports(){const [data,setData]=React.useState({patients:[],billing:[],incidents:[]});React.useEffect(()=>{Promise.all([client.from('patients').select('*'),client.from('billing_transactions').select('*'),client.from('incidents').select('*')]).then(([a,b,c])=>setData({patients:a.data||[],billing:b.data||[],incidents:c.data||[]}))},[]);const active=data.patients.filter(x=>x.is_active).length,high=data.patients.filter(p=>p.fall_risk||p.pressure_sore_risk||p.aspiration_risk||p.oxygen_required).length,charges=data.billing.filter(x=>x.transaction_type==='Charge').reduce((a,x)=>a+Number(x.amount||0),0),payments=data.billing.filter(x=>x.transaction_type==='Payment').reduce((a,x)=>a+Number(x.amount||0),0);return h(React.Fragment,null,h('div',{className:'grid stats'},[['Active patients',active],['High-risk patients',high],['Open incidents',data.incidents.filter(x=>x.status==='Open').length],['Total billing',`₹${charges.toLocaleString('en-IN')}`],['Collections',`₹${payments.toLocaleString('en-IN')}`],['Outstanding',`₹${(charges-payments).toLocaleString('en-IN')}`]].map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,b)))),h(Section,{title:'Management Reports',subtitle:'Live summary from the unified production database'},h('p',null,'Use browser Print to save this report as PDF. Detailed Excel/PDF exports can be added in the next release.')))}

@@ -239,3 +239,20 @@ button,input,select,textarea{font-size:17px}
 .room-status-maintenance{background:#eeeeee!important;color:#555!important}
 .rooms-table tbody tr{transition:background .15s ease}
 .rooms-table tbody tr:hover{filter:brightness(.985)}
+
+
+/* V9.1 Intelligent Reports */
+.intelligent-report-controls{display:grid;grid-template-columns:minmax(220px,1fr) minmax(280px,2fr) auto;gap:18px;align-items:end}
+.intelligent-report{margin-top:22px}
+.intelligent-summary{padding:20px 22px;margin:18px 0;background:#edf9f6;border-left:5px solid #087a68;border-radius:14px}
+.intelligent-summary h3{margin:0 0 8px}.intelligent-summary p{margin:0;line-height:1.7}
+.patient-report-header{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:18px;background:#f7faf9;border:1px solid #dce9e5;border-radius:14px;margin:15px 0}
+.patient-report-header div:first-child{display:flex;flex-direction:column}.patient-report-header strong{font-size:18px}.patient-report-header span{font-size:22px;font-weight:800}
+.intelligent-stats{margin:18px 0}
+.intelligent-report-section{margin-top:22px;padding-top:18px;border-top:1px solid #dce6e3}
+.intelligent-report-section h3{margin:0 0 12px}
+.intelligent-report-list{display:grid;gap:9px}
+.intelligent-report-item{display:flex;flex-direction:column;gap:4px;padding:13px 16px;border:1px solid #dce6e3;border-radius:12px;background:#fbfdfc}
+.intelligent-report-item span{line-height:1.55}
+@media(max-width:800px){.intelligent-report-controls{grid-template-columns:1fr}.patient-report-header{grid-template-columns:1fr 1fr}}
+@media print{.sidebar,.topbar,.mobile-menu,.no-print,.intelligent-report-controls{display:none!important}.main{margin:0!important}.content{padding:0!important}.printable-report{box-shadow:none!important;border:0!important}.intelligent-report-section{break-inside:avoid}.card{box-shadow:none!important}}
