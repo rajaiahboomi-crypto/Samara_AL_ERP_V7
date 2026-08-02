@@ -1,6 +1,10 @@
-const CACHE = 'samara-v8-2-1-emergency-restore';
-const SHELL = ['./','./index.html','./styles.css','./app.js',
-  './health-check.js','./config.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
+const CACHE = 'samara-v9-0-stabilization';
+const SHELL = [
+  './', './index.html', './styles.css?v=9.0.0', './app.js?v=9.0.0',
+  './bootstrap-error.js?v=9.0.0', './health-check.js?v=9.0.0',
+  './config.js?v=9.0.0', './manifest.webmanifest',
+  './icons/icon-192.png', './icons/icon-512.png'
+];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
@@ -11,9 +15,18 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-  event.respondWith(fetch(event.request).then(response => {
+  const isCritical = /\/(index\.html|app\.js|styles\.css|config\.js|bootstrap-error\.js|health-check\.js)(\?|$)/.test(url.pathname + url.search);
+  if (isCritical) {
+    event.respondWith(fetch(event.request, {cache:'no-store'}).then(response => {
+      const copy = response.clone();
+      caches.open(CACHE).then(cache => cache.put(event.request, copy));
+      return response;
+    }).catch(() => caches.match(event.request)));
+    return;
+  }
+  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
     const copy = response.clone();
     caches.open(CACHE).then(cache => cache.put(event.request, copy));
     return response;
-  }).catch(() => caches.match(event.request).then(r => r || caches.match('./index.html'))));
+  })));
 });
