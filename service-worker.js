@@ -1,4 +1,4 @@
-const CACHE = 'samara-v7-4-photo-retention-three';
+const CACHE = 'samara-v8-4-photo-retention-three';
 const SHELL = ['./','./index.html','./styles.css','./app.js',
   './health-check.js','./config.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install', event => {
