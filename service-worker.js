@@ -1,4 +1,4 @@
-const CACHE = 'samara-v8-2-room-dropdowns';
+const CACHE = 'samara-v8-3-universal-room-bed-dropdowns';
 const SHELL = ['./','./index.html','./styles.css','./app.js',
   './health-check.js','./config.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install', event => {
