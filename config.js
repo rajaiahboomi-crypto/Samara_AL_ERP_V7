@@ -4,5 +4,5 @@ window.SAMARA_CONFIG = Object.freeze({
   supabaseUrl: 'https://askalabwtlrnoodinayq.supabase.co',
   supabasePublishableKey: 'sb_publishable_MPf0spA1IsJWWR5-ltVAyA_Z_gctBr-',
   employeeEmailDomain: 'users.samaracare.local',
-  version: '7.0.0'
+  version: '7.2.0'
 });

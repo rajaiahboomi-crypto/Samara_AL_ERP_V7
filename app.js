@@ -329,6 +329,46 @@
     }
     React.useEffect(()=>{load();const ch=client.channel('profiles-live').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},load).subscribe();return()=>client.removeChannel(ch)},[]);
 
+    async function resolveEmployeePhoto(rowOrId,expiresIn=900){
+      const seed=typeof rowOrId==='object'&&rowOrId?rowOrId:{id:rowOrId};
+      const profileId=seed.id;
+      if(!profileId)return {path:'',url:'',profile:seed};
+
+      let current=seed;
+      const {data:freshProfile}=await client.from('profiles').select('*').eq('id',profileId).maybeSingle();
+      if(freshProfile)current=freshProfile;
+
+      let path=current.photo_storage_path||current.employee_photo_path||'';
+      const candidateIds=[current.id,current.auth_user_id].filter(Boolean);
+
+      if(!path){
+        let docs=[];
+        for(const id of candidateIds){
+          const {data}=await client.from('employee_documents').select('*').eq('employee_id',id).order('created_at',{ascending:false});
+          if(data?.length)docs.push(...data);
+          const {data:byProfile}=await client.from('employee_documents').select('*').eq('profile_id',id).order('created_at',{ascending:false});
+          if(byProfile?.length)docs.push(...byProfile);
+        }
+        const photoDoc=docs
+          .filter((doc,index,array)=>array.findIndex(x=>x.id===doc.id)===index)
+          .find(doc=>String(doc.document_type||doc.category||'').trim().toLowerCase()==='employee photo');
+        path=photoDoc?.storage_path||photoDoc?.file_path||'';
+
+        if(path){
+          await client.from('profiles').update({photo_storage_path:path}).eq('id',profileId);
+          // Compatibility column used by some earlier Samara versions.
+          await client.from('profiles').update({employee_photo_path:path}).eq('id',profileId).then(()=>{}).catch(()=>{});
+          current={...current,photo_storage_path:path,employee_photo_path:path};
+        }
+      }
+
+      if(!path)return {path:'',url:'',profile:current};
+      const {data,error}=await client.storage.from('employee-documents').createSignedUrl(path,expiresIn);
+      if(error||!data?.signedUrl)return {path,url:'',profile:current};
+      const joiner=data.signedUrl.includes('?')?'&':'?';
+      return {path,url:`${data.signedUrl}${joiner}t=${Date.now()}`,profile:current};
+    }
+
     async function uploadEmployeeFiles(userId,groups){
       for(const group of groups){
         for(const file of group.files||[]){
@@ -349,10 +389,32 @@
       const path=`${userId}/profile-${Date.now()}-${safe}`;
       const {error:uploadError}=await client.storage.from('employee-documents').upload(path,file,{upsert:true,contentType:file.type||'image/jpeg'});
       if(uploadError)throw new Error(`Unable to upload employee photo: ${uploadError.message}`);
+
       const {error:profileError}=await client.from('profiles').update({photo_storage_path:path}).eq('id',userId);
       if(profileError)throw new Error(`Employee photo could not be linked: ${profileError.message}`);
-      const {error:docError}=await client.from('employee_documents').insert({employee_id:userId,profile_id:userId,category:'Employee Photo',document_type:'Employee Photo',document_name:'Employee Photo',file_name:file.name||'Employee Photo',storage_path:path,file_path:path,mime_type:file.type||null,file_size:file.size||null,uploaded_by:profile.id});
+      // Keep compatibility with earlier database versions without blocking the save.
+      await client.from('profiles').update({employee_photo_path:path}).eq('id',userId).then(()=>{}).catch(()=>{});
+
+      const photoRecord={
+        employee_id:userId,
+        profile_id:userId,
+        category:'Employee Photo',
+        document_type:'Employee Photo',
+        document_name:'Employee Photo',
+        file_name:file.name||'Employee Photo',
+        storage_path:path,
+        file_path:path,
+        mime_type:file.type||'image/jpeg',
+        file_size:file.size||null,
+        uploaded_by:profile.id
+      };
+      const {error:docError}=await client.from('employee_documents').insert(photoRecord);
       if(docError)throw new Error(`Employee photo record could not be saved: ${docError.message}`);
+
+      const resolved=await resolveEmployeePhoto({...detailsTarget,id:userId,photo_storage_path:path},900);
+      if(resolved.url)setPhotoPreview(resolved.url);
+      setRows(current=>current.map(row=>row.id===userId?{...row,photo_storage_path:path,employee_photo_path:path}:row));
+      if(detailsTarget?.id===userId)setDetailsTarget(current=>current?{...current,photo_storage_path:path,employee_photo_path:path}:current);
       return path;
     }
 
@@ -398,13 +460,26 @@
       setDetailsTarget(row);setDetailsForm({...empty,...row,password:''});setDetailsMsg('');setDetailsDocs([]);
       setIdFiles([]);setQualificationFiles([]);setExperienceFiles([]);setOtherFiles([]);setCameraFiles([]);setPhotoFiles([]);
       setPhotoPreview('');
-      if(row.photo_storage_path){
-        const {data:photoData}=await client.storage.from('employee-documents').createSignedUrl(row.photo_storage_path,600);
-        if(photoData?.signedUrl)setPhotoPreview(`${photoData.signedUrl}${photoData.signedUrl.includes('?')?'&':'?'}t=${Date.now()}`);
+
+      const resolved=await resolveEmployeePhoto(row,900);
+      if(resolved.profile){
+        setDetailsTarget(resolved.profile);
+        setDetailsForm({...empty,...resolved.profile,password:''});
       }
-      const {data,error}=await client.from('employee_documents').select('*').eq('employee_id',row.id).order('created_at',{ascending:false});
-      if(error)setDetailsMsg(error.message);else setDetailsDocs(data||[]);
+      if(resolved.url)setPhotoPreview(resolved.url);
+
+      const ids=[resolved.profile?.id,resolved.profile?.auth_user_id,row.id,row.auth_user_id].filter(Boolean);
+      let docs=[];
+      for(const id of [...new Set(ids)]){
+        const {data}=await client.from('employee_documents').select('*').eq('employee_id',id).order('created_at',{ascending:false});
+        if(data?.length)docs.push(...data);
+        const {data:byProfile}=await client.from('employee_documents').select('*').eq('profile_id',id).order('created_at',{ascending:false});
+        if(byProfile?.length)docs.push(...byProfile);
+      }
+      docs=docs.filter((doc,index,array)=>array.findIndex(x=>x.id===doc.id)===index).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+      setDetailsDocs(docs);
     }
+
     async function saveDetails(e){
       e.preventDefault();setDetailsBusy(true);setDetailsMsg('');
       try{
@@ -414,11 +489,9 @@
         await uploadEmployeeFiles(detailsTarget.id,[{type:'ID Card',files:idFiles},{type:'Qualification Certificate',files:qualificationFiles},{type:'Experience Certificate',files:experienceFiles},{type:'Other Certificate',files:otherFiles},{type:'Camera Capture',files:cameraFiles}]);
         setDetailsMsg('Employee information and documents updated successfully.');setIdFiles([]);setQualificationFiles([]);setExperienceFiles([]);setOtherFiles([]);setCameraFiles([]);setPhotoFiles([]);await load();
         const {data}=await client.from('employee_documents').select('*').eq('employee_id',detailsTarget.id).order('created_at',{ascending:false});setDetailsDocs(data||[]);
-        const {data:updatedProfile}=await client.from('profiles').select('photo_storage_path').eq('id',detailsTarget.id).maybeSingle();
-        if(updatedProfile?.photo_storage_path){
-          const {data:photoData}=await client.storage.from('employee-documents').createSignedUrl(updatedProfile.photo_storage_path,600);
-          if(photoData?.signedUrl)setPhotoPreview(`${photoData.signedUrl}${photoData.signedUrl.includes('?')?'&':'?'}t=${Date.now()}`);
-        }
+        const resolved=await resolveEmployeePhoto(detailsTarget,900);
+        if(resolved.profile)setDetailsTarget(resolved.profile);
+        if(resolved.url)setPhotoPreview(resolved.url);
       }catch(error){setDetailsMsg(error.message||'Unable to update employee')}
       setDetailsBusy(false);
     }
@@ -428,12 +501,13 @@
     }
 
     async function printIdCard(row){
-      let photoUrl='';
-      if(row.photo_storage_path){const {data}=await client.storage.from('employee-documents').createSignedUrl(row.photo_storage_path,300);photoUrl=data?.signedUrl||''}
+      const resolved=await resolveEmployeePhoto(row,900);
+      const currentRow=resolved.profile||row;
+      const photoUrl=resolved.url||'';
       const win=window.open('','_blank','width=760,height=700');
       if(!win){alert('Please allow pop-ups to print the ID card.');return}
-      const validUntil=row.date_of_joining?new Date(new Date(row.date_of_joining).setFullYear(new Date(row.date_of_joining).getFullYear()+3)).toLocaleDateString('en-IN'):'As per employment';
-      win.document.write(`<!doctype html><html><head><title>Employee ID Card</title><style>body{font-family:Arial;margin:0;padding:30px;background:#eef6f4}.card{width:360px;height:570px;margin:auto;background:white;border-radius:24px;overflow:hidden;box-shadow:0 12px 35px #0002;border:2px solid #086b58}.head{background:#086b58;color:white;text-align:center;padding:22px}.head h1{margin:0;font-size:25px}.head p{margin:6px 0 0}.photo{width:130px;height:150px;border:4px solid white;border-radius:16px;object-fit:cover;background:#ddd;margin:-4px auto 16px;display:block;box-shadow:0 4px 15px #0003}.body{padding:16px 28px;text-align:center}.name{font-size:25px;font-weight:bold;color:#063f36}.role{font-size:18px;color:#086b58;margin:5px}.grid{text-align:left;margin-top:18px;line-height:1.75}.label{font-weight:bold;color:#555}.foot{position:absolute}.barcode{margin-top:15px;padding:10px;border-top:1px dashed #aaa;font-family:monospace}.print{display:block;margin:20px auto;padding:12px 24px}@media print{.print{display:none}body{background:white;padding:0}}</style></head><body><div class="card"><div class="head"><h1>SAMARA HEALTH CARE LLP</h1><p>Assisted Living Management System</p></div><div class="body">${photoUrl?`<img class="photo" src="${photoUrl}">`:`<div class="photo" style="display:flex;align-items:center;justify-content:center;font-size:48px">SC</div>`}<div class="name">${escapeHtml(row.full_name)}</div><div class="role">${escapeHtml(row.designation||row.role)}</div><div class="grid"><div><span class="label">Employee ID:</span> ${escapeHtml(row.employee_id||'—')}</div><div><span class="label">Role:</span> ${escapeHtml(row.role||'—')}</div><div><span class="label">Mobile:</span> ${escapeHtml(row.mobile||'—')}</div><div><span class="label">Blood Group:</span> ${escapeHtml(row.blood_group||'—')}</div><div><span class="label">Date of Joining:</span> ${escapeHtml(row.date_of_joining||'—')}</div><div><span class="label">Valid:</span> ${escapeHtml(validUntil)}</div></div><div class="barcode">${escapeHtml(row.login_id||row.id)}</div></div></div><button class="print" onclick="window.print()">Print ID Card</button></body></html>`);
+      const validUntil=currentRow.date_of_joining?new Date(new Date(currentRow.date_of_joining).setFullYear(new Date(currentRow.date_of_joining).getFullYear()+3)).toLocaleDateString('en-IN'):'As per employment';
+      win.document.write(`<!doctype html><html><head><title>Employee ID Card</title><style>body{font-family:Arial;margin:0;padding:30px;background:#eef6f4}.card{width:360px;height:570px;margin:auto;background:white;border-radius:24px;overflow:hidden;box-shadow:0 12px 35px #0002;border:2px solid #086b58}.head{background:#086b58;color:white;text-align:center;padding:22px}.head h1{margin:0;font-size:25px}.head p{margin:6px 0 0}.photo{width:130px;height:150px;border:4px solid white;border-radius:16px;object-fit:cover;background:#ddd;margin:-4px auto 16px;display:block;box-shadow:0 4px 15px #0003}.body{padding:16px 28px;text-align:center}.name{font-size:25px;font-weight:bold;color:#063f36}.role{font-size:18px;color:#086b58;margin:5px}.grid{text-align:left;margin-top:18px;line-height:1.75}.label{font-weight:bold;color:#555}.foot{position:absolute}.barcode{margin-top:15px;padding:10px;border-top:1px dashed #aaa;font-family:monospace}.print{display:block;margin:20px auto;padding:12px 24px}@media print{.print{display:none}body{background:white;padding:0}}</style></head><body><div class="card"><div class="head"><h1>SAMARA HEALTH CARE LLP</h1><p>Assisted Living Management System</p></div><div class="body">${photoUrl?`<img class="photo" src="${photoUrl}">`:`<div class="photo" style="display:flex;align-items:center;justify-content:center;font-size:48px">SC</div>`}<div class="name">${escapeHtml(currentRow.full_name)}</div><div class="role">${escapeHtml(currentRow.designation||currentRow.role)}</div><div class="grid"><div><span class="label">Employee ID:</span> ${escapeHtml(currentRow.employee_id||'—')}</div><div><span class="label">Role:</span> ${escapeHtml(currentRow.role||'—')}</div><div><span class="label">Mobile:</span> ${escapeHtml(currentRow.mobile||'—')}</div><div><span class="label">Blood Group:</span> ${escapeHtml(currentRow.blood_group||'—')}</div><div><span class="label">Date of Joining:</span> ${escapeHtml(currentRow.date_of_joining||'—')}</div><div><span class="label">Valid:</span> ${escapeHtml(validUntil)}</div></div><div class="barcode">${escapeHtml(currentRow.login_id||currentRow.id)}</div></div></div><button class="print" onclick="window.print()">Print ID Card</button></body></html>`);
       win.document.close();
     }
 

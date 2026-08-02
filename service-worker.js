@@ -1,4 +1,4 @@
-const CACHE = 'samara-v6-4-employee-documents';
+const CACHE = 'samara-v7-2-photo-persistence';
 const SHELL = ['./','./index.html','./styles.css','./app.js',
   './health-check.js','./config.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install', event => {
