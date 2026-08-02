@@ -1,5 +1,6 @@
 const CACHE = 'samara-v6-4-employee-documents';
-const SHELL = ['./','./index.html','./styles.css','./app.js','./config.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
+const SHELL = ['./','./index.html','./styles.css','./app.js',
+  './health-check.js','./config.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
