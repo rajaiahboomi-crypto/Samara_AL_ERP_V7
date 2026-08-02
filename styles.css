@@ -219,3 +219,23 @@ button,input,select,textarea{font-size:17px}
 .awaiting-room-panel{margin-top:20px}.awaiting-room-item{display:flex;align-items:center;justify-content:space-between;gap:16px}.awaiting-room-item>div{display:flex;flex-direction:column;gap:5px}.room-bed-modal{width:min(900px,96vw)}
 @media(max-width:950px){.room-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.rooms-hero{padding:21px}.rooms-hero h3{font-size:27px}}
 @media(max-width:560px){.rooms-hero{align-items:flex-start;flex-direction:column}.rooms-hero .btn{width:100%}.room-summary{grid-template-columns:1fr 1fr}.room-summary .stat{min-height:125px}.awaiting-room-item{align-items:stretch;flex-direction:column}.awaiting-room-item .btn{width:100%}}
+
+
+/* V8.2 controlled room and bed selectors */
+.room-bed-select{font-weight:700;border-width:2px;min-height:54px}
+.status-select{font-weight:800;border-width:2px}
+.status-select-available{background:#dff7e8!important;color:#087a3d!important}
+.status-select-occupied{background:#ffe1e1!important;color:#b42318!important}
+.status-select-reserved{background:#e3eeff!important;color:#175cd3!important}
+.status-select-maintenance{background:#eeeeee!important;color:#555!important}
+.room-row-available{background:#f3fff7}
+.room-row-occupied{background:#fff3f3}
+.room-row-reserved{background:#f2f7ff}
+.room-row-female{background:#fff0f7!important;border-left:5px solid #ec4899}
+.room-row-female .room-patient strong{color:#a50f5d}
+.room-status-available{background:#dff7e8!important;color:#087a3d!important}
+.room-status-occupied{background:#ffe1e1!important;color:#b42318!important}
+.room-status-reserved{background:#e3eeff!important;color:#175cd3!important}
+.room-status-maintenance{background:#eeeeee!important;color:#555!important}
+.rooms-table tbody tr{transition:background .15s ease}
+.rooms-table tbody tr:hover{filter:brightness(.985)}
