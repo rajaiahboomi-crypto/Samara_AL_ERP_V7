@@ -1,0 +1,95 @@
+:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17312b;background:#f4f7f6}*{box-sizing:border-box}body{margin:0;min-height:100vh}.loading{display:grid;place-items:center;min-height:100vh;color:#46635c}.login-shell{min-height:100vh;display:grid;place-items:center;padding:24px;background:linear-gradient(145deg,#e7f2ee,#f7faf9)}.card{background:#fff;border:1px solid #dce7e3;border-radius:22px;box-shadow:0 18px 50px rgba(18,61,50,.12)}.login-card{width:min(440px,100%);padding:32px}.brand{display:flex;gap:15px;align-items:center;margin-bottom:28px}.logo{width:58px;height:58px;border-radius:18px;background:#0b5d4b;color:#fff;display:grid;place-items:center;font-weight:800;font-size:20px}.brand h1{margin:0;font-size:29px}.brand p{margin:4px 0 0;color:#6b817b}.field{display:grid;gap:7px;margin-bottom:17px}.field label{font-weight:700;font-size:14px}.field input,.field select,.field textarea{width:100%;padding:13px 14px;border:1px solid #cddbd6;border-radius:12px;font:inherit;background:#fff}.btn{border:0;border-radius:12px;padding:13px 18px;font:inherit;font-weight:800;cursor:pointer}.btn-primary{background:#0b5d4b;color:#fff}.btn-secondary{background:#e7f2ee;color:#0b5d4b}.btn-danger{background:#feeceb;color:#a12f29}.btn:disabled{opacity:.55;cursor:not-allowed}.full{width:100%}.message{padding:12px 14px;border-radius:12px;margin:14px 0;font-size:14px}.error{background:#feeceb;color:#8b2722}.success{background:#e7f6ed;color:#22643c}.app{min-height:100vh;display:grid;grid-template-columns:250px 1fr}.sidebar{background:#073d33;color:#e9f4f0;padding:22px 16px;position:sticky;top:0;height:100vh}.side-brand{display:flex;gap:12px;align-items:center;padding:8px 10px 25px}.side-logo{width:42px;height:42px;border-radius:12px;background:#fff;color:#0b5d4b;display:grid;place-items:center;font-weight:900}.side-brand strong{display:block;font-size:18px}.side-brand small{color:#a8c6bc}.nav{display:grid;gap:7px}.nav button{border:0;background:transparent;color:#cfe1db;text-align:left;padding:12px 14px;border-radius:11px;font:inherit;cursor:pointer}.nav button.active,.nav button:hover{background:#0d5547;color:#fff}.sidebar-footer{position:absolute;left:16px;right:16px;bottom:18px}.user-chip{padding:12px;border-radius:12px;background:#0d5547;margin-bottom:10px}.user-chip strong,.user-chip small{display:block}.user-chip small{color:#bcd4cc;margin-top:3px}.main{min-width:0}.topbar{height:74px;background:#fff;border-bottom:1px solid #dce7e3;display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:5}.topbar h2{margin:0}.content{padding:26px}.grid{display:grid;gap:18px}.stats{grid-template-columns:repeat(4,minmax(0,1fr))}.stat{padding:20px}.stat span{color:#70857f;font-size:14px}.stat strong{display:block;font-size:29px;margin-top:8px}.panel{padding:22px}.panel-head{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:18px}.panel-head h3{margin:0}.table-wrap{overflow:auto}.table{width:100%;border-collapse:collapse;min-width:740px}.table th,.table td{padding:13px 12px;border-bottom:1px solid #e4ece9;text-align:left;white-space:nowrap}.table th{font-size:13px;color:#667c75}.badge{display:inline-flex;padding:5px 9px;border-radius:999px;background:#e7f2ee;color:#0b5d4b;font-size:12px;font-weight:800}.badge.off{background:#f2f2f2;color:#6d6d6d}.actions{display:flex;gap:8px}.modal-backdrop{position:fixed;inset:0;background:rgba(4,29,24,.55);display:grid;place-items:center;padding:20px;z-index:20}.modal{width:min(760px,100%);max-height:92vh;overflow:auto;padding:25px}.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}.close{background:#edf3f1;border:0;border-radius:50%;width:38px;height:38px;font-size:21px;cursor:pointer}.empty{padding:35px;text-align:center;color:#72857f}.mobile-menu{display:none}.install-note{font-size:13px;color:#6e837c;margin-top:15px;text-align:center}@media(max-width:950px){.stats{grid-template-columns:repeat(2,1fr)}.app{grid-template-columns:1fr}.sidebar{display:none}.mobile-menu{display:flex;overflow:auto;background:#073d33;padding:8px;position:sticky;top:74px;z-index:4}.mobile-menu button{border:0;background:transparent;color:#cfe1db;padding:10px 13px;white-space:nowrap;border-radius:9px}.mobile-menu button.active{background:#0d5547;color:#fff}.content{padding:18px}.topbar{padding:0 18px}.modal-grid{grid-template-columns:1fr}}@media(max-width:560px){.stats{grid-template-columns:1fr 1fr}.stat{padding:15px}.stat strong{font-size:23px}.login-card{padding:24px}.content{padding:13px}.panel{padding:16px}.topbar h2{font-size:20px}}
+
+/* v2 assisted-living admission workflow */
+.wide-modal{width:min(1120px,96vw);max-height:94vh;overflow:auto}.section-card{border:1px solid #dfe7e4;border-radius:14px;padding:16px;margin:14px 0;background:#fbfdfc}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.section-title h4{margin:0}.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.span-2{grid-column:span 2}.span-3{grid-column:1/-1}.check-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.check-card{display:flex;gap:9px;align-items:flex-start;padding:11px;border:1px solid #dfe7e4;border-radius:10px;background:white}.check-card input{margin-top:3px}.repeat-row{display:grid;grid-template-columns:1.5fr .7fr .7fr 1fr 1fr 1.2fr auto;gap:8px;align-items:end;padding:10px 0;border-bottom:1px solid #edf1ef}.repeat-row.care{grid-template-columns:1.3fr .9fr 1fr 1.5fr auto}.icon-btn{border:0;background:#f6dddd;color:#8b1e1e;border-radius:8px;padding:10px;cursor:pointer}.task-group{margin-bottom:20px}.task-card{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:12px;align-items:center;padding:13px;border:1px solid #dfe7e4;border-radius:12px;margin:8px 0;background:white}.task-card.overdue{border-left:5px solid #b42318}.task-card.done{opacity:.7;background:#f3faf6}.task-meta{font-size:.85rem;color:#5f6f68}.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#e8f4ef;font-size:.78rem}.pill.warning{background:#fff1d6}.pill.danger{background:#fde5e2;color:#8a1c13}.patient-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.patient-tabs button{border:1px solid #d7e0dc;background:white;border-radius:9px;padding:8px 12px;cursor:pointer}.patient-tabs button.active{background:#0e5a49;color:white}.timeline-item{border-left:3px solid #8bbcaf;padding:8px 0 8px 14px;margin-left:8px}.small-note{font-size:.83rem;color:#66756f}.required-note{background:#fff7e6;border:1px solid #f2d08d;padding:10px;border-radius:10px}.textarea{width:100%;min-height:82px;resize:vertical}.time-list{display:flex;gap:6px;flex-wrap:wrap}.time-chip{padding:4px 7px;border-radius:7px;background:#eef5f2;font-size:.8rem}
+@media(max-width:850px){.form-grid,.check-grid{grid-template-columns:1fr 1fr}.repeat-row,.repeat-row.care{grid-template-columns:1fr 1fr}.repeat-row>*:last-child{grid-column:2}.task-card{grid-template-columns:1fr auto}.task-card>div:nth-child(2),.task-card>div:nth-child(3){grid-column:1}}
+@media(max-width:560px){.form-grid,.check-grid{grid-template-columns:1fr}.span-2,.span-3{grid-column:auto}.repeat-row,.repeat-row.care{grid-template-columns:1fr}.repeat-row>*:last-child{grid-column:auto}.wide-modal{width:100vw;height:100vh;max-height:100vh;border-radius:0}.task-card{grid-template-columns:1fr}}
+.special-alert{margin-top:7px;padding:7px 9px;border-radius:8px;background:#fff4d6;border:1px solid #e6b84f;font-size:12px;font-weight:700;color:#765100}.special-nurse-card{border-left:5px solid #d69d19;background:#fffaf0}
+/* v3.1 safe admission and risk assessment */
+.admission-progress{display:flex;gap:8px;overflow:auto;margin:0 0 14px;padding:4px 0}.admission-progress span{white-space:nowrap;padding:7px 10px;border-radius:999px;background:#e9f3ef;color:#28584c;font-size:12px;font-weight:800}.risk-section{border-left:5px solid #d17a16}.selected-risk{background:#fff1e6;border-color:#e5a15d}.risk-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.risk-badge{padding:4px 7px;border-radius:999px;background:#fee8e4;color:#8b241b;font-size:11px;font-weight:800}.document-link{display:inline-flex;margin-right:8px;margin-top:5px;padding:6px 9px;border-radius:8px;background:#e7f2ee;color:#0b5d4b;text-decoration:none;font-size:12px;font-weight:800}
+.shift-summary{display:flex;justify-content:space-between;align-items:center;gap:12px;background:#073d33;color:white;border-radius:16px;padding:14px 18px;margin-bottom:18px}.shift-summary strong,.shift-summary span{display:block}.shift-summary>div>span{font-size:13px;color:#cce0d9;margin-top:3px}
+
+/* Samara Care ERP V5 unified modules */
+.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.bed-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}.bed-card{border:1px solid #cfe2dc;border-radius:14px;padding:15px;background:#f7fbfa;display:flex;flex-direction:column;gap:6px}.bed-card.occupied{background:#e8f5f1;border-color:#78b7a7}.form-stack{display:grid;gap:14px}.table a{color:#0b6656;font-weight:700}.content>.card+.card{margin-top:18px}@media(max-width:800px){.grid.two{grid-template-columns:1fr}.bed-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* V5.1 role-based sectional navigation */
+.app{grid-template-columns:285px 1fr}
+.sidebar{display:flex;flex-direction:column;padding:18px 14px;height:100vh;overflow:hidden}
+.side-brand{flex:0 0 auto;padding:8px 10px 16px}
+.nav-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px 3px 14px 0;scrollbar-width:thin;scrollbar-color:#3f786b transparent}
+.nav-scroll::-webkit-scrollbar{width:7px}.nav-scroll::-webkit-scrollbar-thumb{background:#3f786b;border-radius:20px}.nav-scroll::-webkit-scrollbar-track{background:transparent}
+.nav-section{margin-bottom:14px}
+.nav-heading{padding:7px 13px 5px;color:#8fb7ac;font-size:10px;font-weight:900;letter-spacing:.12em}
+.nav{gap:4px}
+.nav button{padding:9px 13px;font-size:14px;width:100%}
+.sidebar-footer{position:static;flex:0 0 auto;border-top:1px solid rgba(255,255,255,.13);padding-top:12px;margin-top:2px}
+.user-chip{padding:10px 11px;margin-bottom:8px}
+.mobile-menu{display:none}
+@media(max-width:950px){
+  .app{grid-template-columns:1fr}.sidebar{display:none}
+  .mobile-menu{display:flex;align-items:center;gap:10px;background:#073d33;padding:10px 14px;position:sticky;top:74px;z-index:4;color:#dcebe6}
+  .mobile-menu label{font-size:12px;font-weight:900;letter-spacing:.08em}
+  .mobile-menu select{min-width:0;flex:1;padding:10px 12px;border:1px solid #2e7162;border-radius:10px;background:#0d5547;color:#fff;font:inherit;font-weight:700}
+  .mobile-menu option,.mobile-menu optgroup{background:#fff;color:#17312b}
+}
+
+/* V5.2 accordion sidebar */
+.nav-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding-right:4px;scrollbar-width:thin;scrollbar-color:#3b786a transparent}
+.nav-scroll::-webkit-scrollbar{width:7px}.nav-scroll::-webkit-scrollbar-thumb{background:#3b786a;border-radius:999px}.nav-scroll::-webkit-scrollbar-track{background:transparent}
+.nav-section{margin:0 0 8px}
+.nav-heading-button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;border:0;background:transparent;color:#edf8f4;text-align:left;padding:12px 13px;border-radius:11px;font:inherit;font-size:13px;font-weight:900;letter-spacing:.055em;cursor:pointer}
+.nav-heading-button:hover,.nav-section.expanded .nav-heading-button{background:#0d5547;color:#fff}
+.nav-chevron{display:grid;place-items:center;width:23px;height:23px;flex:0 0 23px;border-radius:7px;background:rgba(255,255,255,.12);font-size:18px;line-height:1}
+.nav-submenu{padding:7px 0 3px 10px;animation:menuReveal .16s ease-out}
+.nav-submenu button{position:relative;padding:10px 12px 10px 22px;font-size:14px}
+.nav-submenu button:before{content:'';position:absolute;left:8px;top:50%;width:5px;height:5px;border-radius:50%;background:#6ea598;transform:translateY(-50%)}
+.nav-submenu button.active:before{background:#fff}
+@keyframes menuReveal{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+
+
+/* V5.3 role landing and clickable management dashboard */
+.dashboard-card{border:1px solid var(--border);text-align:left;font:inherit;cursor:pointer;width:100%;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}
+.dashboard-card:hover,.dashboard-card:focus-visible{transform:translateY(-2px);box-shadow:0 10px 24px rgba(15,93,83,.14);border-color:var(--primary);outline:none}
+.dashboard-icon{font-size:1.35rem;line-height:1}
+.dashboard-card small{color:var(--primary);font-weight:700}
+.dashboard-panel-link{width:100%;text-align:left;font:inherit;cursor:pointer;border:1px solid var(--border)}
+.dashboard-panel-link:hover,.dashboard-panel-link:focus-visible{border-color:var(--primary);box-shadow:0 10px 24px rgba(15,93,83,.12);outline:none}
+
+/* V5.4 employee authentication recovery */
+.employee-actions{display:flex;gap:8px;flex-wrap:wrap;min-width:230px}
+.auth-status.on{background:#dcfce7;color:#166534}
+.auth-status.warn{background:#fef3c7;color:#92400e}
+.auth-status.off{background:#fee2e2;color:#991b1b}
+.reset-password-modal{max-width:520px}
+@media(max-width:760px){.employee-actions{min-width:190px}.employee-actions .btn{width:100%}}
+
+.btn-warning{background:#c77800;color:#fff;border-color:#c77800}.btn-warning:hover{filter:brightness(.95)}
+
+/* V5.6 complete employee personnel file */
+.employee-modal{width:min(1120px,96vw)}
+.employee-upload-section{border:1px solid #dce7e3;border-radius:14px;padding:16px;background:#f8fbfa;margin-top:4px}
+.employee-upload-section h4,.employee-doc-list h4{margin:0 0 14px}
+.employee-doc-list{border-top:1px solid #dce7e3;margin-top:18px;padding-top:18px}
+.document-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #e8efec}
+.field small{color:#667c75;font-size:12px}
+.field input[type=file]{padding:10px;background:#f8fbfa}
+@media(max-width:760px){.employee-modal{width:100vw;height:100vh;max-height:100vh;border-radius:0}.document-row{align-items:flex-start;flex-direction:column}.document-row .btn{width:100%}}
+
+.btn-whatsapp{background:#25D366!important;color:#fff!important;border-color:#25D366!important;text-decoration:none;text-align:center;display:inline-flex;align-items:center;justify-content:center}
+.employee-photo-preview{width:120px;height:140px;object-fit:cover;border-radius:14px;border:2px solid #cfe3de;background:#f3f7f6}
+@media(max-width:800px){.employee-actions .btn,.employee-actions a.btn{width:100%;justify-content:center}}
+
+/* V6.3 camera and webcam capture controls */
+.capture-field{align-self:start}
+.capture-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.file-button{position:relative;overflow:hidden;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.file-button input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.selected-files{font-size:.82rem;color:#49635d;margin-top:6px;word-break:break-word}
+.camera-backdrop{z-index:3000}
+.camera-modal{width:min(760px,94vw);max-height:94vh;overflow:auto}
+.camera-stage{background:#0b1714;border-radius:16px;min-height:320px;display:flex;align-items:center;justify-content:center;overflow:hidden;margin:14px 0}
+.camera-video,.camera-preview{display:block;width:100%;max-height:62vh;object-fit:contain;background:#0b1714}
+.camera-canvas{display:none}
+.camera-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+@media(max-width:640px){.capture-actions .btn,.capture-actions .file-button{flex:1 1 130px}.camera-stage{min-height:230px}.camera-actions .btn{flex:1 1 120px}}
