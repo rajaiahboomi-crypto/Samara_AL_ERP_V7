@@ -93,3 +93,5 @@
 .camera-canvas{display:none}
 .camera-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 @media(max-width:640px){.capture-actions .btn,.capture-actions .file-button{flex:1 1 130px}.camera-stage{min-height:230px}.camera-actions .btn{flex:1 1 120px}}
+
+.patient-capture-preview{width:130px;height:150px;object-fit:cover;border-radius:16px;border:2px solid #c8ddd8;margin-top:10px;display:block}.capture-actions{display:flex;gap:8px;flex-wrap:wrap}.file-button input{display:none}
