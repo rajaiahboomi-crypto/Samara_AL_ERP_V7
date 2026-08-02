@@ -206,3 +206,16 @@ button,input,select,textarea{font-size:17px}
   .patient-tab{font-size:16px;padding:11px 14px}
   .message{font-size:16px}
 }
+
+
+/* V8.1 — V3-inspired Rooms & Beds operational master */
+.rooms-hero{display:flex;align-items:center;justify-content:space-between;gap:22px;padding:26px 28px;margin-bottom:20px;border-radius:22px;background:linear-gradient(115deg,#07584d,#14a897);color:#fff;box-shadow:0 12px 30px rgba(5,83,72,.18)}
+.rooms-hero small{display:block;font-size:13px;font-weight:900;letter-spacing:.13em;margin-bottom:7px}.rooms-hero h3{margin:0;font-size:31px}.rooms-hero p{margin:7px 0 0;font-size:16px;color:#e8fffa}.rooms-hero .btn{background:#fff;color:#07584d;border-color:#fff}
+.room-summary{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:20px}.room-summary .stat{min-height:145px}.room-stat-occupied strong{color:#07885e}
+.rooms-master-panel{padding:0;overflow:hidden}.rooms-master-panel .panel-head{padding:24px 26px;margin:0;border-bottom:1px solid #dfe9e6}.rooms-master-panel .table-wrap{border:0;border-radius:0}
+.rooms-table{min-width:1120px}.rooms-table th{font-size:14px;text-transform:uppercase;letter-spacing:.06em;background:#f2f8f6}.rooms-table td{vertical-align:middle}
+.room-status{display:inline-flex;align-items:center;justify-content:center;padding:7px 12px;border-radius:999px;font-size:14px;font-weight:900}.room-status-available{background:#dff8e8;color:#087a45}.room-status-occupied{background:#d7f6e5;color:#057544}.room-status-reserved{background:#fff1c9;color:#9a6500}.room-status-maintenance{background:#ffe0de;color:#a62d27}
+.room-patient{display:flex;flex-direction:column;gap:3px}.room-patient strong{font-size:16px}.room-patient small{font-size:13px;color:var(--ui-muted)}.room-patient .special-alert{width:max-content;margin-top:3px}
+.awaiting-room-panel{margin-top:20px}.awaiting-room-item{display:flex;align-items:center;justify-content:space-between;gap:16px}.awaiting-room-item>div{display:flex;flex-direction:column;gap:5px}.room-bed-modal{width:min(900px,96vw)}
+@media(max-width:950px){.room-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.rooms-hero{padding:21px}.rooms-hero h3{font-size:27px}}
+@media(max-width:560px){.rooms-hero{align-items:flex-start;flex-direction:column}.rooms-hero .btn{width:100%}.room-summary{grid-template-columns:1fr 1fr}.room-summary .stat{min-height:125px}.awaiting-room-item{align-items:stretch;flex-direction:column}.awaiting-room-item .btn{width:100%}}

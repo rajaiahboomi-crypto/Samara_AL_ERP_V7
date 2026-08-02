@@ -145,7 +145,7 @@
           page==='Admissions'&&h(Admissions,{profile}),
           page==='Shift Tasks'&&h(ShiftTasks,{profile}),
           page==='Patients'&&h(Patients),
-          page==='Rooms & Beds'&&h(RoomsBeds),
+          page==='Rooms & Beds'&&h(RoomsBeds,{profile}),
           page==='Daily Care'&&h(DailyCare,{profile}),
           page==='Vital Signs'&&h(VitalSigns,{profile}),
           page==='Medicines'&&h(Medicines,{profile}),
@@ -916,12 +916,146 @@
 
   function Section({title,subtitle,actions,children}){return h('div',{className:'card panel'},h('div',{className:'panel-head'},h('div',null,h('h3',null,title),subtitle&&h('small',null,subtitle)),actions),children)}
 
-  function RoomsBeds(){
-    const [patients]=usePatients();const beds=[];for(let i=1;i<=25;i++)beds.push(i);
+  function RoomsBeds({profile}){
+    const canEdit=['Admin','Manager'].includes(profile?.role);
+    const empty={room_no:'',bed_no:'A',room_type:'Twin Sharing',daily_rate:'',status:'Available',patient_id:'',floor:'',wing:'',notes:''};
+    const [rows,setRows]=React.useState([]),[patients,setPatients]=React.useState([]),[loading,setLoading]=React.useState(true);
+    const [show,setShow]=React.useState(false),[form,setForm]=React.useState(empty),[editing,setEditing]=React.useState(null),[busy,setBusy]=React.useState(false),[msg,setMsg]=React.useState('');
+
+    async function load(){
+      setLoading(true);setMsg('');
+      const [roomResult,patientResult]=await Promise.all([
+        client.from('room_beds').select('*').order('room_no',{ascending:true}).order('bed_no',{ascending:true}),
+        client.from('patients').select('id,patient_id,full_name,room_no,bed_no,patient_category,special_nurse_required,is_active').eq('is_active',true).order('full_name')
+      ]);
+      if(roomResult.error){setMsg(roomResult.error.message||'Unable to load room and bed master');setRows([])}else setRows(roomResult.data||[]);
+      if(patientResult.error){setMsg(patientResult.error.message||'Unable to load active patients');setPatients([])}else setPatients(patientResult.data||[]);
+      setLoading(false);
+    }
+    React.useEffect(()=>{
+      load();
+      const ch=client.channel('room-beds-live-v81')
+        .on('postgres_changes',{event:'*',schema:'public',table:'room_beds'},load)
+        .on('postgres_changes',{event:'*',schema:'public',table:'patients'},load)
+        .subscribe();
+      return()=>client.removeChannel(ch);
+    },[]);
+
+    function patientFor(row){
+      return patients.find(p=>p.id===row.patient_id)||patients.find(p=>String(p.room_no||'')===String(row.room_no||'')&&String(p.bed_no||'').toUpperCase()===String(row.bed_no||'').toUpperCase())||null;
+    }
+    const occupied=rows.filter(r=>patientFor(r)||r.status==='Occupied').length;
+    const available=rows.filter(r=>!patientFor(r)&&r.status==='Available').length;
+    const reserved=rows.filter(r=>r.status==='Reserved').length;
+    const maintenance=rows.filter(r=>r.status==='Maintenance').length;
     const unassigned=patients.filter(p=>!p.room_no||!p.bed_no);
+
+    function openNew(patientId=''){
+      setEditing(null);setForm({...empty,patient_id:patientId});setMsg('');setShow(true);
+    }
+    function openEdit(row){
+      const p=patientFor(row);
+      setEditing(row);setForm({
+        room_no:row.room_no||'',bed_no:row.bed_no||'',room_type:row.room_type||'Twin Sharing',daily_rate:row.daily_rate??'',status:row.status||'Available',patient_id:p?.id||row.patient_id||'',floor:row.floor||'',wing:row.wing||'',notes:row.notes||''
+      });setMsg('');setShow(true);
+    }
+    async function save(e){
+      e.preventDefault();setBusy(true);setMsg('');
+      try{
+        const roomNo=String(form.room_no||'').trim(),bedNo=String(form.bed_no||'').trim().toUpperCase();
+        if(!roomNo||!bedNo)throw new Error('Room number and bed code are required.');
+        let duplicateQuery=client.from('room_beds').select('id').eq('room_no',roomNo).eq('bed_no',bedNo);
+        if(editing?.id)duplicateQuery=duplicateQuery.neq('id',editing.id);
+        const {data:duplicates,error:dupError}=await duplicateQuery.limit(1);if(dupError)throw dupError;
+        if(duplicates?.length)throw new Error(`Room ${roomNo} / Bed ${bedNo} already exists.`);
+
+        const oldPatient=editing?patientFor(editing):null;
+        if(oldPatient&&oldPatient.id!==form.patient_id){
+          const {error}=await client.from('patients').update({room_no:null,bed_no:null}).eq('id',oldPatient.id);if(error)throw error;
+        }
+        if(form.patient_id){
+          const selected=patients.find(p=>p.id===form.patient_id);
+          if(!selected)throw new Error('Selected patient is no longer active.');
+          const {error:clearOther}=await client.from('room_beds').update({patient_id:null,status:'Available'}).eq('patient_id',selected.id);
+          if(clearOther)throw clearOther;
+          const {error:clearBed}=await client.from('patients').update({room_no:null,bed_no:null}).eq('room_no',roomNo).eq('bed_no',bedNo).neq('id',selected.id);
+          if(clearBed)throw clearBed;
+          const {error:assignPatient}=await client.from('patients').update({room_no:roomNo,bed_no:bedNo}).eq('id',selected.id);
+          if(assignPatient)throw assignPatient;
+        }
+        const payload={room_no:roomNo,bed_no:bedNo,room_type:form.room_type,daily_rate:Number(form.daily_rate||0),status:form.patient_id?'Occupied':form.status,patient_id:form.patient_id||null,floor:form.floor||null,wing:form.wing||null,notes:form.notes||null,updated_at:new Date().toISOString()};
+        let result;
+        if(editing?.id)result=await client.from('room_beds').update(payload).eq('id',editing.id);
+        else result=await client.from('room_beds').insert(payload);
+        if(result.error)throw result.error;
+        setShow(false);setEditing(null);setForm(empty);await load();
+      }catch(error){setMsg(error.message||'Unable to save room / bed')}
+      setBusy(false);
+    }
+    async function removeRoom(row){
+      if(!canEdit)return;
+      const p=patientFor(row);
+      if(p){alert('This bed is occupied. Transfer or unassign the patient before deleting it.');return}
+      if(!confirm(`Delete Room ${row.room_no} / Bed ${row.bed_no}?`))return;
+      const {error}=await client.from('room_beds').delete().eq('id',row.id);if(error)alert(error.message);else load();
+    }
+
+    if(loading)return h('div',{className:'loading'},'Loading room and bed master…');
     return h(React.Fragment,null,
-      h(Section,{title:'Rooms & Beds',subtitle:'25-bed live occupancy linked to Patient Master'},h('div',{className:'bed-grid'},beds.map(n=>{const room=Math.ceil(n/2),bed=n%2?'A':'B';const p=patients.find(x=>String(x.room_no)===String(room)&&String(x.bed_no||'').toUpperCase()===bed);return h('div',{className:`bed-card ${p?'occupied':''}`,key:n},h('strong',null,`Room ${room} · Bed ${bed}`),h('span',null,p?`${p.patient_id||''} · ${p.full_name}`:'Available'),p&&p.special_nurse_required&&h('small',{className:'special-alert'},'Special nurse'))}))),
-      unassigned.length?h(Section,{title:'Active Patients Awaiting Room / Bed',subtitle:'These Patient Master records are active but not yet assigned'},h('div',{className:'unassigned-patient-list'},unassigned.map(p=>h('div',{className:'timeline-item',key:p.id},h('strong',null,`${p.patient_id||'—'} · ${p.full_name}`),h('span',null,`${p.admission_type||'Admission'} · ${p.patient_category||'—'}`))))):null
+      h('div',{className:'rooms-hero'},
+        h('div',null,h('small',null,'LIVE OCCUPANCY CONTROL'),h('h3',null,'Rooms & Beds'),h('p',null,'Editable room and bed master linked directly to Patient Master.')),
+        canEdit?h('button',{className:'btn btn-primary',onClick:()=>openNew()},'+ Add Room / Bed'):null
+      ),
+      h('div',{className:'grid stats room-summary'},
+        h('div',{className:'card stat'},h('span',null,'Total beds'),h('strong',null,rows.length),h('small',null,'Configured capacity')),
+        h('div',{className:'card stat room-stat-occupied'},h('span',null,'Occupied'),h('strong',null,occupied),h('small',null,`${available} available`)),
+        h('div',{className:'card stat'},h('span',null,'Reserved'),h('strong',null,reserved),h('small',null,'Held for admission')),
+        h('div',{className:'card stat'},h('span',null,'Maintenance'),h('strong',null,maintenance),h('small',null,'Temporarily unavailable'))
+      ),
+      h('div',{className:'card panel rooms-master-panel'},
+        h('div',{className:'panel-head'},h('div',null,h('h3',null,'Room & Bed Master'),h('small',null,'Room, bed, type, rate, occupancy and assigned patient')),canEdit?h('button',{className:'btn btn-primary',onClick:()=>openNew()},'+ Add Room / Bed'):null),
+        msg&&!show?h('div',{className:'message error'},msg):null,
+        h('div',{className:'table-wrap'},
+          h('table',{className:'table rooms-table'},
+            h('thead',null,
+              h('tr',null,['Room','Bed','Type','Floor / Wing','Daily Rate','Status','Patient','Action'].map(x=>h('th',{key:x},x)))
+            ),
+            h('tbody',null,
+              rows.map(row=>{
+                const p=patientFor(row),status=p?'Occupied':row.status;
+                return h('tr',{key:row.id},
+                  h('td',null,h('strong',null,row.room_no)),
+                  h('td',null,row.bed_no),
+                  h('td',null,row.room_type||'—'),
+                  h('td',null,[row.floor,row.wing].filter(Boolean).join(' / ')||'—'),
+                  h('td',null,`₹${Number(row.daily_rate||0).toLocaleString('en-IN')}`),
+                  h('td',null,h('span',{className:`room-status room-status-${String(status).toLowerCase()}`},status)),
+                  h('td',null,p?h('div',{className:'room-patient'},h('strong',null,p.full_name),h('small',null,p.patient_id||'—'),p.special_nurse_required?h('span',{className:'special-alert'},'Special nurse'):null):'—'),
+                  h('td',null,canEdit?h('div',{className:'employee-actions'},h('button',{className:'btn btn-secondary',onClick:()=>openEdit(row)},'Edit'),h('button',{className:'btn btn-danger',disabled:!!p,onClick:()=>removeRoom(row)},'Delete')):h('span',{className:'small-note'},'View only'))
+                );
+              }),
+              rows.length===0?h('tr',null,h('td',{colSpan:8,className:'empty'},'No rooms or beds configured.')):null
+            )
+          )
+        )
+      ),
+      unassigned.length?h('div',{className:'card panel awaiting-room-panel'},
+        h('div',{className:'panel-head'},h('div',null,h('h3',null,'Active Patients Awaiting Room / Bed'),h('small',null,'Assign directly from this list'))),
+        h('div',{className:'unassigned-patient-list'},unassigned.map(p=>h('div',{className:'timeline-item awaiting-room-item',key:p.id},h('div',null,h('strong',null,`${p.patient_id||'—'} · ${p.full_name}`),h('span',null,`${p.patient_category||'Patient'}${p.special_nurse_required?' · Special nurse required':''}`)),canEdit?h('button',{className:'btn btn-secondary',onClick:()=>openNew(p.id)},'Assign Bed'):null)))
+      ):null,
+      show?h('div',{className:'modal-backdrop'},h('form',{className:'card modal room-bed-modal',onSubmit:save},
+        h('div',{className:'panel-head'},h('div',null,h('h3',null,editing?'Edit Room / Bed':'Add Room / Bed'),h('small',null,'Configure capacity, rate, status and patient allocation')),h('button',{type:'button',className:'close',onClick:()=>setShow(false)},'×')),
+        msg&&h('div',{className:'message error'},msg),
+        h('div',{className:'modal-grid'},
+          miniInput('Room number',form.room_no,v=>setForm({...form,room_no:v}),true),miniInput('Bed code',form.bed_no,v=>setForm({...form,bed_no:v}),true),
+          miniSelect('Room type',form.room_type,['Private','Deluxe','Standard','General','Twin Sharing','Triple Sharing','Isolation','Rehabilitation'],v=>setForm({...form,room_type:v})),
+          miniInput('Daily rate',form.daily_rate,v=>setForm({...form,daily_rate:v}),false,'number'),miniInput('Floor',form.floor,v=>setForm({...form,floor:v})),miniInput('Wing',form.wing,v=>setForm({...form,wing:v})),
+          miniSelect('Status',form.status,['Available','Reserved','Maintenance'],v=>setForm({...form,status:v})),
+          h('div',{className:'field'},h('label',null,'Assign patient'),h('select',{value:form.patient_id,onChange:e=>setForm({...form,patient_id:e.target.value})},h('option',{value:''},'No patient / Available'),patients.map(p=>h('option',{key:p.id,value:p.id},`${p.patient_id||'NO-ID'} · ${p.full_name}${p.room_no&&p.bed_no?` · currently ${p.room_no}-${p.bed_no}`:''}`)))),
+          h('div',{className:'field span-2'},h('label',null,'Notes'),h('textarea',{value:form.notes,onChange:e=>setForm({...form,notes:e.target.value}),rows:3}))
+        ),
+        h('button',{className:'btn btn-primary full',disabled:busy},busy?'Saving…':editing?'Save Room / Bed':'Add Room / Bed')
+      )):null
     );
   }
 

@@ -1,4 +1,4 @@
-const CACHE = 'samara-v8-0-professional-ui';
+const CACHE = 'samara-v8-1-rooms-beds-master';
 const SHELL = ['./','./index.html','./styles.css','./app.js',
   './health-check.js','./config.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install', event => {
