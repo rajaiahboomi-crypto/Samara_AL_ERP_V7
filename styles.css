@@ -95,3 +95,8 @@
 @media(max-width:640px){.capture-actions .btn,.capture-actions .file-button{flex:1 1 130px}.camera-stage{min-height:230px}.camera-actions .btn{flex:1 1 120px}}
 
 .patient-capture-preview{width:130px;height:150px;object-fit:cover;border-radius:16px;border:2px solid #c8ddd8;margin-top:10px;display:block}.capture-actions{display:flex;gap:8px;flex-wrap:wrap}.file-button input{display:none}
+
+
+/* V7.7 Unified Patient Master */
+.patient-master-stats{margin-bottom:18px}.patient-master-modal{width:min(1180px,96vw);max-height:94vh;overflow:auto}.patient-master-header{position:sticky;top:0;background:#fff;z-index:4;padding-bottom:12px}.patient-tab-bar{display:flex;gap:8px;flex-wrap:wrap;position:sticky;top:92px;background:#fff;z-index:3;padding:10px 0;border-bottom:1px solid #dfeae7}.patient-tab{border:0;border-radius:10px;padding:10px 14px;background:#e8f3f0;color:#075f50;font-weight:700;cursor:pointer}.patient-tab.active{background:#086b58;color:#fff}.tab-count{display:inline-flex;min-width:22px;height:22px;align-items:center;justify-content:center;margin-left:7px;border-radius:999px;background:#ffffff55;font-size:12px}.patient-tab-content{padding-top:14px}.patient-photo-placeholder{display:flex;align-items:center;justify-content:center;background:#dce8e5;color:#086b58;font-weight:800}.patient-header-badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}.duplicate-row{background:#fff8e5}.danger-text{color:#9f2b20}.unassigned-patient-list{display:grid;gap:8px}.message.warning{background:#fff4cf;color:#715800;border:1px solid #f0d46b}
+@media(max-width:760px){.patient-tab-bar{top:70px;overflow-x:auto;flex-wrap:nowrap}.patient-tab{white-space:nowrap}.patient-master-modal{width:98vw}.patient-master-stats{grid-template-columns:1fr 1fr}}
