@@ -36,12 +36,10 @@
     .map(section=>({...section,items:section.items.filter(item=>allowed.includes(item))}))
     .filter(section=>section.items.length);
   const normalizeLogin = value => value.trim().toLowerCase().replace(/[^a-z0-9._-]/g,'');
-  const loginEmail = value => `${normalizeLogin(value)}@${cfg.employeeEmailDomain}`;
   const fmt = value => value ? new Date(value).toLocaleString() : '—';
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#039;'}[ch]));
   const whatsappNumber = value => { const digits=String(value||'').replace(/\D/g,''); if(!digits)return ''; if(digits.length===10)return `91${digits}`; if(digits.length===11&&digits.startsWith('0'))return `91${digits.slice(1)}`; return digits; };
   const whatsappWelcomeUrl = row => { const number=whatsappNumber(row.mobile); if(!number)return ''; const text=`Welcome to Samara Health Care LLP, ${row.full_name}. Your Samara Care employee account has been created. Login ID: ${row.login_id}. Please keep your password confidential. We are pleased to have you with us.`; return `https://wa.me/${number}?text=${encodeURIComponent(text)}`; };
-
 
   function CameraCaptureModal({config,onClose}){
     const videoRef=React.useRef(null),canvasRef=React.useRef(null),streamRef=React.useRef(null);
@@ -288,8 +286,9 @@
     const [repairTarget,setRepairTarget]=React.useState(null),[repairPassword,setRepairPassword]=React.useState(''),[repairBusy,setRepairBusy]=React.useState(false),[repairMsg,setRepairMsg]=React.useState('');
     const [detailsTarget,setDetailsTarget]=React.useState(null),[detailsForm,setDetailsForm]=React.useState(null),[detailsDocs,setDetailsDocs]=React.useState([]),[detailsBusy,setDetailsBusy]=React.useState(false),[detailsMsg,setDetailsMsg]=React.useState('');
     const [idFiles,setIdFiles]=React.useState([]),[qualificationFiles,setQualificationFiles]=React.useState([]),[experienceFiles,setExperienceFiles]=React.useState([]),[otherFiles,setOtherFiles]=React.useState([]),[cameraFiles,setCameraFiles]=React.useState([]),[photoFiles,setPhotoFiles]=React.useState([]),[welcomeLink,setWelcomeLink]=React.useState('');
+    const [activePhotoUrl,setActivePhotoUrl]=React.useState('');
     const [cameraConfig,setCameraConfig]=React.useState(null);
-    const empty={full_name:'',employee_id:'',designation:'',mobile:'',emergency_contact:'',role:'Caregiver',login_id:'',employee_email:'',password:'',father_guardian_name:'',address:'',date_of_birth:'',date_of_joining:'',blood_group:'',id_card_type:'Aadhaar',id_card_number:'',qualification:'',previous_workplace:'',reference_type:'Direct',reference_name:'',reference_contact:''};
+    const empty={full_name:'',employee_id:'',designation:'',mobile:'',emergency_contact:'',role:'Caregiver',login_id:'',employee_email:'',password:'',father_guardian_name:'',address:'',date_of_birth:'',date_of_joining:'',blood_group:'',id_card_type:'Identity Proof',id_card_number:'',qualification:'',previous_workplace:'',reference_type:'Direct',reference_name:'',reference_contact:''};
     const [form,setForm]=React.useState(empty);
 
     async function adminRequest(payload){
@@ -316,6 +315,14 @@
     }
     React.useEffect(()=>{load();const ch=client.channel('profiles-live').on('postgres_changes',{event:'*',schema:'public',table:'profiles'},load).subscribe();return()=>client.removeChannel(ch)},[]);
 
+    // Preview uploaded/captured photo in live UI instantly
+    React.useEffect(()=>{
+      if(photoFiles && photoFiles.length>0){
+        const blobUrl = URL.createObjectURL(photoFiles[0]);
+        setActivePhotoUrl(blobUrl);
+      }
+    },[photoFiles]);
+
     async function uploadEmployeeFiles(userId,groups){
       for(const group of groups){
         for(const file of group.files||[]){
@@ -323,7 +330,19 @@
           const path=`${userId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safe}`;
           const {error:uploadError}=await client.storage.from('employee-documents').upload(path,file,{upsert:false,contentType:file.type||undefined});
           if(uploadError)throw new Error(`Unable to upload ${file.name}: ${uploadError.message}`);
-          const {error:docError}=await client.from('employee_documents').insert({employee_id:userId,document_type:group.type,file_name:file.name,storage_path:path,mime_type:file.type||null,file_size:file.size||null,uploaded_by:profile.id});
+          
+          const {error:docError}=await client.from('employee_documents').insert({
+            employee_id:userId,
+            document_type:group.type,
+            document_name:file.name||group.type,
+            title:group.type,
+            category:group.type||'General Document',
+            file_name:file.name,
+            storage_path:path,
+            mime_type:file.type||null,
+            file_size:file.size||null,
+            uploaded_by:profile.id
+          });
           if(docError)throw new Error(`Document record could not be saved: ${docError.message}`);
         }
       }
@@ -336,9 +355,22 @@
       const path=`${userId}/profile-${Date.now()}-${safe}`;
       const {error:uploadError}=await client.storage.from('employee-documents').upload(path,file,{upsert:true,contentType:file.type||'image/jpeg'});
       if(uploadError)throw new Error(`Unable to upload employee photo: ${uploadError.message}`);
+      
       const {error:profileError}=await client.from('profiles').update({photo_storage_path:path}).eq('id',userId);
       if(profileError)throw new Error(`Employee photo could not be linked: ${profileError.message}`);
-      const {error:docError}=await client.from('employee_documents').insert({employee_id:userId,document_type:'Employee Photo',file_name:file.name||'Employee Photo',storage_path:path,mime_type:file.type||null,file_size:file.size||null,uploaded_by:profile.id});
+      
+      const {error:docError}=await client.from('employee_documents').insert({
+        employee_id:userId,
+        document_type:'Employee Photo',
+        document_name:file.name||'Employee Photo',
+        title:'Employee Photo',
+        category:'Employee Photo',
+        file_name:file.name||'Employee Photo',
+        storage_path:path,
+        mime_type:file.type||null,
+        file_size:file.size||null,
+        uploaded_by:profile.id
+      });
       if(docError)throw new Error(`Employee photo record could not be saved: ${docError.message}`);
       return path;
     }
@@ -357,7 +389,7 @@
         if(preopened&&link){preopened.location.href=link}else if(preopened){preopened.close()}
         await load();
         setMsg(result.repaired?'Employee account repaired and personnel details saved successfully.':'Employee created successfully with personnel details. The employee can sign in immediately.');
-        setForm(empty);setIdFiles([]);setQualificationFiles([]);setExperienceFiles([]);setOtherFiles([]);setCameraFiles([]);setPhotoFiles([]);
+        setForm(empty);setIdFiles([]);setQualificationFiles([]);setExperienceFiles([]);setOtherFiles([]);setCameraFiles([]);setPhotoFiles([]);setActivePhotoUrl('');
       }catch(error){if(preopened)preopened.close();setMsg(error.message||'Unable to create employee')}
       setBusy(false);
     }
@@ -382,7 +414,11 @@
     }
 
     async function openDetails(row){
-      setDetailsTarget(row);setDetailsForm({...empty,...row,password:''});setDetailsMsg('');setDetailsDocs([]);
+      setDetailsTarget(row);setDetailsForm({...empty,...row,password:''});setDetailsMsg('');setDetailsDocs([]);setActivePhotoUrl('');
+      if(row.photo_storage_path){
+        const {data}=await client.storage.from('employee-documents').createSignedUrl(row.photo_storage_path,300);
+        if(data?.signedUrl) setActivePhotoUrl(data.signedUrl);
+      }
       const {data,error}=await client.from('employee_documents').select('*').eq('employee_id',row.id).order('created_at',{ascending:false});
       if(error)setDetailsMsg(error.message);else setDetailsDocs(data||[]);
     }
@@ -447,17 +483,54 @@
 
     const uploadFields=()=>h('div',{className:'employee-upload-section span-2'},h('h4',null,'Employee Photo, Documents and Certificates'),h('p',{className:'small-note'},'Each item provides separate Upload File, Mobile Camera and Webcam options.'),h('div',{className:'modal-grid'},fileInput('Employee Photo',setPhotoFiles,'image/*',true),fileInput('ID Card / Identity Proof',setIdFiles),fileInput('Qualification Certificates',setQualificationFiles),fileInput('Experience / Previous Employment Certificates',setExperienceFiles),fileInput('Other Certificates',setOtherFiles)));
 
+    // Reusable ID Card Component for Modals
+    const idCardPreview=(state)=>h('div',{className:'id-card-preview-shell',style:{textAlign:'center',margin:'10px auto'}},
+      h('div',{className:'id-card-box',style:{width:'280px',background:'#fff',border:'2px solid #086b58',borderRadius:'16px',overflow:'hidden',padding:'12px',margin:'auto',boxShadow:'0 4px 12px rgba(0,0,0,0.1)'}},
+        h('div',{style:{background:'#086b58',color:'#fff',padding:'8px',borderRadius:'8px',marginBottom:'12px'}},
+          h('div',{style:{fontWeight:'bold',fontSize:'14px'}},'SAMARA HEALTH CARE LLP'),
+          h('div',{style:{fontSize:'10px',opacity:0.9}},'Assisted Living Management System')
+        ),
+        h('div',{style:{width:'100px',height:'115px',margin:'0 auto 10px',borderRadius:'12px',overflow:'hidden',background:'#e2e8f0',display:'flex',alignItems:'center',justifyContent:'center',border:'2px solid #cbd5e1'}},
+          activePhotoUrl ? h('img',{src:activePhotoUrl,style:{width:'100%',height:'100%',objectFit:'cover'}}) : h('span',{style:{fontSize:'32px',fontWeight:'bold',color:'#64748b'}},'SC')
+        ),
+        h('div',{style:{fontWeight:'bold',fontSize:'18px',color:'#0f172a'}},state.full_name||'Employee Name'),
+        h('div',{style:{color:'#086b58',fontSize:'14px',fontWeight:'500',marginBottom:'8px'}},state.role||'Role'),
+        h('div',{style:{fontSize:'11px',textAlign:'left',lineHeight:'1.6',borderTop:'1px dashed #cbd5e1',paddingTop:'8px'}},
+          h('div',null,h('strong',null,'Employee ID: '),state.employee_id||'—'),
+          h('div',null,h('strong',null,'Mobile: '),state.mobile||'—'),
+          h('div',null,h('strong',null,'Blood Group: '),state.blood_group||'—'),
+          h('div',null,h('strong',null,'Valid: '),'As per employment')
+        )
+      )
+    );
+
     const createModal=show?h('div',{className:'modal-backdrop'},h('form',{className:'card modal employee-modal',onSubmit:create},
-      h('div',{className:'panel-head'},h('div',null,h('h3',null,'Create Employee'),h('small',null,'Personnel details, login account and certificate uploads')),h('button',{type:'button',className:'close',onClick:()=>setShow(false)},'×')),
+      h('div',{className:'panel-head'},
+        h('div',null,h('h3',null,'Create Employee'),h('small',null,'Personnel details, login account and certificate uploads')),
+        h('div',{style:{display:'flex',alignItems:'center',gap:'12px'}},
+          activePhotoUrl&&h('img',{src:activePhotoUrl,alt:'Header Photo',style:{width:'42px',height:'42px',borderRadius:'50%',objectFit:'cover',border:'2px solid #086b58'}}),
+          h('button',{type:'button',className:'close',onClick:()=>{setShow(false);setActivePhotoUrl('')}},'×')
+        )
+      ),
       msg?h('div',{className:`message ${msg.startsWith('Employee created')||msg.startsWith('Employee account repaired')?'success':'error'}`},msg):null,
       welcomeLink&&h('a',{className:'btn btn-whatsapp full',href:welcomeLink,target:'_blank',rel:'noopener'},'Send Welcome Message on WhatsApp'),
-      h('div',{className:'modal-grid'},personnelFields(form,setForm,true),uploadFields()),h('p',{className:'message success'},'The login account is created and confirmed securely without sending an email.'),h('button',{className:'btn btn-primary full',disabled:busy},busy?'Creating employee and uploading documents…':'Create Employee')
+      h('div',{className:'modal-grid'},personnelFields(form,setForm,true),uploadFields()),
+      idCardPreview(form),
+      h('p',{className:'message success'},'The login account is created and confirmed securely without sending an email.'),
+      h('button',{className:'btn btn-primary full',disabled:busy},busy?'Creating employee and uploading documents…':'Create Employee')
     )):null;
 
     const detailsModal=detailsTarget&&detailsForm?h('div',{className:'modal-backdrop'},h('form',{className:'card modal employee-modal',onSubmit:saveDetails},
-      h('div',{className:'panel-head'},h('div',null,h('h3',null,'Employee Personnel File'),h('small',null,`${detailsTarget.full_name} · ${detailsTarget.login_id}`)),h('button',{type:'button',className:'close',onClick:()=>setDetailsTarget(null)},'×')),
+      h('div',{className:'panel-head'},
+        h('div',null,h('h3',null,'Employee Personnel File'),h('small',null,`${detailsTarget.full_name} · ${detailsTarget.login_id}`)),
+        h('div',{style:{display:'flex',alignItems:'center',gap:'12px'}},
+          activePhotoUrl&&h('img',{src:activePhotoUrl,alt:'Header Photo',style:{width:'42px',height:'42px',borderRadius:'50%',objectFit:'cover',border:'2px solid #086b58'}}),
+          h('button',{type:'button',className:'close',onClick:()=>{setDetailsTarget(null);setActivePhotoUrl('')}},'×')
+        )
+      ),
       detailsMsg&&h('div',{className:`message ${detailsMsg.startsWith('Employee information')?'success':'error'}`},detailsMsg),
       h('div',{className:'modal-grid'},personnelFields(detailsForm,setDetailsForm,false),uploadFields()),
+      idCardPreview(detailsForm),
       h('div',{className:'employee-doc-list'},h('h4',null,'Uploaded Documents'),detailsDocs.length?detailsDocs.map(d=>h('div',{className:'document-row',key:d.id},h('span',null,`${d.document_type}: ${d.file_name}`),h('button',{type:'button',className:'btn btn-secondary',onClick:()=>openDocument(d)},'Open'))):h('p',{className:'small-note'},'No documents uploaded yet.')),
       h('button',{className:'btn btn-primary full',disabled:detailsBusy},detailsBusy?'Saving…':'Save Employee Information')
     )):null;
@@ -465,9 +538,8 @@
     const resetModal=resetTarget?h('div',{className:'modal-backdrop'},h('form',{className:'card modal reset-password-modal',onSubmit:resetPassword},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Reset Employee Password'),h('small',null,`${resetTarget.full_name} · ${resetTarget.login_id}`)),h('button',{type:'button',className:'close',onClick:()=>setResetTarget(null)},'×')),resetMsg&&h('div',{className:`message ${resetMsg.startsWith('Password reset')?'success':'error'}`},resetMsg),h('div',{className:'field'},h('label',null,'New password'),h('input',{type:'password',value:newPassword,onChange:e=>setNewPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('div',{className:'field'},h('label',null,'Confirm new password'),h('input',{type:'password',value:confirmPassword,onChange:e=>setConfirmPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('p',{className:'small-note'},'Resetting the password also enables and unblocks the employee account.'),h('button',{className:'btn btn-primary full',disabled:resetBusy},resetBusy?'Resetting…':'Reset Password & Enable Account'))):null;
     const repairModal=repairTarget?h('div',{className:'modal-backdrop'},h('form',{className:'card modal reset-password-modal',onSubmit:repairAccount},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Repair Employee Account'),h('small',null,`${repairTarget.full_name} · ${repairTarget.login_id}`)),h('button',{type:'button',className:'close',onClick:()=>setRepairTarget(null)},'×')),repairMsg&&h('div',{className:`message ${repairMsg.startsWith('Authentication account repaired')?'success':'error'}`},repairMsg),h('p',null,'This employee has a profile but no matching Supabase Authentication account. Enter a temporary password to rebuild the login account.'),h('div',{className:'field'},h('label',null,'Temporary password'),h('input',{type:'password',value:repairPassword,onChange:e=>setRepairPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('button',{className:'btn btn-warning full',disabled:repairBusy},repairBusy?'Repairing…':'Repair Account & Enable Login'))):null;
 
-    return h(React.Fragment,null,h('div',{className:'card panel'},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Employees'),h('small',null,'Personnel records, documents, central login accounts and Authentication status')),h('button',{className:'btn btn-primary',onClick:()=>{setShow(true);setMsg('')}},'Create Employee')),msg&&!show?h('div',{className:'message error'},msg):null,table),createModal,detailsModal,resetModal,repairModal,cameraConfig?h(CameraCaptureModal,{config:cameraConfig,onClose:()=>setCameraConfig(null)}):null);
+    return h(React.Fragment,null,h('div',{className:'card panel'},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Employees'),h('small',null,'Personnel records, documents, central login accounts and Authentication status')),h('button',{className:'btn btn-primary',onClick:()=>{setShow(true);setMsg('');setActivePhotoUrl('')}},'Create Employee')),msg&&!show?h('div',{className:'message error'},msg):null,table),createModal,detailsModal,resetModal,repairModal,cameraConfig?h(CameraCaptureModal,{config:cameraConfig,onClose:()=>setCameraConfig(null)}):null);
   }
-
 
   function Enquiries({profile}){
     const [rows,setRows]=React.useState([]),[form,setForm]=React.useState({patient_name:'',family_contact_name:'',family_contact_phone:'',current_location:'Home',reason_for_enquiry:'',expected_admission_date:'',bed_preference:'',special_requirements:'',source:'Direct',status:'New'});
@@ -692,6 +764,9 @@
 
   function field(label,key,form,setForm,required,type='text'){return h('div',{className:'field',key},h('label',null,label),h('input',{type,value:form[key],required,onChange:e=>setForm({...form,[key]:e.target.value})}))}
   function selectField(label,key,form,setForm,options){return h('div',{className:'field',key},h('label',null,label),h('select',{value:form[key],onChange:e=>setForm({...form,[key]:e.target.value})},options.map(x=>h('option',{key:x,value:x},x))))}
+
+  function blankMedicine(){return {medicine_name:'',strength:'',dose:'',route:'Oral',food_instruction:'After food',times:'08:00, 20:00',special_instruction:''}}
+  function blankCare(){return {care_type:'Bathing assistance',shift:'Day Shift (7 AM–7 PM)',frequency:'Daily',instruction:''}}
 
   ReactDOM.createRoot(document.getElementById('root')).render(h(App));
 })();
