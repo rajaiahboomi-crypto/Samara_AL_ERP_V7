@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.2.5';
-  const APP_BUILD_DATE = '03-Aug-2026 23:30 IST';
+  const APP_VERSION = '1.2.6';
+  const APP_BUILD_DATE = '03-Aug-2026 23:50 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({

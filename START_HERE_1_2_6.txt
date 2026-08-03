@@ -1,0 +1,18 @@
+SAMARA CARE ERP 1.2.6 — SIDEBAR SUBMENU SPACING
+
+Upload and replace only these files in the GitHub repository root:
+- app.js
+- index.html
+- service-worker.js
+- styles.css
+
+No Supabase SQL is required.
+
+Changes:
+- Added clear space between submenu dots and text.
+- Increased submenu indentation.
+- Improved vertical alignment.
+- Added a subtle active-page marker.
+- Kept all existing ERP functions unchanged.
+
+After upload, close and reopen the ERP and tap “App update available” if shown.

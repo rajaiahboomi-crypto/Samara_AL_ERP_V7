@@ -894,3 +894,37 @@ body{-webkit-tap-highlight-color:transparent}
 @keyframes samaraProgress{0%{transform:translateX(-115%)}55%{transform:translateX(115%)}100%{transform:translateX(250%)}}
 @media(max-width:560px){.app-splash-card{padding:36px 24px 24px;border-radius:28px}.app-splash-logo{width:86px;height:86px;border-radius:25px;font-size:31px}.app-splash h1{font-size:31px}.app-splash-tagline{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.app-splash-card,.app-splash-logo,.app-splash-progress span{animation:none}.app-splash{transition:none}}
+
+/* Samara Care ERP 1.2.6 — Sidebar submenu spacing and polish */
+.nav-submenu{
+  padding-left:12px;
+}
+.nav-submenu button{
+  position:relative;
+  display:flex;
+  align-items:center;
+  min-height:40px;
+  padding-left:34px !important;
+  line-height:1.3;
+}
+.nav-submenu button::before{
+  left:13px !important;
+  width:5px;
+  height:5px;
+  margin:0;
+}
+.nav-submenu button.active{
+  box-shadow:inset 3px 0 0 rgba(255,255,255,.75);
+}
+.nav-heading-button{
+  transition:background-color .2s ease,color .2s ease;
+}
+.nav-submenu{
+  transform-origin:top;
+  animation:menuReveal .2s ease-out;
+}
+@media (max-width: 950px){
+  .nav-submenu button{
+    padding-left:34px !important;
+  }
+}
