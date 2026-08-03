@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.0.21-patient-access';
+const CACHE = 'samara-erp-1.0.23-consolidated-compatibility';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.0.21', './app.js?v=1.0.21',
-  './bootstrap-error.js?v=1.0.21', './health-check.js?v=1.0.21',
-  './config.js?v=1.0.21', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.0.23', './app.js?v=1.0.23',
+  './bootstrap-error.js?v=1.0.23', './health-check.js?v=1.0.23',
+  './config.js?v=1.0.23', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', event => {
