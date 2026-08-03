@@ -399,3 +399,15 @@ body{font-size:17px;line-height:1.42}
   .intelligent-report-item{padding:7px 9px!important}
   .report-footer{margin-top:10px!important}
 }
+
+
+/* ERP 1.0.12 - compact V3-style Intelligent Report filters */
+.intelligent-report-controls-v3{display:grid;grid-template-columns:minmax(180px,.7fr) minmax(360px,1.7fr) auto auto;gap:14px;align-items:end}
+.intelligent-report-controls-v3 .field{margin:0}
+.intelligent-report-controls-v3 .btn{min-height:48px;white-space:nowrap}
+.patient-report-v2{grid-template-columns:112px 1fr;align-items:start}
+.patient-report-v2 .patient-report-photo{grid-row:1 / span 2;align-self:start}
+.patient-report-v2 .patient-report-facts{grid-column:1 / -1}
+@media(max-width:1000px){.intelligent-report-controls-v3{grid-template-columns:1fr 1.6fr}.intelligent-report-controls-v3 .btn{width:100%}}
+@media(max-width:700px){.intelligent-report-controls-v3{grid-template-columns:1fr}.patient-report-v2{grid-template-columns:92px 1fr}}
+@media print{.intelligent-report-controls-v3{display:none!important}.intelligent-summary{break-inside:avoid}.patient-report-v2{break-inside:avoid}}
