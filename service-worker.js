@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1-0-9-intelligent-report-temperature-fix';
+const CACHE = 'samara-erp-1.0.10';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.0.9', './app.js?v=1.0.9',
-  './bootstrap-error.js?v=1.0.9', './health-check.js?v=1.0.9',
-  './config.js?v=1.0.9', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.0.10', './app.js?v=1.0.10',
+  './bootstrap-error.js?v=1.0.10', './health-check.js?v=1.0.10',
+  './config.js?v=1.0.10', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', event => {

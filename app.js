@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.0.9';
+  const APP_VERSION = '1.0.8';
   const APP_BUILD_DATE = '03-Aug-2026 10:45 IST';
   const APP_SCHEMA_VERSION = '18';
   window.APP_VERSION = APP_VERSION;
@@ -1284,8 +1284,7 @@ Caring with Compassion. Living with Dignity.`;
   function VitalSigns({profile}){
     const [patients]=usePatients(),[rows,setRows]=React.useState([]),[form,setForm]=React.useState({patient_id:'',temperature:'',systolic:'',diastolic:'',pulse:'',spo2:'',blood_sugar:'',remarks:''});
     const measured=(value)=>{if(value===null||value===undefined||String(value).trim()==='')return null;const n=Number(value);return Number.isFinite(n)&&n!==0?n:null};
-    const measuredTemperature=value=>{const n=measured(value);if(n===null)return null;if(n>=70&&n<=115)return (n-32)*5/9;if(n>=25&&n<=45)return n;return null};
-    const calculateLevel=(v)=>{const systolic=measured(v.systolic),diastolic=measured(v.diastolic),pulse=measured(v.pulse),temperature=measuredTemperature(v.temperature),spo2=measured(v.spo2),sugar=measured(v.blood_sugar);const any=[systolic,diastolic,pulse,temperature,spo2,sugar].some(x=>x!==null);if(!any)return 'Not Recorded';if((spo2!==null&&spo2<90)||(systolic!==null&&(systolic>=180||systolic<80))||(diastolic!==null&&(diastolic>=120||diastolic<50))||(pulse!==null&&(pulse>130||pulse<40))||(temperature!==null&&(temperature>=39.5||temperature<35))||(sugar!==null&&(sugar>400||sugar<50)))return 'Critical';if((spo2!==null&&spo2<94)||(systolic!==null&&(systolic>=160||systolic<90))||(diastolic!==null&&(diastolic>=100||diastolic<60))||(pulse!==null&&(pulse>110||pulse<50))||(temperature!==null&&(temperature>=38||temperature<35.5))||(sugar!==null&&(sugar>250||sugar<70)))return 'Warning';return 'Normal'};
+    const calculateLevel=(v)=>{const systolic=measured(v.systolic),diastolic=measured(v.diastolic),pulse=measured(v.pulse),temperature=measured(v.temperature),spo2=measured(v.spo2),sugar=measured(v.blood_sugar);const any=[systolic,diastolic,pulse,temperature,spo2,sugar].some(x=>x!==null);if(!any)return 'Not Recorded';if((spo2!==null&&spo2<90)||(systolic!==null&&(systolic>=180||systolic<80))||(diastolic!==null&&(diastolic>=120||diastolic<50))||(pulse!==null&&(pulse>130||pulse<40))||(temperature!==null&&(temperature>=39.5||temperature<35))||(sugar!==null&&(sugar>400||sugar<50)))return 'Critical';if((spo2!==null&&spo2<94)||(systolic!==null&&(systolic>=160||systolic<90))||(diastolic!==null&&(diastolic>=100||diastolic<60))||(pulse!==null&&(pulse>110||pulse<50))||(temperature!==null&&(temperature>=38||temperature<35.5))||(sugar!==null&&(sugar>250||sugar<70)))return 'Warning';return 'Normal'};
     async function load(){const {data}=await client.from('vital_signs').select('*,patients(full_name,room_no,bed_no)').order('recorded_at',{ascending:false}).limit(100);setRows((data||[]).map(r=>({...r,computed_alert_level:calculateLevel(r)})))}React.useEffect(()=>{load()},[]);
     async function save(e){e.preventDefault();const payload={...form,temperature:num(form.temperature),systolic:num(form.systolic),diastolic:num(form.diastolic),pulse:num(form.pulse),spo2:num(form.spo2),blood_sugar:num(form.blood_sugar),recorded_by:profile.id};const level=calculateLevel(payload);if(level==='Not Recorded')return window.alert('Please enter at least one actual vital-sign measurement before saving.');payload.alert_level=level;const {error}=await client.from('vital_signs').insert(payload);if(error)return window.alert(error.message);setForm({...form,temperature:'',systolic:'',diastolic:'',pulse:'',spo2:'',blood_sugar:'',remarks:''});load()}
     return h(React.Fragment,null,h(Section,{title:'Vital Signs',subtitle:'Record and highlight abnormal readings'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),...['temperature','systolic','diastolic','pulse','spo2','blood_sugar'].map(k=>miniInput(k.replace('_',' ').replace(/^./,c=>c.toUpperCase()),form[k],v=>setForm({...form,[k]:v}),false,'number')),miniInput('Remarks',form.remarks,v=>setForm({...form,remarks:v})),h('button',{className:'btn btn-primary'},'Save vitals'))),h(LogTable,{title:'Recent Vital Signs',heads:['Patient','BP','Pulse','SpO₂','Sugar','Alert','Time'],rows:rows.map(r=>[r.patients?.full_name,`${measured(r.systolic)??'—'}/${measured(r.diastolic)??'—'}`,measured(r.pulse)??'—',measured(r.spo2)??'—',measured(r.blood_sugar)??'—',r.computed_alert_level,fmt(r.recorded_at)])}))
@@ -1368,10 +1367,10 @@ Caring with Compassion. Living with Dignity.`;
     const latest=(rows,fields)=>[...rows].sort((a,b)=>new Date(eventDate(b,fields)||0)-new Date(eventDate(a,fields)||0))[0]||null;
     const text=value=>String(value||'').trim();
     const sentence=value=>{const v=text(value);return v?v.replace(/[.\s]+$/,'')+'.':'';};
-    // Only objective physiological measurements determine whether a vital-sign
-    // observation exists. A legacy default pain_score of 0 must not turn an otherwise
-    // empty database row into a recorded observation.
     const vitalFields=['systolic','diastolic','pulse','temperature','respiration','spo2','blood_sugar','weight'];
+    // Pain score is intentionally excluded from deciding whether a vital row was
+    // actually recorded because older schemas defaulted pain_score to 0. That
+    // default must not turn an otherwise empty row into a measured observation.
     const vitalNumber=value=>{
       if(value===null||value===undefined)return null;
       const raw=String(value).trim();
@@ -1379,28 +1378,29 @@ Caring with Compassion. Living with Dignity.`;
       const number=Number(raw.replace(/,/g,''));
       return Number.isFinite(number)?number:null;
     };
-    const normaliseTemperature=value=>{
-      const number=vitalNumber(value);
-      if(number===null||number===0)return null;
-      // The existing form did not specify a unit. Values in the usual Fahrenheit
-      // range are converted to Celsius before classification; ordinary Celsius
-      // readings are retained. Implausible values are ignored instead of creating
-      // a false emergency alert.
-      if(number>=70&&number<=115)return (number-32)*5/9;
-      if(number>=25&&number<=45)return number;
-      return null;
-    };
+    // Legacy blank vital fields may have been stored as numeric zero. Zero is not a
+    // plausible recorded value for BP, pulse, temperature, respiration, SpO2,
+    // blood sugar or weight, so treat it as "not entered". Pain score 0 remains valid.
     const vitalMeasurement=(row,key)=>{
-      if(key==='temperature')return normaliseTemperature(row?.[key]);
       const number=vitalNumber(row?.[key]);
-      if(number===null||number===0)return null;
+      if(number===null)return null;
+      if(number===0&&key!=='pain_score')return null;
       return number;
     };
     const hasVitalValues=row=>vitalFields.some(key=>vitalMeasurement(row,key)!==null);
     const validVitals=rows=>(rows||[]).filter(hasVitalValues);
+    const normaliseTemperature=value=>{
+      const measured=vitalNumber(value);
+      if(measured===null||measured===0)return null;
+      // Most Indian clinical entries use Fahrenheit (for example 98.4). Convert
+      // plausible Fahrenheit values before applying Celsius thresholds.
+      if(measured>=70&&measured<=115)return (measured-32)*5/9;
+      if(measured>=25&&measured<=45)return measured;
+      return null;
+    };
     const vitalAlert=row=>{
       if(!hasVitalValues(row))return '';
-      const systolic=vitalMeasurement(row,'systolic'),diastolic=vitalMeasurement(row,'diastolic'),pulse=vitalMeasurement(row,'pulse'),temperature=vitalMeasurement(row,'temperature'),respiration=vitalMeasurement(row,'respiration'),spo2=vitalMeasurement(row,'spo2'),sugar=vitalMeasurement(row,'blood_sugar');
+      const systolic=vitalMeasurement(row,'systolic'),diastolic=vitalMeasurement(row,'diastolic'),pulse=vitalMeasurement(row,'pulse'),temperature=normaliseTemperature(row?.temperature),respiration=vitalMeasurement(row,'respiration'),spo2=vitalMeasurement(row,'spo2'),sugar=vitalMeasurement(row,'blood_sugar');
       const critical=(spo2!==null&&spo2<90)||(systolic!==null&&(systolic>=180||systolic<80))||(diastolic!==null&&(diastolic>=120||diastolic<50))||(pulse!==null&&(pulse>130||pulse<40))||(temperature!==null&&(temperature>=39.5||temperature<35))||(respiration!==null&&(respiration>30||respiration<8))||(sugar!==null&&(sugar>400||sugar<50));
       if(critical)return 'critical';
       const warning=(spo2!==null&&spo2<94)||(systolic!==null&&(systolic>=160||systolic<90))||(diastolic!==null&&(diastolic>=100||diastolic<60))||(pulse!==null&&(pulse>110||pulse<50))||(temperature!==null&&(temperature>=38||temperature<35.5))||(respiration!==null&&(respiration>24||respiration<10))||(sugar!==null&&(sugar>250||sugar<70));
@@ -1564,7 +1564,7 @@ Caring with Compassion. Living with Dignity.`;
         h('div',{className:'grid stats intelligent-stats'},(report.mode==='Day-wise'?[['Opening patients',report.summary.openingPatients],['New admissions',report.summary.newAdmissions],['Staff active',report.onDuty.length],['Critical alerts',report.summary.criticalVitals],['Incidents',report.data.incidents.length],['Medicine exceptions',report.summary.medicineExceptions],['Collections',money(report.summary.payments)],['Net outstanding',money(report.summary.outstanding)]]:[['Vitals recorded',validVitals(report.data.vitals).length],['Critical alerts',report.summary.criticalVitals],['Care activities',report.data.care.length],['Medicines given',report.summary.medicinesGiven],['Medicine exceptions',report.summary.medicineExceptions],['Incidents',report.data.incidents.length],['Charges',money(report.summary.charges)],['Outstanding',money(report.summary.outstanding)]]).map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,b)))),
         report.mode==='Day-wise'&&section('Patient-wise Daily Status',report.data.patients,p=>h(React.Fragment,null,h('strong',null,`${p.patient_id||'NO-ID'} · ${formalName(p)}`),h('span',null,dailyPatientNarrative(p,report.data)))),
         report.mode==='Day-wise'&&section('Employees Active / On Duty (derived from recorded activity)',report.onDuty,x=>h(React.Fragment,null,h('strong',null,formalName(x)),h('span',null,`${x.role||'Employee'} · ${x.employee_id||x.login_id||'—'}`))),
-        section('Abnormal and Critical Vital Signs',validVitals(report.data.vitals).filter(v=>['critical','warning','abnormal'].includes(vitalAlert(v))),r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`BP ${vitalMeasurement(r,'systolic')??'—'}/${vitalMeasurement(r,'diastolic')??'—'} · Pulse ${vitalMeasurement(r,'pulse')??'—'} · Temp ${vitalMeasurement(r,'temperature')===null?'—':vitalMeasurement(r,'temperature').toFixed(1)+' °C'} · Resp ${vitalMeasurement(r,'respiration')??'—'} · SpO₂ ${vitalMeasurement(r,'spo2')??'—'} · Sugar ${vitalMeasurement(r,'blood_sugar')??'—'} · ${vitalAlert(r)==='critical'?'Critical':vitalAlert(r)==='warning'?'Warning':'Normal'} · ${fmt(r.recorded_at||r.created_at)}`))),
+        section('Abnormal and Critical Vital Signs',validVitals(report.data.vitals).filter(v=>['critical','warning','abnormal'].includes(vitalAlert(v))),r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`BP ${vitalMeasurement(r,'systolic')??'—'}/${vitalMeasurement(r,'diastolic')??'—'} · Pulse ${vitalMeasurement(r,'pulse')??'—'} · SpO₂ ${vitalMeasurement(r,'spo2')??'—'} · Sugar ${vitalMeasurement(r,'blood_sugar')??'—'} · ${vitalAlert(r)==='critical'?'Critical':vitalAlert(r)==='warning'?'Warning':'Normal'} · ${fmt(r.recorded_at||r.created_at)}`))),
         section('Medication Administration',report.data.mar,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.status||'—'} · Scheduled ${r.scheduled_time||'—'} · ${r.remarks||'No remarks'} · ${fmt(r.administered_at||r.created_at)}${r.administered_by?` · By ${roleName(r.administered_by)}`:''}`))),
         section('Daily Care and Nursing Support',report.data.care,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.shift||'—'} · ${r.status||'—'} · ${r.remarks||'—'} · ${fmt(r.completed_at||r.created_at)}${r.completed_by?` · By ${roleName(r.completed_by)}`:''}`))),
         section('Food, Diet and Intake',report.data.meals,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.meal_type||'Meal'} · ${r.menu||'—'} · ${r.consumption_status||'—'} · ${fmt(r.served_at||r.created_at)}`))),
