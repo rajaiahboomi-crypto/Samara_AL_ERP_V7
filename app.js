@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.2.0';
-  const APP_BUILD_DATE = '03-Aug-2026 22:35 IST';
+  const APP_VERSION = '1.2.1';
+  const APP_BUILD_DATE = '03-Aug-2026 22:45 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1655,14 +1655,22 @@ Caring with Compassion. Living with Dignity.`;
     );
   }
 
-  function Medicines(){
+  function Medicines({profile}){
     const today=new Date().toISOString().slice(0,10);
     const [state,setState]=React.useState({loading:true,orders:[],mar:[],patients:[],error:''});
     const [tab,setTab]=React.useState('Active Prescriptions');
     const [patientFilter,setPatientFilter]=React.useState('');
+    const [marTarget,setMarTarget]=React.useState(null);
+    const [marForm,setMarForm]=React.useState({scheduled_time:'',status:'Given',administered_at:'',remarks:''});
+    const [marBusy,setMarBusy]=React.useState(false);
+    const [marMessage,setMarMessage]=React.useState('');
 
+    function localDateTimeValue(date=new Date()){
+      const pad=n=>String(n).padStart(2,'0');
+      return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
     function parseTimes(value){
-      if(Array.isArray(value))return value.filter(Boolean);
+      if(Array.isArray(value))return value.filter(Boolean).map(normalizeMedicationTime).filter(Boolean);
       return String(value||'').split(',').map(normalizeMedicationTime).filter(Boolean);
     }
     function orderActive(order){
@@ -1681,9 +1689,50 @@ Caring with Compassion. Living with Dignity.`;
     }
     function medicineLabel(order){return [order.medicine_name,order.strength||order.dose].filter(Boolean).join(' ');}
     function marFor(order){return state.mar.filter(x=>x.order_id===order.id);}
-    function latestMar(order){return marFor(order).sort((a,b)=>String(b.administered_at||b.created_at||'').localeCompare(String(a.administered_at||a.created_at||'')))[0];}
+    function latestMar(order){return [...marFor(order)].sort((a,b)=>String(b.administered_at||b.created_at||'').localeCompare(String(a.administered_at||a.created_at||'')))[0];}
     function doseStatus(order,time){
       return state.mar.find(x=>x.order_id===order.id&&String(x.scheduled_date||'')===today&&String(x.scheduled_time||'').slice(0,5)===String(time||'').slice(0,5));
+    }
+    function firstPendingTime(order){
+      const times=parseTimes(order.scheduled_times);
+      return times.find(time=>!doseStatus(order,time))||times[0]||normalizeMedicationTime(`${String(new Date().getHours()).padStart(2,'0')}:00`);
+    }
+    function openMar(order,time=''){
+      const scheduled=time||firstPendingTime(order);
+      const existing=doseStatus(order,scheduled);
+      setMarTarget(order);
+      setMarForm({
+        scheduled_time:scheduled,
+        status:existing?.status||'Given',
+        administered_at:existing?.administered_at?localDateTimeValue(new Date(existing.administered_at)):localDateTimeValue(),
+        remarks:existing?.remarks||''
+      });
+      setMarMessage('');
+    }
+    function closeMar(){if(!marBusy){setMarTarget(null);setMarMessage('');}}
+    async function saveMar(e){
+      e.preventDefault();
+      setMarMessage('');
+      if(!marTarget)return;
+      if(!marForm.scheduled_time){setMarMessage('Please select the scheduled medicine time.');return;}
+      if(['Refused','Missed','Delayed'].includes(marForm.status)&&!String(marForm.remarks||'').trim()){
+        setMarMessage(`Please enter the reason for medicine status “${marForm.status}”.`);return;
+      }
+      setMarBusy(true);
+      const {data:{user}}=await client.auth.getUser();
+      const payload={
+        order_id:marTarget.id,
+        patient_id:marTarget.patient_id,
+        scheduled_date:today,
+        scheduled_time:normalizeMedicationTime(marForm.scheduled_time),
+        status:marForm.status,
+        administered_at:marForm.administered_at?new Date(marForm.administered_at).toISOString():new Date().toISOString(),
+        administered_by:user?.id||profile?.auth_user_id||profile?.id,
+        remarks:String(marForm.remarks||'').trim()
+      };
+      const {error}=await client.from('medication_administrations').upsert(payload,{onConflict:'order_id,scheduled_date,scheduled_time'});
+      if(error){setMarMessage(error.message||'Unable to save the Medication Administration Record.');setMarBusy(false);return;}
+      setMarBusy(false);setMarTarget(null);setTab('Today’s MAR');await load();
     }
 
     async function load(){
@@ -1715,19 +1764,22 @@ Caring with Compassion. Living with Dignity.`;
     const tabs=[['Active Prescriptions',activeOrders.length],['Today’s MAR',todayRows.length],['Missed Medicines',missedRows.length],['Completed Medicines',completedOrders.length],['Discontinued Medicines',discontinuedOrders.length]];
 
     const prescriptionRows=orders=>filtered(orders).map(order=>[
-      patientLabel(order),medicineLabel(order),order.route||'—',order.frequency||'—',order.duration||'—',parseTimes(order.scheduled_times).map(medicationTimeLabel).join(', ')||'—',order.food_instruction||'—',order.special_instruction||order.special_instructions||'—',latestMar(order)?.status||'No MAR yet'
+      patientLabel(order),medicineLabel(order),order.route||'—',order.frequency||'—',order.duration||'—',parseTimes(order.scheduled_times).map(medicationTimeLabel).join(', ')||'—',order.food_instruction||'—',order.special_instruction||order.special_instructions||'—',latestMar(order)?.status||'No MAR yet',
+      h('button',{type:'button',className:'btn btn-primary',onClick:()=>openMar(order)},'Administer')
     ]);
     const marRows=items=>filtered(items).map(item=>[
-      patientLabel(item.order),medicineLabel(item.order),medicationTimeLabel(item.time),item.log?.status||'Pending',item.log?.administered_at?fmt(item.log.administered_at):'—',item.log?.remarks||'—'
+      patientLabel(item.order),medicineLabel(item.order),medicationTimeLabel(item.time),item.log?.status||'Pending',item.log?.administered_at?fmt(item.log.administered_at):'—',item.log?.remarks||'—',
+      h('button',{type:'button',className:item.log?'btn btn-secondary':'btn btn-primary',onClick:()=>openMar(item.order,item.time)},item.log?'Update MAR':'Record Dose')
     ]);
 
     let table=null;
-    if(tab==='Active Prescriptions')table=h(LogTable,{title:'Active Prescription Register',subtitle:'Current medicines transcribed during admission or patient update',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR'],rows:prescriptionRows(activeOrders)});
-    if(tab==='Today’s MAR')table=h(LogTable,{title:"Today’s Medication Administration",subtitle:'Scheduled doses and current administration status',heads:['Patient','Medicine','Time','Status','Administered','Remarks'],rows:marRows(todayRows)});
-    if(tab==='Missed Medicines')table=h(LogTable,{title:'Missed / Refused / Delayed Medicines',subtitle:'Medicine exceptions requiring clinical review',heads:['Patient','Medicine','Time','Status','Recorded','Reason / Remarks'],rows:marRows(missedRows)});
-    if(tab==='Completed Medicines')table=h(LogTable,{title:'Completed Medicine Courses',subtitle:'Prescription courses completed by status or end date',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR'],rows:prescriptionRows(completedOrders)});
-    if(tab==='Discontinued Medicines')table=h(LogTable,{title:'Discontinued Medicines',subtitle:'Stopped or inactive prescriptions retained for history',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR'],rows:prescriptionRows(discontinuedOrders)});
+    if(tab==='Active Prescriptions')table=h(LogTable,{title:'Active Prescription Register',subtitle:'Current medicines transcribed during admission or patient update',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR','Action'],rows:prescriptionRows(activeOrders)});
+    if(tab==='Today’s MAR')table=h(LogTable,{title:"Today’s Medication Administration",subtitle:'Scheduled doses and current administration status',heads:['Patient','Medicine','Time','Status','Administered','Remarks','Action'],rows:marRows(todayRows)});
+    if(tab==='Missed Medicines')table=h(LogTable,{title:'Missed / Refused / Delayed Medicines',subtitle:'Medicine exceptions requiring clinical review',heads:['Patient','Medicine','Time','Status','Recorded','Reason / Remarks','Action'],rows:marRows(missedRows)});
+    if(tab==='Completed Medicines')table=h(LogTable,{title:'Completed Medicine Courses',subtitle:'Prescription courses completed by status or end date',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR','Action'],rows:prescriptionRows(completedOrders)});
+    if(tab==='Discontinued Medicines')table=h(LogTable,{title:'Discontinued Medicines',subtitle:'Stopped or inactive prescriptions retained for history',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR'],rows:prescriptionRows(discontinuedOrders).map(row=>row.slice(0,-1))});
 
+    const targetTimes=marTarget?parseTimes(marTarget.scheduled_times):[];
     return h(React.Fragment,null,
       h(Section,{title:'Medication Administration & Prescription Register',subtitle:'Unified prescription history and MAR status from the patient record'},
         state.error&&h('div',{className:'message error'},`Unable to load part of the medication register: ${state.error}`),
@@ -1737,7 +1789,24 @@ Caring with Compassion. Living with Dignity.`;
         ),
         h('div',{className:'time-chip-list',style:{marginTop:'16px'}},tabs.map(([name,count])=>h('button',{type:'button',key:name,className:`btn ${tab===name?'btn-primary':'btn-secondary'}`,onClick:()=>setTab(name)},`${name} (${count})`)))
       ),
-      state.loading?h('div',{className:'card panel loading'},'Loading medication register…'):table
+      state.loading?h('div',{className:'card panel loading'},'Loading medication register…'):table,
+      marTarget&&h('div',{className:'modal-backdrop',onClick:e=>{if(e.target===e.currentTarget)closeMar()}},
+        h('form',{className:'card modal',onSubmit:saveMar},
+          h('div',{className:'panel-head'},h('div',null,h('h3',null,'Medication Administration'),h('small',null,'Record each dose without overwriting prescription history')),h('button',{type:'button',className:'close',onClick:closeMar},'×')),
+          marMessage&&h('div',{className:'message error'},marMessage),
+          h('div',{className:'modal-grid'},
+            h('div',{className:'field'},h('label',null,'Patient'),h('input',{value:patientLabel(marTarget),readOnly:true})),
+            h('div',{className:'field'},h('label',null,'Medicine'),h('input',{value:medicineLabel(marTarget),readOnly:true})),
+            h('div',{className:'field'},h('label',null,'Route'),h('input',{value:marTarget.route||'—',readOnly:true})),
+            h('div',{className:'field'},h('label',null,'Frequency'),h('input',{value:marTarget.frequency||'—',readOnly:true})),
+            h('div',{className:'field'},h('label',null,'Scheduled Time'),h('select',{value:marForm.scheduled_time,onChange:e=>setMarForm({...marForm,scheduled_time:e.target.value})},(targetTimes.length?targetTimes:[marForm.scheduled_time]).filter(Boolean).map(time=>h('option',{key:time,value:time},medicationTimeLabel(time))))),
+            h('div',{className:'field'},h('label',null,'Status'),h('select',{value:marForm.status,onChange:e=>setMarForm({...marForm,status:e.target.value})},['Given','Delayed','Refused','Missed'].map(status=>h('option',{key:status,value:status},status)))),
+            h('div',{className:'field span-2'},h('label',null,'Actual / Recorded Time'),h('input',{type:'datetime-local',value:marForm.administered_at,onChange:e=>setMarForm({...marForm,administered_at:e.target.value}),required:true})),
+            h('div',{className:'field span-2'},h('label',null,marForm.status==='Given'?'Remarks (optional)':'Reason / Remarks (required)'),h('textarea',{rows:4,value:marForm.remarks,onChange:e=>setMarForm({...marForm,remarks:e.target.value}),placeholder:marForm.status==='Given'?'Any observation after administration':'Enter the reason and action taken',required:marForm.status!=='Given'}))
+          ),
+          h('div',{className:'modal-actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:closeMar,disabled:marBusy},'Cancel'),h('button',{className:'btn btn-primary',disabled:marBusy},marBusy?'Saving MAR…':'Save MAR'))
+        )
+      )
     );
   }
 
