@@ -197,14 +197,31 @@
       if(error)setMessage(error.message==='Invalid login credentials'?'Incorrect Login ID or password.':error.message);
       setBusy(false);
     }
-    return h('div',{className:'login-shell'},h('form',{className:'card login-card',onSubmit:submit},
-      h('div',{className:'brand'},h('div',{className:'logo'},'SC'),h('div',null,h('h1',null,'Samara Care'),h('p',null,'Assisted Living Management System'))),
-      message&&h('div',{className:'message error'},message),
-      h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none'})),
-      h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true})),
-      h('button',{className:'btn btn-primary full',disabled:busy},busy?'Signing in…':'Sign in'),
-      h('div',{className:'install-note'},'Installable on iPhone and Android after opening from GitHub Pages.')
-    ));
+    return h('div',{className:'login-shell login-v3-shell'},
+      h('div',{className:'login-v3-frame'},
+        h('section',{className:'login-v3-hero'},
+          h('div',{className:'login-v3-logo'},'SC'),
+          h('div',{className:'login-v3-kicker'},'SAMARA HEALTH CARE LLP'),
+          h('h1',null,'Samara Care ERP'),
+          h('p',{className:'login-v3-description'},'Resident care, clinical operations, billing and documents in one secure workspace.'),
+          h('div',{className:'login-v3-features'},
+            h('div',null,h('span',null,'✓'),'Live multi-user updates'),
+            h('div',null,h('span',null,'✓'),'Mobile, tablet and desktop'),
+            h('div',null,h('span',null,'✓'),'Secure Supabase cloud data')
+          )
+        ),
+        h('form',{className:'login-v3-form',onSubmit:submit},
+          h('div',{className:'login-v3-kicker login-v3-kicker-dark'},'SECURE STAFF ACCESS'),
+          h('h2',null,'Welcome back'),
+          h('p',{className:'login-v3-subtitle'},'Sign in with your employee Login ID.'),
+          message&&h('div',{className:'message error'},message),
+          h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter login ID'})),
+          h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true,placeholder:'Enter password'})),
+          h('button',{className:'btn btn-primary full login-v3-button',disabled:busy},busy?'Signing in…':'Sign in'),
+          h('div',{className:'login-v3-version'},'Samara Care ERP V9.3')
+        )
+      )
+    );
   }
 
   function Sidebar({profile,page,setPage,allowed}){
@@ -217,7 +234,7 @@
     },[page,allowed.join('|')]);
     function toggle(title){setOpenSection(current=>current===title?'':title)}
     return h('aside',{className:'sidebar'},
-      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP V8'))),
+      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP V9.3'))),
       h('nav',{className:'nav-scroll'},sections.map(section=>{
         const expanded=openSection===section.title;
         return h('div',{className:`nav-section ${expanded?'expanded':''}`,key:section.title},

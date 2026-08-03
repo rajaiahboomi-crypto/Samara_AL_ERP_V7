@@ -256,3 +256,47 @@ button,input,select,textarea{font-size:17px}
 .intelligent-report-item span{line-height:1.55}
 @media(max-width:800px){.intelligent-report-controls{grid-template-columns:1fr}.patient-report-header{grid-template-columns:1fr 1fr}}
 @media print{.sidebar,.topbar,.mobile-menu,.no-print,.intelligent-report-controls{display:none!important}.main{margin:0!important}.content{padding:0!important}.printable-report{box-shadow:none!important;border:0!important}.intelligent-report-section{break-inside:avoid}.card{box-shadow:none!important}}
+
+/* =========================================================
+   V9.3 – V3 visual style + readable compact density
+   ========================================================= */
+:root{font-size:17px}
+body{font-size:17px;line-height:1.42}
+
+/* V3 split-screen login */
+.login-v3-shell{padding:32px;background:linear-gradient(135deg,#dff5f0 0%,#f7fbfa 60%,#eef7f4 100%)}
+.login-v3-frame{width:min(1120px,96vw);min-height:620px;display:grid;grid-template-columns:1.12fr .88fr;background:#fff;border:1px solid #d7e5e0;border-radius:28px;overflow:hidden;box-shadow:0 28px 70px rgba(11,74,61,.15)}
+.login-v3-hero{padding:72px 64px;background:linear-gradient(150deg,#075c50 0%,#0c8e7f 100%);color:#fff;display:flex;flex-direction:column;justify-content:center}
+.login-v3-logo{width:72px;height:72px;border-radius:22px;display:grid;place-items:center;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);font-size:31px;font-weight:900;margin-bottom:26px}
+.login-v3-kicker{font-size:13px;font-weight:900;letter-spacing:.14em;margin-bottom:10px}
+.login-v3-hero h1{font-size:44px;line-height:1.08;margin:0 0 20px;font-weight:900}
+.login-v3-description{font-size:20px;line-height:1.55;max-width:560px;margin:0 0 44px;color:#f0fffb}
+.login-v3-features{display:grid;gap:16px;font-size:18px}
+.login-v3-features>div{display:flex;align-items:center;gap:13px}
+.login-v3-features span{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.2);font-weight:900}
+.login-v3-form{padding:72px 58px;display:flex;flex-direction:column;justify-content:center}
+.login-v3-kicker-dark{color:#087565;margin-bottom:12px}
+.login-v3-form h2{font-size:36px;line-height:1.1;margin:0 0 10px;color:#102d27}
+.login-v3-subtitle{font-size:18px;color:#657a74;margin:0 0 28px}
+.login-v3-form .field{gap:9px;margin-bottom:19px}
+.login-v3-form .field label{font-size:16px}
+.login-v3-form .field input{font-size:18px;min-height:54px;padding:14px 16px;border-radius:13px}
+.login-v3-button{min-height:54px;font-size:18px;background:linear-gradient(90deg,#08715f,#109b89);box-shadow:0 10px 22px rgba(9,132,114,.2)}
+.login-v3-version{text-align:center;margin-top:24px;color:#647b75;font-size:14px}
+
+/* Larger readable interface, but less empty vertical space */
+.topbar{height:68px;padding:0 24px}.topbar h2{font-size:27px}
+.content{padding:20px 22px}.panel{padding:18px 20px}.panel-head{margin-bottom:13px}.panel-head h3{font-size:23px}.panel-head small{font-size:15px}
+.field{gap:6px;margin-bottom:12px}.field label{font-size:16px}.field input,.field select,.field textarea{font-size:17px;padding:11px 13px;min-height:46px}
+.btn{font-size:16px;padding:11px 16px;min-height:44px}
+.section-card{padding:14px 16px;margin:10px 0}.section-card h4,.section-title h4{font-size:19px}.form-grid{gap:10px 14px}.modal-grid{gap:11px 15px}
+.table th,.table td{padding:9px 11px;font-size:16px;line-height:1.25}.table th{font-size:14px}.table tbody tr{height:48px}
+.document-row{padding:7px 0}.repeat-row{padding:7px 0}.task-card{padding:10px 12px;margin:6px 0}.timeline-item{padding-top:6px;padding-bottom:6px}
+.nav-heading-button{font-size:15px;padding:10px 12px}.nav-submenu button,.nav button{font-size:16px;padding:9px 12px}.side-brand strong{font-size:19px}.side-brand small{font-size:14px}
+.stat{padding:16px}.stat span{font-size:15px}.stat strong{font-size:32px;margin-top:5px}.grid{gap:14px}.stats{gap:14px}
+.badge{font-size:13px;padding:5px 9px}.small-note,.field small{font-size:14px}.install-note{font-size:14px}
+
+@media(max-width:760px){
+  :root{font-size:16px}.login-v3-shell{padding:0}.login-v3-frame{width:100%;min-height:100vh;border-radius:0;grid-template-columns:1fr}.login-v3-hero{padding:34px 28px}.login-v3-hero h1{font-size:34px}.login-v3-description{font-size:17px;margin-bottom:24px}.login-v3-features{font-size:16px;gap:10px}.login-v3-form{padding:38px 26px}.login-v3-form h2{font-size:31px}
+  .content{padding:13px}.panel{padding:14px}.table th,.table td{font-size:15px;padding:8px 9px}.btn{font-size:16px}.field input,.field select,.field textarea{font-size:16px}
+}
