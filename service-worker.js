@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.1.4-patient-photo-fix';
+const CACHE = 'samara-erp-1.1.5-mobile-ui-pack';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.1.4-photo-fix', './app.js?v=1.1.4',
-  './bootstrap-error.js?v=1.1.4', './health-check.js?v=1.1.4',
-  './config.js?v=1.1.4', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.1.5', './app.js?v=1.1.5',
+  './bootstrap-error.js?v=1.1.5', './health-check.js?v=1.1.5',
+  './config.js?v=1.1.5', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', event => {
