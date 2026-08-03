@@ -360,3 +360,42 @@ body{font-size:17px;line-height:1.42}
 }
 
 .build-info{display:block;opacity:.72;font-size:11px;margin-top:2px;line-height:1.2}
+
+/* ERP 1.0.11 — V3-inspired, concise Intelligent Patient Report */
+.intelligent-report.printable-report{display:flex;flex-direction:column;gap:16px;background:#fff}
+.intelligent-report.printable-report>.panel-head{order:1}
+.intelligent-report.printable-report>.intelligent-summary{order:2}
+.intelligent-report.printable-report>.patient-report-header{order:3}
+.intelligent-report.printable-report>.intelligent-stats{order:4}
+.intelligent-report.printable-report>.intelligent-report-section{order:5}
+.intelligent-report.printable-report>.report-footer{order:6}
+.report-status-badge{display:none!important}
+.patient-report-v2{position:relative;display:grid;grid-template-columns:110px 1fr;gap:18px;padding:20px;border:1px solid #d8e6e2;border-radius:18px;background:#fff}
+.patient-report-v2:before{content:'Resident Overview';grid-column:1/-1;color:#08715f;font-size:20px;font-weight:800;border-bottom:1px solid #d8e6e2;padding-bottom:10px}
+.patient-report-photo{width:100px;height:120px}
+.patient-report-facts{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:10px 28px;border-top:1px solid #d8e6e2;padding-top:14px}
+.intelligent-summary.human-report{border-left:0;border-radius:0;background:#fff;padding:0}
+.intelligent-summary.human-report h3{color:#08715f;border-bottom:2px solid #0c8a74;padding-bottom:8px}
+.intelligent-summary.human-report p{font-size:16px;line-height:1.65;margin:8px 0}
+.intelligent-stats{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+.intelligent-stats .stat{padding:12px 14px;min-height:auto}
+.intelligent-report-section{break-inside:avoid}
+.intelligent-report-section h3{color:#08715f;font-size:19px;border-bottom:1px solid #d8e6e2;padding-bottom:7px}
+@media print{
+  @page{size:A4 portrait;margin:12mm}
+  body{font-size:10.5pt;background:#fff!important}
+  .sidebar,.topbar,.mobile-menu,.no-print,.intelligent-report-controls,.content>.card.panel:first-child{display:none!important}
+  .main,.content{margin:0!important;padding:0!important;width:100%!important}
+  .intelligent-report.printable-report{box-shadow:none!important;border:0!important;padding:0!important;gap:10px!important}
+  .intelligent-report.printable-report>.panel-head{margin-bottom:2px}
+  .intelligent-summary.human-report p{font-size:10.5pt;line-height:1.45;margin:5px 0}
+  .patient-report-v2{grid-template-columns:26mm 1fr;padding:10px;border-radius:10px;gap:10px}
+  .patient-report-photo{width:24mm;height:28mm}
+  .patient-report-facts{gap:4px 14px;font-size:9.5pt}
+  .intelligent-stats{grid-template-columns:repeat(4,1fr)!important;gap:6px!important}
+  .intelligent-stats .stat{padding:7px!important}
+  .intelligent-report-section{margin-top:5px}
+  .intelligent-report-section h3{font-size:12pt;margin:5px 0}
+  .intelligent-report-item{padding:7px 9px!important}
+  .report-footer{margin-top:10px!important}
+}

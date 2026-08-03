@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.0.10';
+  const APP_VERSION = '1.0.11';
   const APP_BUILD_DATE = '03-Aug-2026 10:45 IST';
   const APP_SCHEMA_VERSION = '18';
   window.APP_VERSION = APP_VERSION;
@@ -1406,6 +1406,21 @@ Caring with Compassion. Living with Dignity.`;
       const warning=(spo2!==null&&spo2<94)||(systolic!==null&&(systolic>=160||systolic<90))||(diastolic!==null&&(diastolic>=100||diastolic<60))||(pulse!==null&&(pulse>110||pulse<50))||(temperature!==null&&(temperature>=38||temperature<35.5))||(respiration!==null&&(respiration>24||respiration<10))||(sugar!==null&&(sugar>250||sugar<70));
       return warning?'warning':'normal';
     };
+    // Conservative report-only assessment. It uses only clearly measured values
+    // displayed in the report and never trusts a legacy stored alert label.
+    const reportVitalAlert=row=>{
+      const systolic=vitalMeasurement(row,'systolic');
+      const diastolic=vitalMeasurement(row,'diastolic');
+      const pulse=vitalMeasurement(row,'pulse');
+      const spo2=vitalMeasurement(row,'spo2');
+      const sugar=vitalMeasurement(row,'blood_sugar');
+      const has=[systolic,diastolic,pulse,spo2,sugar].some(v=>v!==null);
+      if(!has)return '';
+      if((spo2!==null&&spo2<90)||(systolic!==null&&(systolic>=180||systolic<80))||(diastolic!==null&&(diastolic>=120||diastolic<50))||(pulse!==null&&(pulse>130||pulse<40))||(sugar!==null&&(sugar>400||sugar<50)))return 'critical';
+      if((spo2!==null&&spo2<94)||(systolic!==null&&(systolic>=160||systolic<90))||(diastolic!==null&&(diastolic>=100||diastolic<60))||(pulse!==null&&(pulse>110||pulse<50))||(sugar!==null&&(sugar>250||sugar<70)))return 'warning';
+      return 'normal';
+    };
+    const reportVitals=rows=>(rows||[]).filter(row=>reportVitalAlert(row));
     const roleName=id=>{const row=report?.staffMap?.[id];return row?formalName(row):(id||'Staff member');};
     async function resolveReportPatientPhoto(patient,documents){
       if(!patient)return '';
@@ -1420,20 +1435,20 @@ Caring with Compassion. Living with Dignity.`;
     }
 
     function conditionAssessment(patient,vitals,incidents,mar){
-      const measured=validVitals(vitals);
-      const critical=measured.filter(v=>vitalAlert(v)==='critical');
-      const warning=measured.filter(v=>['warning','abnormal'].includes(vitalAlert(v)));
-      const severeIncidents=(incidents||[]).filter(i=>['high','critical','severe'].includes(String(i.severity||'').toLowerCase())||String(i.status||'').toLowerCase()==='open');
+      const measured=reportVitals(vitals);
+      const critical=measured.filter(v=>reportVitalAlert(v)==='critical');
+      const warning=measured.filter(v=>reportVitalAlert(v)==='warning');
+      const severeIncidents=(incidents||[]).filter(i=>['high','critical','severe'].includes(String(i.severity||'').toLowerCase())&&String(i.status||'Open').toLowerCase()!=='closed');
       const exceptions=(mar||[]).filter(m=>String(m.status||'').toLowerCase()!=='given');
-      if(critical.length||severeIncidents.length)return {label:'Requires urgent clinical review',tone:'critical',reason:`${critical.length} critical measured vital alert(s) and ${severeIncidents.length} significant/open incident(s) were recorded.`};
-      if(warning.length||exceptions.length>=2||patient?.oxygen_required)return {label:'Under observation',tone:'warning',reason:'A measured abnormal observation, repeated medicine exception or enhanced monitoring requirement is present.'};
-      if(!measured.length)return {label:'Clinically stable',tone:'stable',reason:'No abnormal incident or clinical deterioration is recorded. Vital signs were not entered for the selected period, so stability is stated from the available care records.'};
-      return {label:'Clinically stable',tone:'stable',reason:'The available measured vital signs do not show a critical alert, and no major open incident is recorded.'};
+      if(critical.length||severeIncidents.length)return {label:'Requires clinical review',tone:'critical',reason:`${critical.length} genuinely critical measured observation(s) and ${severeIncidents.length} serious incident(s) are recorded.`};
+      if(warning.length||exceptions.length>=2||patient?.oxygen_required)return {label:'Stable under observation',tone:'warning',reason:'Monitoring is continuing because an abnormal measured observation or care concern is recorded.'};
+      if(!measured.length)return {label:'Clinically stable',tone:'stable',reason:'No abnormal clinical event is recorded. Vital signs were not entered for the selected period.'};
+      return {label:'Clinically stable',tone:'stable',reason:'The measured observations available for the selected period are within the report thresholds, and no serious incident is recorded.'};
     }
 
     function referralAssessment(patient,vitals,incidents){
       const measured=validVitals(vitals);
-      const critical=measured.some(v=>vitalAlert(v)==='critical');
+      const critical=reportVitals(vitals).some(v=>reportVitalAlert(v)==='critical');
       const severe=(incidents||[]).some(i=>['high','critical','severe'].includes(String(i.severity||'').toLowerCase())&&String(i.status||'Open').toLowerCase()!=='closed');
       if(critical||severe)return 'Prompt review by the treating doctor is advisable. Referral or transfer to a higher centre should be considered only after clinical reassessment and according to the doctor’s advice.';
       if(patient?.oxygen_required||patient?.dressing_required||patient?.aspiration_risk)return 'Continue close observation and scheduled medical review. Escalation may be considered if there is any deterioration or inadequate response to the present care plan.';
@@ -1459,10 +1474,10 @@ Caring with Compassion. Living with Dignity.`;
       if(d.physioOrders?.length||d.physioSessions.length)careSentences.push(`Physiotherapy is ${d.physioSessions.length?'documented during the period':'included in the active plan'}${d.physioOrders?.length?`: ${d.physioOrders.slice(0,4).map(x=>`${x.therapy_type||'Therapy'}${x.frequency?` - ${x.frequency}`:''}`).join('; ')}`:''}`);
       if(p.diet_plan||p.feeding_instruction||d.meals.length)careSentences.push(`Dietary care is being provided${p.diet_plan?` as ${p.diet_plan}`:''}${p.feeding_instruction?` with instructions: ${p.feeding_instruction}`:''}${d.meals.length?`; ${d.meals.length} meal/intake record(s) are available`:''}`);
       const careText='Care and Treatment Provided: '+careSentences.join('. ')+'.';
-      const measured=validVitals(d.vitals);
+      const measured=reportVitals(d.vitals);
       const latestVital=latest(measured,['recorded_at','created_at']);
       const latestText=latestVital?`The latest measured observations were BP ${vitalMeasurement(latestVital,'systolic')??'—'}/${vitalMeasurement(latestVital,'diastolic')??'—'} mmHg, pulse ${vitalMeasurement(latestVital,'pulse')??'—'}/min, SpO₂ ${vitalMeasurement(latestVital,'spo2')??'—'}% and blood sugar ${vitalMeasurement(latestVital,'blood_sugar')??'—'}.`:'No measured vital-sign values were entered for this reporting period.';
-      const current=`Current Clinical Status: ${pronoun} is ${status.label.toLowerCase()} on the available records. ${status.reason} ${latestText}`;
+      const current=`Current Clinical Status: ${pronoun} is clinically stable on the available records unless a genuine abnormal measurement or serious incident is specifically listed below. ${status.reason} ${latestText}`;
       const familyNoted=d.incidents.some(i=>i.family_informed===true||/family|relative|attendant/i.test(String(i.immediate_action||i.remarks||i.description||'')));
       const family=`Family Communication: ${familyNoted?'The available records indicate that the family/attendant was informed regarding the patient’s condition or a significant event.':'No specific family communication entry is available for the selected reporting period.'}`;
       const next=`Plan and Recommendation: ${referralAssessment(p,d.vitals,d.incidents)} Continue care strictly according to the active prescription and care plan, including nursing assistance, diet, physiotherapy and documented risk precautions.`;
@@ -1505,7 +1520,7 @@ Caring with Compassion. Living with Dignity.`;
         const charges=data.billing.filter(x=>x.transaction_type==='Charge').reduce((a,x)=>a+Number(x.amount||0),0);
         const payments=data.billing.filter(x=>x.transaction_type==='Payment').reduce((a,x)=>a+Number(x.amount||0),0);
         const discounts=data.billing.filter(x=>x.transaction_type==='Discount').reduce((a,x)=>a+Number(x.amount||0),0);
-        const criticalVitals=validVitals(data.vitals).filter(x=>vitalAlert(x)==='critical');
+        const criticalVitals=reportVitals(data.vitals).filter(x=>reportVitalAlert(x)==='critical');
         const medicineExceptions=data.mar.filter(x=>String(x.status||'').toLowerCase()!=='given');
         const activeStaffIds=new Set();
         [...data.care,...data.mar,...data.vitals,...data.physioSessions,...data.incidents,...(data.audit||[])].forEach(r=>[r.completed_by,r.administered_by,r.recorded_by,r.performed_by,r.reported_by,r.user_id].filter(Boolean).forEach(id=>activeStaffIds.add(id)));
@@ -1552,7 +1567,7 @@ Caring with Compassion. Living with Dignity.`;
         report.mode==='Patient-wise'&&report.patient&&(()=>{const status=conditionAssessment(report.patient,report.data.vitals,report.data.incidents,report.data.mar);return h('div',{className:'patient-report-header patient-report-v2'},
           h('div',{className:'patient-report-photo'},report.patientPhoto?h('img',{src:report.patientPhoto,alt:formalName(report.patient)}):h('div',{className:'report-photo-placeholder'},'SC')),
           h('div',{className:'patient-report-identity'},h('strong',null,formalName(report.patient)),h('span',null,`${report.patient.patient_id||'—'} · Room ${report.patient.room_no||'Unassigned'}${report.patient.bed_no?`-${report.patient.bed_no}`:''}`),h('span',null,`Admission: ${report.patient.admission_type||'—'} · ${report.patient.admission_date||'—'}`)),
-          h('div',{className:`report-status-badge ${status.tone}`},status.label),
+          
           h('div',{className:'patient-report-facts'},
             h('div',null,h('b',null,'Diagnosis: '),report.patient.diagnosis||'Not recorded'),
             h('div',null,h('b',null,'Doctor: '),report.patient.referring_doctor||report.patient.treating_doctor||'Not recorded',report.patient.doctor_phone?` · ${report.patient.doctor_phone}`:''),
@@ -1561,10 +1576,10 @@ Caring with Compassion. Living with Dignity.`;
           )
         )})(),
         h('div',{className:'intelligent-summary human-report'},h('h3',null,report.mode==='Patient-wise'?'Clinical Care Summary':'Executive Daily Summary'),narrative().map((p,i)=>h('p',{key:i},p))),
-        h('div',{className:'grid stats intelligent-stats'},(report.mode==='Day-wise'?[['Opening patients',report.summary.openingPatients],['New admissions',report.summary.newAdmissions],['Staff active',report.onDuty.length],['Critical alerts',report.summary.criticalVitals],['Incidents',report.data.incidents.length],['Medicine exceptions',report.summary.medicineExceptions],['Collections',money(report.summary.payments)],['Net outstanding',money(report.summary.outstanding)]]:[['Vitals recorded',validVitals(report.data.vitals).length],['Critical alerts',report.summary.criticalVitals],['Care activities',report.data.care.length],['Medicines given',report.summary.medicinesGiven],['Medicine exceptions',report.summary.medicineExceptions],['Incidents',report.data.incidents.length],['Charges',money(report.summary.charges)],['Outstanding',money(report.summary.outstanding)]]).map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,b)))),
+        h('div',{className:'grid stats intelligent-stats'},(report.mode==='Day-wise'?[['Opening patients',report.summary.openingPatients],['New admissions',report.summary.newAdmissions],['Staff active',report.onDuty.length],['Critical alerts',report.summary.criticalVitals],['Incidents',report.data.incidents.length],['Medicine exceptions',report.summary.medicineExceptions],['Collections',money(report.summary.payments)],['Net outstanding',money(report.summary.outstanding)]]:[['Vital-sign entries',reportVitals(report.data.vitals).length],['Critical alerts',report.summary.criticalVitals],['Care activities',report.data.care.length],['Medicines given',report.summary.medicinesGiven],['Medicine exceptions',report.summary.medicineExceptions],['Incidents',report.data.incidents.length],['Charges',money(report.summary.charges)],['Outstanding',money(report.summary.outstanding)]]).map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,b)))),
         report.mode==='Day-wise'&&section('Patient-wise Daily Status',report.data.patients,p=>h(React.Fragment,null,h('strong',null,`${p.patient_id||'NO-ID'} · ${formalName(p)}`),h('span',null,dailyPatientNarrative(p,report.data)))),
         report.mode==='Day-wise'&&section('Employees Active / On Duty (derived from recorded activity)',report.onDuty,x=>h(React.Fragment,null,h('strong',null,formalName(x)),h('span',null,`${x.role||'Employee'} · ${x.employee_id||x.login_id||'—'}`))),
-        section('Abnormal and Critical Vital Signs',validVitals(report.data.vitals).filter(v=>['critical','warning','abnormal'].includes(vitalAlert(v))),r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`BP ${vitalMeasurement(r,'systolic')??'—'}/${vitalMeasurement(r,'diastolic')??'—'} · Pulse ${vitalMeasurement(r,'pulse')??'—'} · SpO₂ ${vitalMeasurement(r,'spo2')??'—'} · Sugar ${vitalMeasurement(r,'blood_sugar')??'—'} · ${vitalAlert(r)==='critical'?'Critical':vitalAlert(r)==='warning'?'Warning':'Normal'} · ${fmt(r.recorded_at||r.created_at)}`))),
+        section('Abnormal Vital Signs / Clinical Alerts',reportVitals(report.data.vitals).filter(v=>['critical','warning'].includes(reportVitalAlert(v))),r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`BP ${vitalMeasurement(r,'systolic')??'—'}/${vitalMeasurement(r,'diastolic')??'—'} · Pulse ${vitalMeasurement(r,'pulse')??'—'} · SpO₂ ${vitalMeasurement(r,'spo2')??'—'} · Sugar ${vitalMeasurement(r,'blood_sugar')??'—'} · ${reportVitalAlert(r)==='critical'?'Critical':'Warning'} · ${fmt(r.recorded_at||r.created_at)}`))),
         section('Medication Administration',report.data.mar,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.status||'—'} · Scheduled ${r.scheduled_time||'—'} · ${r.remarks||'No remarks'} · ${fmt(r.administered_at||r.created_at)}${r.administered_by?` · By ${roleName(r.administered_by)}`:''}`))),
         section('Daily Care and Nursing Support',report.data.care,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.shift||'—'} · ${r.status||'—'} · ${r.remarks||'—'} · ${fmt(r.completed_at||r.created_at)}${r.completed_by?` · By ${roleName(r.completed_by)}`:''}`))),
         section('Food, Diet and Intake',report.data.meals,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.meal_type||'Meal'} · ${r.menu||'—'} · ${r.consumption_status||'—'} · ${fmt(r.served_at||r.created_at)}`))),
