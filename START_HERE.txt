@@ -1,20 +1,15 @@
-SAMARA CARE ERP 1.2.3 - LATE MAR ENTRY JUSTIFICATION
+SAMARA CARE ERP 1.2.4 – MEDICATION ERROR ANALYSIS
 
-1. In Supabase SQL Editor, run: 28_late_mar_entry_audit.sql
-2. Upload and replace only these files in the GitHub repository root:
-   - app.js
-   - service-worker.js
-   - index.html
-3. Close and reopen the ERP. Tap App update available if shown.
-4. Confirm version 1.2.3.
+1. In Supabase, open SQL Editor and run:
+   29_medication_error_analysis.sql
 
-NEW MAR SAFEGUARDS
-- Actual Administration Time is entered by staff.
-- Entry Recorded Time is captured automatically by the system.
-- More than 30 minutes difference is marked Late Entry.
-- Late Entry Reason and detailed justification are compulsory.
-- Future administration time is rejected.
-- Every dose remains a separate insert-only MAR record.
-- Today’s MAR displays administration time, entry time and late-entry audit status.
+2. In GitHub, replace only:
+   app.js
+   service-worker.js
+   index.html
 
-No other ERP module is changed.
+3. Close and reopen the ERP. Confirm Version 1.2.4.
+
+4. Admin/Manager: open Manager > Medication Errors.
+
+The module automatically analyses MAR delays, late documentation, missed doses and omissions. Wrong dose and wrong medicine must be reported by staff because software cannot reliably infer them without a report. The management report includes AI-assisted narrative analysis, filters, review notes, and Print/Save PDF.

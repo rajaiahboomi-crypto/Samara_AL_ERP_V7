@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.2.3';
+  const APP_VERSION = '1.2.4';
   const APP_BUILD_DATE = '03-Aug-2026 22:45 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
@@ -32,7 +32,7 @@
     { title:'OVERVIEW', items:['Dashboard','Notifications'] },
     { title:'ADMIN', items:['Employees','Audit Trail'] },
     { title:'ADMISSION', items:['Enquiries','Admissions','Patients','Documents'] },
-    { title:'MANAGER', items:['Reports','Intelligent Reports','Recovery Timeline'] },
+    { title:'MANAGER', items:['Reports','Intelligent Reports','Medication Errors','Recovery Timeline'] },
     { title:'NURSING', items:['Clinical Dashboard','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Shift Handover'] },
     { title:'OPERATIONS', items:['Rooms & Beds','Incidents'] },
     { title:'FOOD & DIET', items:['Food & Diet'] },
@@ -303,6 +303,7 @@ Caring with Compassion. Living with Dignity.`;
           page==='Recovery Timeline'&&h(RecoveryTimeline,{profile}),
           page==='Reports'&&h(Reports),
           page==='Intelligent Reports'&&h(IntelligentReports,{profile}),
+          page==='Medication Errors'&&h(MedicationErrors,{profile}),
           page==='Notifications'&&h(Notifications,{profile}),
           page==='Audit Trail'&&h(AuditTrail)
         ),
@@ -1833,6 +1834,121 @@ Caring with Compassion. Living with Dignity.`;
           h('div',{className:'modal-actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:closeMar,disabled:marBusy},'Cancel'),h('button',{className:'btn btn-primary',disabled:marBusy},marBusy?'Saving MAR…':'Save MAR'))
         )
       )
+    );
+  }
+
+
+  function MedicationErrors({profile}){
+    const today=new Date().toISOString().slice(0,10);
+    const [state,setState]=React.useState({loading:true,errors:[],orders:[],mar:[],patients:[],profiles:[],message:''});
+    const [fromDate,setFromDate]=React.useState(today);
+    const [toDate,setToDate]=React.useState(today);
+    const [patientFilter,setPatientFilter]=React.useState('');
+    const [typeFilter,setTypeFilter]=React.useState('All');
+    const [showForm,setShowForm]=React.useState(false);
+    const [form,setForm]=React.useState({patient_id:'',order_id:'',error_type:'Wrong Dose',severity:'Moderate',occurred_at:'',description:'',immediate_action:'',patient_effect:'No apparent harm',doctor_informed:false,family_informed:false});
+    const [busy,setBusy]=React.useState(false);
+
+    const ERROR_TYPES=['Delay','Missed Dose','Omission','Wrong Dose','Wrong Medicine','Wrong Route','Wrong Time','Duplicate Dose','Other'];
+    const SEVERITIES=['Near Miss','Minor','Moderate','Major','Critical'];
+    const localDateTimeValue=(date=new Date())=>{const pad=n=>String(n).padStart(2,'0');return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;};
+    const patientById=id=>state.patients.find(p=>p.id===id)||{};
+    const orderById=id=>state.orders.find(o=>o.id===id)||{};
+    const staffById=id=>state.profiles.find(p=>p.id===id||p.auth_user_id===id)||{};
+    const patientName=id=>{const p=patientById(id);return formalName(p)||p.full_name||'Unknown patient';};
+    const medicineName=orderId=>{const o=orderById(orderId);return [o.medicine_name,o.strength||o.dose].filter(Boolean).join(' ')||'Medicine not specified';};
+    const dateOnly=value=>String(value||'').slice(0,10);
+    const isBetween=value=>{const d=dateOnly(value);return d&&d>=fromDate&&d<=toDate;};
+    const minutesDifference=(a,b)=>Math.round((new Date(a)-new Date(b))/60000);
+
+    async function load(){
+      setState(current=>({...current,loading:true,message:''}));
+      const [errors,orders,mar,patients,profiles]=await Promise.all([
+        client.from('medication_errors').select('*').order('occurred_at',{ascending:false}).limit(1000),
+        client.from('medication_orders').select('*').order('created_at',{ascending:false}),
+        client.from('medication_administrations').select('*').order('scheduled_date',{ascending:false}).limit(3000),
+        client.from('patients').select('id,title,full_name,patient_id,room_no,bed_no,is_active').order('full_name'),
+        client.from('profiles').select('id,auth_user_id,title,full_name,role').order('full_name')
+      ]);
+      const error=[errors.error,orders.error,mar.error,patients.error,profiles.error].filter(Boolean).map(e=>e.message).join(' | ');
+      setState({loading:false,errors:errors.data||[],orders:orders.data||[],mar:mar.data||[],patients:patients.data||[],profiles:profiles.data||[],message:error});
+    }
+    React.useEffect(()=>{load();const ch=client.channel('medication-errors-live').on('postgres_changes',{event:'*',schema:'public',table:'medication_errors'},load).on('postgres_changes',{event:'*',schema:'public',table:'medication_administrations'},load).subscribe();return()=>client.removeChannel(ch)},[]);
+
+    function autoDetected(){
+      const rows=[];
+      state.mar.filter(r=>isBetween(r.scheduled_date||r.administered_at||r.created_at)).forEach(r=>{
+        const status=String(r.status||'').toLowerCase();
+        const order=orderById(r.order_id);
+        const base={source:'Automatic MAR analysis',patient_id:r.patient_id,order_id:r.order_id,occurred_at:r.administered_at||r.entry_recorded_at||r.created_at,error_id:`auto-${r.id}`};
+        if(status==='missed'||status==='not given')rows.push({...base,error_type:'Missed Dose',severity:'Major',description:r.remarks||'Scheduled medicine was recorded as missed.'});
+        if(status==='refused')rows.push({...base,error_type:'Omission',severity:'Moderate',description:r.remarks||'Medicine was not administered because the resident refused.'});
+        if(status==='delayed')rows.push({...base,error_type:'Delay',severity:'Moderate',description:r.remarks||'Medicine administration was recorded as delayed.'});
+        if(r.late_entry)rows.push({...base,error_type:'Delay',severity:'Minor',description:`Documentation was entered ${r.entry_delay_minutes||0} minutes late. ${r.late_entry_reason||''} ${r.late_entry_justification||''}`.trim()});
+        if(r.administered_at&&r.scheduled_date&&r.scheduled_time){
+          const scheduled=new Date(`${r.scheduled_date}T${String(r.scheduled_time).slice(0,5)}:00`);
+          const diff=minutesDifference(r.administered_at,scheduled);
+          if(diff>30&&status==='given')rows.push({...base,error_type:'Delay',severity:diff>120?'Major':'Moderate',description:`Medicine was administered approximately ${diff} minutes after the scheduled time.`});
+        }
+      });
+      return rows;
+    }
+    const manual=state.errors.filter(r=>isBetween(r.occurred_at||r.created_at)).map(r=>({...r,source:'Staff reported'}));
+    const combined=[...manual,...autoDetected()].filter(r=>(!patientFilter||r.patient_id===patientFilter)&& (typeFilter==='All'||r.error_type===typeFilter));
+    const counts=ERROR_TYPES.reduce((a,t)=>(a[t]=combined.filter(r=>r.error_type===t).length,a),{});
+    const severityCounts=SEVERITIES.reduce((a,t)=>(a[t]=combined.filter(r=>r.severity===t).length,a),{});
+    const total=combined.length;
+    const high=combined.filter(r=>['Major','Critical'].includes(r.severity)).length;
+    const affectedPatients=new Set(combined.map(r=>r.patient_id).filter(Boolean)).size;
+    const dominant=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+
+    function aiSummary(){
+      if(!total)return 'No medication errors or significant MAR exceptions were identified for the selected period.';
+      const parts=[];
+      parts.push(`${total} medication-related event${total===1?' was':'s were'} identified involving ${affectedPatients} resident${affectedPatients===1?'':'s'}.`);
+      if(dominant&&dominant[1])parts.push(`${dominant[0]} was the most frequent category (${dominant[1]} event${dominant[1]===1?'':'s'}).`);
+      if(high)parts.push(`${high} event${high===1?' requires':'s require'} priority Admin/Manager review because the recorded severity is Major or Critical.`);
+      const delayCount=(counts.Delay||0);if(delayCount)parts.push(`${delayCount} delay-related event${delayCount===1?'':'s'} suggest reviewing medicine-round timing, staffing and immediate documentation practices.`);
+      const missed=(counts['Missed Dose']||0)+(counts.Omission||0);if(missed)parts.push(`${missed} missed or omitted dose${missed===1?'':'s'} should be clinically reviewed for resident impact, doctor notification and corrective action.`);
+      if((counts['Wrong Dose']||0)||(counts['Wrong Medicine']||0))parts.push('Wrong-dose or wrong-medicine reports require prompt clinical assessment, prescriber notification and a documented root-cause review.');
+      return parts.join(' ');
+    }
+
+    async function save(e){
+      e.preventDefault();
+      if(!form.patient_id||!form.error_type||!form.description.trim())return alert('Patient, error type and description are required.');
+      setBusy(true);
+      const {data:{user}}=await client.auth.getUser();
+      const payload={...form,order_id:form.order_id||null,occurred_at:form.occurred_at?new Date(form.occurred_at).toISOString():new Date().toISOString(),reported_by:user?.id||profile?.auth_user_id||profile?.id,status:'Open'};
+      const {error}=await client.from('medication_errors').insert(payload);
+      setBusy(false);if(error)return alert(error.message);
+      setShowForm(false);setForm({patient_id:'',order_id:'',error_type:'Wrong Dose',severity:'Moderate',occurred_at:'',description:'',immediate_action:'',patient_effect:'No apparent harm',doctor_informed:false,family_informed:false});load();
+    }
+    async function review(row){
+      if(row.source!=='Staff reported')return;
+      const {data:{user}}=await client.auth.getUser();
+      const note=window.prompt('Enter review / corrective-action note:',row.review_note||'');if(note===null)return;
+      const {error}=await client.from('medication_errors').update({status:'Reviewed',review_note:note,reviewed_by:user?.id||profile?.id,reviewed_at:new Date().toISOString()}).eq('id',row.id);
+      if(error)return alert(error.message);load();
+    }
+    function printReport(){
+      const win=window.open('','_blank');if(!win)return alert('Please allow pop-ups to print the report.');
+      const rows=combined.map(r=>`<tr><td>${escapeHtml(patientName(r.patient_id))}</td><td>${escapeHtml(medicineName(r.order_id))}</td><td>${escapeHtml(r.error_type)}</td><td>${escapeHtml(r.severity||'—')}</td><td>${escapeHtml(r.description||'—')}</td><td>${escapeHtml(r.source)}</td><td>${escapeHtml(fmt(r.occurred_at||r.created_at))}</td><td>${escapeHtml(r.status||'Detected')}</td></tr>`).join('');
+      win.document.write(`<!doctype html><html><head><title>Medication Error Analysis</title><style>body{font-family:Arial;padding:28px;color:#183b35}h1{color:#087565;margin-bottom:4px}.summary{padding:16px;background:#eef8f5;border-left:5px solid #087565;margin:18px 0;line-height:1.55}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #bbb;padding:7px;text-align:left;vertical-align:top}th{background:#e7f3f0}.meta{color:#555}.print{margin:15px 0;padding:10px 18px}@media print{.print{display:none}}</style></head><body><h1>Samara Care ERP</h1><h2>Medication Error Analysis Report</h2><div class="meta">Period: ${escapeHtml(fromDate)} to ${escapeHtml(toDate)} · Prepared: ${escapeHtml(new Date().toLocaleString())} · Prepared by: ${escapeHtml(formalName(profile))}</div><div class="summary"><strong>AI-assisted analysis:</strong><br>${escapeHtml(aiSummary())}</div><table><thead><tr><th>Patient</th><th>Medicine</th><th>Error</th><th>Severity</th><th>Finding / Description</th><th>Source</th><th>Time</th><th>Status</th></tr></thead><tbody>${rows||'<tr><td colspan="8">No events identified.</td></tr>'}</tbody></table><button class="print" onclick="window.print()">Print / Save PDF</button></body></html>`);win.document.close();
+    }
+
+    const patientOrders=state.orders.filter(o=>!form.patient_id||o.patient_id===form.patient_id);
+    return h(React.Fragment,null,
+      h('div',{className:'grid stats'},[
+        ['Total events',total],['Affected patients',affectedPatients],['Major / Critical',high],['Open staff reports',manual.filter(r=>String(r.status||'Open')==='Open').length]
+      ].map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,b)))),
+      h(Section,{title:'Medication Error Analysis',subtitle:'AI-assisted review of delays, missed or omitted doses, wrong dose and wrong medicine reports'},
+        state.message&&h('div',{className:'message error'},state.message),
+        h('div',{className:'modal-grid'},miniInput('From date',fromDate,setFromDate,true,'date'),miniInput('To date',toDate,setToDate,true,'date'),patientSelect(state.patients,patientFilter,setPatientFilter),miniSelect('Error type',typeFilter,['All',...ERROR_TYPES],setTypeFilter),h('button',{type:'button',className:'btn btn-secondary',onClick:load},state.loading?'Analysing…':'Refresh Analysis'),h('button',{type:'button',className:'btn btn-primary',onClick:printReport},'Print AI Report'),h('button',{type:'button',className:'btn btn-danger',onClick:()=>setShowForm(true)},'Report Medication Error')),
+        h('div',{className:'card panel',style:{marginTop:'16px'}},h('div',{className:'panel-head'},h('h3',null,'AI-assisted Management Summary'),h('span',{className:`badge ${high?'off':''}`},high?'Priority review':'Routine review')),h('p',{style:{lineHeight:1.65,marginBottom:0}},aiSummary()))
+      ),
+      h(LogTable,{title:'Medication Error & Exception Register',subtitle:'Automatic MAR findings and staff-reported medication errors',heads:['Patient','Medicine','Error type','Severity','Finding / Description','Source','Occurred / Recorded','Status','Review'],rows:combined.map(r=>[patientName(r.patient_id),medicineName(r.order_id),r.error_type,r.severity||'—',r.description||'—',r.source,fmt(r.occurred_at||r.created_at),r.status||'Detected',r.source==='Staff reported'?h('button',{type:'button',className:'btn btn-secondary',onClick:()=>review(r)},r.status==='Reviewed'?'Update Review':'Review'):'Auto-detected'])}),
+      showForm&&h('div',{className:'modal-backdrop'},h('form',{className:'card modal',onSubmit:save},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Report Medication Error'),h('small',null,'Document the event immediately and record actions taken')),h('button',{type:'button',className:'close',onClick:()=>setShowForm(false)},'×')),h('div',{className:'modal-grid'},patientSelect(state.patients,form.patient_id,v=>setForm({...form,patient_id:v,order_id:''})),h('div',{className:'field'},h('label',null,'Medicine / Prescription'),h('select',{value:form.order_id,onChange:e=>setForm({...form,order_id:e.target.value})},h('option',{value:''},'Not linked / Unknown'),patientOrders.map(o=>h('option',{key:o.id,value:o.id},[o.medicine_name,o.strength||o.dose].filter(Boolean).join(' '))))),miniSelect('Medication Error Type',form.error_type,ERROR_TYPES,v=>setForm({...form,error_type:v})),miniSelect('Severity',form.severity,SEVERITIES,v=>setForm({...form,severity:v})),miniInput('Date and time of occurrence',form.occurred_at,v=>setForm({...form,occurred_at:v}),true,'datetime-local'),miniInput('Patient effect / observed outcome',form.patient_effect,v=>setForm({...form,patient_effect:v})),h('div',{className:'field span-2'},h('label',null,'Description of error'),h('textarea',{rows:3,required:true,value:form.description,onChange:e=>setForm({...form,description:e.target.value}),placeholder:'Describe what happened, scheduled medicine and what was actually administered or omitted.'})),h('div',{className:'field span-2'},h('label',null,'Immediate action taken'),h('textarea',{rows:3,value:form.immediate_action,onChange:e=>setForm({...form,immediate_action:e.target.value}),placeholder:'Resident assessment, doctor contacted, monitoring, corrective medicine action, etc.'})),h('label',{className:'check'},h('input',{type:'checkbox',checked:form.doctor_informed,onChange:e=>setForm({...form,doctor_informed:e.target.checked})}),' Doctor informed'),h('label',{className:'check'},h('input',{type:'checkbox',checked:form.family_informed,onChange:e=>setForm({...form,family_informed:e.target.checked})}),' Family informed')),h('div',{className:'form-actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setShowForm(false)},'Cancel'),h('button',{className:'btn btn-danger',disabled:busy},busy?'Saving…':'Save Medication Error'))))
     );
   }
 
