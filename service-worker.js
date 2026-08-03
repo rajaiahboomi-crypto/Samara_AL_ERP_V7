@@ -1,4 +1,4 @@
-const CACHE = 'samara-erp-1.0.10';
+const CACHE = 'samara-erp-1.0.10-corrected';
 const SHELL = [
   './', './index.html', './styles.css?v=1.0.10', './app.js?v=1.0.10',
   './bootstrap-error.js?v=1.0.10', './health-check.js?v=1.0.10',
