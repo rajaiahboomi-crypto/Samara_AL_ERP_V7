@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.2.1';
+  const APP_VERSION = '1.2.3';
   const APP_BUILD_DATE = '03-Aug-2026 22:45 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
@@ -1170,7 +1170,7 @@ Caring with Compassion. Living with Dignity.`;
     ]);setMeds(m.data||[]);setMedLogs(ml.data||[]);setCare(c.data||[]);setCareLogs(cl.data||[]);setPhysio(p.data||[]);setPhysioLogs(pl.data||[]);setLoading(false)}
     React.useEffect(()=>{load();const ch=client.channel('shift-live-v31').on('postgres_changes',{event:'*',schema:'public',table:'medication_administrations'},load).on('postgres_changes',{event:'*',schema:'public',table:'care_logs'},load).on('postgres_changes',{event:'*',schema:'public',table:'physiotherapy_sessions'},load).subscribe();return()=>client.removeChannel(ch)},[]);
     function riskBadges(p){const items=[[p.fall_risk,'Fall'],[p.pressure_sore_risk,'Pressure sore'],[p.aspiration_risk,'Aspiration'],[p.wandering_risk,'Wandering'],[p.infection_risk,'Infection'],[p.seizure_history,'Seizure'],[p.oxygen_required,'Oxygen'],[p.dressing_required,'Dressing']].filter(x=>x[0]);return items.length?h('div',{className:'risk-badges'},items.map(x=>h('span',{className:'risk-badge',key:x[1]},x[1]))):null}
-    async function logMedicine(order,time,status){const {data:{user}}=await client.auth.getUser();const remarks=status==='Given'?'':prompt('Enter reason / remarks:')||'';const {error}=await client.from('medication_administrations').upsert({order_id:order.id,patient_id:order.patient_id,scheduled_date:today,scheduled_time:time,status,administered_at:new Date().toISOString(),administered_by:user.id,remarks},{onConflict:'order_id,scheduled_date,scheduled_time'});if(error)alert(error.message);else load()}
+    async function logMedicine(order,time,status){const {data:{user}}=await client.auth.getUser();const remarks=status==='Given'?'':prompt('Enter reason / remarks:')||'';const {error}=await client.from('medication_administrations').insert({order_id:order.id,patient_id:order.patient_id,scheduled_date:today,scheduled_time:time,status,administered_at:new Date().toISOString(),administered_by:user.id,remarks});if(error)alert(error.message);else load()}
     async function logCare(order,status){const {data:{user}}=await client.auth.getUser();const shift=currentShift();const remarks=status==='Completed'?'':prompt('Enter reason / remarks:')||'';const {error}=await client.from('care_logs').upsert({care_order_id:order.id,patient_id:order.patient_id,care_date:today,shift,status,completed_at:new Date().toISOString(),completed_by:user.id,remarks},{onConflict:'care_order_id,care_date,shift'});if(error)alert(error.message);else load()}
     async function logPhysio(order,status){const {data:{user}}=await client.auth.getUser();const notes=status==='Completed'?(prompt('Session notes (optional):')||''):(prompt('Reason / notes:')||'');const {error}=await client.from('physiotherapy_sessions').upsert({order_id:order.id,patient_id:order.patient_id,session_date:today,status,session_at:new Date().toISOString(),performed_by:user.id,notes},{onConflict:'order_id,session_date'});if(error)alert(error.message);else load()}
     const shift=currentShift();const medTasks=[];meds.forEach(o=>(o.scheduled_times||[]).forEach(t=>{const time=String(t).slice(0,5);if(shiftForTime(time)===shift)medTasks.push({order:o,time,log:medLogs.find(x=>x.order_id===o.id&&String(x.scheduled_time).slice(0,5)===time)})}));
@@ -1661,7 +1661,7 @@ Caring with Compassion. Living with Dignity.`;
     const [tab,setTab]=React.useState('Active Prescriptions');
     const [patientFilter,setPatientFilter]=React.useState('');
     const [marTarget,setMarTarget]=React.useState(null);
-    const [marForm,setMarForm]=React.useState({scheduled_time:'',status:'Given',administered_at:'',remarks:''});
+    const [marForm,setMarForm]=React.useState({scheduled_time:'',status:'Given',administered_at:'',remarks:'',late_entry_reason:'',late_entry_justification:''});
     const [marBusy,setMarBusy]=React.useState(false);
     const [marMessage,setMarMessage]=React.useState('');
 
@@ -1705,7 +1705,9 @@ Caring with Compassion. Living with Dignity.`;
         scheduled_time:scheduled,
         status:existing?.status||'Given',
         administered_at:existing?.administered_at?localDateTimeValue(new Date(existing.administered_at)):localDateTimeValue(),
-        remarks:existing?.remarks||''
+        remarks:existing?.remarks||'',
+        late_entry_reason:existing?.late_entry_reason||'',
+        late_entry_justification:existing?.late_entry_justification||''
       });
       setMarMessage('');
     }
@@ -1718,6 +1720,18 @@ Caring with Compassion. Living with Dignity.`;
       if(['Refused','Missed','Delayed'].includes(marForm.status)&&!String(marForm.remarks||'').trim()){
         setMarMessage(`Please enter the reason for medicine status “${marForm.status}”.`);return;
       }
+      const entryTime=new Date();
+      const administrationTime=marForm.administered_at?new Date(marForm.administered_at):entryTime;
+      if(Number.isNaN(administrationTime.getTime())){setMarMessage('Please enter a valid administration time.');return;}
+      if(administrationTime.getTime()>entryTime.getTime()+5*60*1000){setMarMessage('Administration time cannot be in the future.');return;}
+      const entryDelayMinutes=Math.max(0,Math.round((entryTime.getTime()-administrationTime.getTime())/60000));
+      const isLateEntry=entryDelayMinutes>30;
+      if(isLateEntry&&!String(marForm.late_entry_reason||'').trim()){
+        setMarMessage('This is a late entry. Please select a justification category.');return;
+      }
+      if(isLateEntry&&!String(marForm.late_entry_justification||'').trim()){
+        setMarMessage('Please enter a detailed justification for the late entry.');return;
+      }
       setMarBusy(true);
       const {data:{user}}=await client.auth.getUser();
       const payload={
@@ -1726,11 +1740,16 @@ Caring with Compassion. Living with Dignity.`;
         scheduled_date:today,
         scheduled_time:normalizeMedicationTime(marForm.scheduled_time),
         status:marForm.status,
-        administered_at:marForm.administered_at?new Date(marForm.administered_at).toISOString():new Date().toISOString(),
+        administered_at:administrationTime.toISOString(),
         administered_by:user?.id||profile?.auth_user_id||profile?.id,
-        remarks:String(marForm.remarks||'').trim()
+        remarks:String(marForm.remarks||'').trim(),
+        entry_recorded_at:entryTime.toISOString(),
+        late_entry:isLateEntry,
+        entry_delay_minutes:entryDelayMinutes,
+        late_entry_reason:isLateEntry?String(marForm.late_entry_reason||'').trim():null,
+        late_entry_justification:isLateEntry?String(marForm.late_entry_justification||'').trim():null
       };
-      const {error}=await client.from('medication_administrations').upsert(payload,{onConflict:'order_id,scheduled_date,scheduled_time'});
+      const {error}=await client.from('medication_administrations').insert(payload);
       if(error){setMarMessage(error.message||'Unable to save the Medication Administration Record.');setMarBusy(false);return;}
       setMarBusy(false);setMarTarget(null);setTab('Today’s MAR');await load();
     }
@@ -1768,18 +1787,21 @@ Caring with Compassion. Living with Dignity.`;
       h('button',{type:'button',className:'btn btn-primary',onClick:()=>openMar(order)},'Administer')
     ]);
     const marRows=items=>filtered(items).map(item=>[
-      patientLabel(item.order),medicineLabel(item.order),medicationTimeLabel(item.time),item.log?.status||'Pending',item.log?.administered_at?fmt(item.log.administered_at):'—',item.log?.remarks||'—',
-      h('button',{type:'button',className:item.log?'btn btn-secondary':'btn btn-primary',onClick:()=>openMar(item.order,item.time)},item.log?'Update MAR':'Record Dose')
+      patientLabel(item.order),medicineLabel(item.order),medicationTimeLabel(item.time),item.log?.status||'Pending',item.log?.administered_at?fmt(item.log.administered_at):'—',item.log?.entry_recorded_at?fmt(item.log.entry_recorded_at):(item.log?.created_at?fmt(item.log.created_at):'—'),item.log?.late_entry?`Late entry (${item.log.entry_delay_minutes||0} min) · ${item.log.late_entry_reason||'Justification recorded'}`:'On-time entry',item.log?.remarks||'—',
+      h('button',{type:'button',className:item.log?'btn btn-secondary':'btn btn-primary',onClick:()=>openMar(item.order,item.time)},item.log?'View / Correct':'Record Dose')
     ]);
 
     let table=null;
     if(tab==='Active Prescriptions')table=h(LogTable,{title:'Active Prescription Register',subtitle:'Current medicines transcribed during admission or patient update',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR','Action'],rows:prescriptionRows(activeOrders)});
-    if(tab==='Today’s MAR')table=h(LogTable,{title:"Today’s Medication Administration",subtitle:'Scheduled doses and current administration status',heads:['Patient','Medicine','Time','Status','Administered','Remarks','Action'],rows:marRows(todayRows)});
-    if(tab==='Missed Medicines')table=h(LogTable,{title:'Missed / Refused / Delayed Medicines',subtitle:'Medicine exceptions requiring clinical review',heads:['Patient','Medicine','Time','Status','Recorded','Reason / Remarks','Action'],rows:marRows(missedRows)});
+    if(tab==='Today’s MAR')table=h(LogTable,{title:"Today’s Medication Administration",subtitle:'Scheduled doses and current administration status',heads:['Patient','Medicine','Time','Status','Administered','Entry recorded','Entry audit','Remarks','Action'],rows:marRows(todayRows)});
+    if(tab==='Missed Medicines')table=h(LogTable,{title:'Missed / Refused / Delayed Medicines',subtitle:'Medicine exceptions requiring clinical review',heads:['Patient','Medicine','Time','Status','Administered','Entry recorded','Entry audit','Reason / Remarks','Action'],rows:marRows(missedRows)});
     if(tab==='Completed Medicines')table=h(LogTable,{title:'Completed Medicine Courses',subtitle:'Prescription courses completed by status or end date',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR','Action'],rows:prescriptionRows(completedOrders)});
     if(tab==='Discontinued Medicines')table=h(LogTable,{title:'Discontinued Medicines',subtitle:'Stopped or inactive prescriptions retained for history',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR'],rows:prescriptionRows(discontinuedOrders).map(row=>row.slice(0,-1))});
 
     const targetTimes=marTarget?parseTimes(marTarget.scheduled_times):[];
+    const currentEntryDelay=marForm.administered_at?Math.max(0,Math.round((Date.now()-new Date(marForm.administered_at).getTime())/60000)):0;
+    const currentIsLateEntry=currentEntryDelay>30;
+    const lateEntryReasons=['Forgot to record immediately','Emergency patient care','Network or device issue','Medicine administered by another staff member','Patient-related delay','Doctor instruction','Other'];
     return h(React.Fragment,null,
       h(Section,{title:'Medication Administration & Prescription Register',subtitle:'Unified prescription history and MAR status from the patient record'},
         state.error&&h('div',{className:'message error'},`Unable to load part of the medication register: ${state.error}`),
@@ -1801,8 +1823,12 @@ Caring with Compassion. Living with Dignity.`;
             h('div',{className:'field'},h('label',null,'Frequency'),h('input',{value:marTarget.frequency||'—',readOnly:true})),
             h('div',{className:'field'},h('label',null,'Scheduled Time'),h('select',{value:marForm.scheduled_time,onChange:e=>setMarForm({...marForm,scheduled_time:e.target.value})},(targetTimes.length?targetTimes:[marForm.scheduled_time]).filter(Boolean).map(time=>h('option',{key:time,value:time},medicationTimeLabel(time))))),
             h('div',{className:'field'},h('label',null,'Status'),h('select',{value:marForm.status,onChange:e=>setMarForm({...marForm,status:e.target.value})},['Given','Delayed','Refused','Missed'].map(status=>h('option',{key:status,value:status},status)))),
-            h('div',{className:'field span-2'},h('label',null,'Actual / Recorded Time'),h('input',{type:'datetime-local',value:marForm.administered_at,onChange:e=>setMarForm({...marForm,administered_at:e.target.value}),required:true})),
-            h('div',{className:'field span-2'},h('label',null,marForm.status==='Given'?'Remarks (optional)':'Reason / Remarks (required)'),h('textarea',{rows:4,value:marForm.remarks,onChange:e=>setMarForm({...marForm,remarks:e.target.value}),placeholder:marForm.status==='Given'?'Any observation after administration':'Enter the reason and action taken',required:marForm.status!=='Given'}))
+            h('div',{className:'field span-2'},h('label',null,'Actual Administration Time'),h('input',{type:'datetime-local',value:marForm.administered_at,onChange:e=>setMarForm({...marForm,administered_at:e.target.value}),required:true}),h('small',null,'The system records the MAR entry time automatically and staff cannot edit it.')),
+            currentIsLateEntry&&h('div',{className:'message warning span-2'},`Late entry detected: this record is being entered approximately ${currentEntryDelay} minutes after the stated administration time. Justification is compulsory.`),
+            currentIsLateEntry&&h('div',{className:'field'},h('label',null,'Late Entry Reason'),h('select',{value:marForm.late_entry_reason,onChange:e=>setMarForm({...marForm,late_entry_reason:e.target.value}),required:true},h('option',{value:''},'Select reason'),lateEntryReasons.map(reason=>h('option',{key:reason,value:reason},reason)))),
+            currentIsLateEntry&&h('div',{className:'field'},h('label',null,'Entry Delay'),h('input',{value:`${currentEntryDelay} minutes`,readOnly:true})),
+            currentIsLateEntry&&h('div',{className:'field span-2'},h('label',null,'Detailed Late Entry Justification'),h('textarea',{rows:3,value:marForm.late_entry_justification,onChange:e=>setMarForm({...marForm,late_entry_justification:e.target.value}),placeholder:'Explain why the medicine was not documented immediately, who administered it, and any verification performed.',required:true})),
+            h('div',{className:'field span-2'},h('label',null,marForm.status==='Given'?'Clinical Remarks (optional)':'Reason / Clinical Remarks (required)'),h('textarea',{rows:4,value:marForm.remarks,onChange:e=>setMarForm({...marForm,remarks:e.target.value}),placeholder:marForm.status==='Given'?'Any observation after administration':'Enter the medicine exception reason and action taken',required:marForm.status!=='Given'}))
           ),
           h('div',{className:'modal-actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:closeMar,disabled:marBusy},'Cancel'),h('button',{className:'btn btn-primary',disabled:marBusy},marBusy?'Saving MAR…':'Save MAR'))
         )
