@@ -315,7 +315,7 @@ Caring with Compassion. Living with Dignity.`;
           h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter login ID'})),
           h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true,placeholder:'Enter password'})),
           h('button',{className:'btn btn-primary full login-v3-button',disabled:busy},busy?'Signing in…':'Sign in'),
-          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.6')
+          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.7')
         )
       )
     );
@@ -331,7 +331,7 @@ Caring with Compassion. Living with Dignity.`;
     },[page,allowed.join('|')]);
     function toggle(title){setOpenSection(current=>current===title?'':title)}
     return h('aside',{className:'sidebar'},
-      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.6'))),
+      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.7'))),
       h('nav',{className:'nav-scroll'},sections.map(section=>{
         const expanded=openSection===section.title;
         return h('div',{className:`nav-section ${expanded?'expanded':''}`,key:section.title},
@@ -1273,9 +1273,11 @@ Caring with Compassion. Living with Dignity.`;
 
   function VitalSigns({profile}){
     const [patients]=usePatients(),[rows,setRows]=React.useState([]),[form,setForm]=React.useState({patient_id:'',temperature:'',systolic:'',diastolic:'',pulse:'',spo2:'',blood_sugar:'',remarks:''});
-    async function load(){const {data}=await client.from('vital_signs').select('*,patients(full_name,room_no,bed_no)').order('recorded_at',{ascending:false}).limit(100);setRows(data||[])}React.useEffect(()=>{load()},[]);
-    async function save(e){e.preventDefault();const level=(Number(form.spo2)&&Number(form.spo2)<92)||(Number(form.systolic)&&Number(form.systolic)>160)?'Critical':'Normal';const {error}=await client.from('vital_signs').insert({...form,temperature:num(form.temperature),systolic:num(form.systolic),diastolic:num(form.diastolic),pulse:num(form.pulse),spo2:num(form.spo2),blood_sugar:num(form.blood_sugar),recorded_by:profile.id,alert_level:level});if(error)return window.alert(error.message);setForm({...form,temperature:'',systolic:'',diastolic:'',pulse:'',spo2:'',blood_sugar:'',remarks:''});load()}
-    return h(React.Fragment,null,h(Section,{title:'Vital Signs',subtitle:'Record and highlight abnormal readings'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),...['temperature','systolic','diastolic','pulse','spo2','blood_sugar'].map(k=>miniInput(k.replace('_',' ').replace(/^./,c=>c.toUpperCase()),form[k],v=>setForm({...form,[k]:v}),false,'number')),miniInput('Remarks',form.remarks,v=>setForm({...form,remarks:v})),h('button',{className:'btn btn-primary'},'Save vitals'))),h(LogTable,{title:'Recent Vital Signs',heads:['Patient','BP','Pulse','SpO₂','Sugar','Alert','Time'],rows:rows.map(r=>[r.patients?.full_name,`${r.systolic||'—'}/${r.diastolic||'—'}`,r.pulse||'—',r.spo2||'—',r.blood_sugar||'—',r.alert_level,fmt(r.recorded_at)])}))
+    const measured=(value)=>{if(value===null||value===undefined||String(value).trim()==='')return null;const n=Number(value);return Number.isFinite(n)&&n!==0?n:null};
+    const calculateLevel=(v)=>{const systolic=measured(v.systolic),diastolic=measured(v.diastolic),pulse=measured(v.pulse),temperature=measured(v.temperature),spo2=measured(v.spo2),sugar=measured(v.blood_sugar);const any=[systolic,diastolic,pulse,temperature,spo2,sugar].some(x=>x!==null);if(!any)return 'Not Recorded';if((spo2!==null&&spo2<90)||(systolic!==null&&(systolic>=180||systolic<80))||(diastolic!==null&&(diastolic>=120||diastolic<50))||(pulse!==null&&(pulse>130||pulse<40))||(temperature!==null&&(temperature>=39.5||temperature<35))||(sugar!==null&&(sugar>400||sugar<50)))return 'Critical';if((spo2!==null&&spo2<94)||(systolic!==null&&(systolic>=160||systolic<90))||(diastolic!==null&&(diastolic>=100||diastolic<60))||(pulse!==null&&(pulse>110||pulse<50))||(temperature!==null&&(temperature>=38||temperature<35.5))||(sugar!==null&&(sugar>250||sugar<70)))return 'Warning';return 'Normal'};
+    async function load(){const {data}=await client.from('vital_signs').select('*,patients(full_name,room_no,bed_no)').order('recorded_at',{ascending:false}).limit(100);setRows((data||[]).map(r=>({...r,computed_alert_level:calculateLevel(r)})))}React.useEffect(()=>{load()},[]);
+    async function save(e){e.preventDefault();const payload={...form,temperature:num(form.temperature),systolic:num(form.systolic),diastolic:num(form.diastolic),pulse:num(form.pulse),spo2:num(form.spo2),blood_sugar:num(form.blood_sugar),recorded_by:profile.id};const level=calculateLevel(payload);if(level==='Not Recorded')return window.alert('Please enter at least one actual vital-sign measurement before saving.');payload.alert_level=level;const {error}=await client.from('vital_signs').insert(payload);if(error)return window.alert(error.message);setForm({...form,temperature:'',systolic:'',diastolic:'',pulse:'',spo2:'',blood_sugar:'',remarks:''});load()}
+    return h(React.Fragment,null,h(Section,{title:'Vital Signs',subtitle:'Record and highlight abnormal readings'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),...['temperature','systolic','diastolic','pulse','spo2','blood_sugar'].map(k=>miniInput(k.replace('_',' ').replace(/^./,c=>c.toUpperCase()),form[k],v=>setForm({...form,[k]:v}),false,'number')),miniInput('Remarks',form.remarks,v=>setForm({...form,remarks:v})),h('button',{className:'btn btn-primary'},'Save vitals'))),h(LogTable,{title:'Recent Vital Signs',heads:['Patient','BP','Pulse','SpO₂','Sugar','Alert','Time'],rows:rows.map(r=>[r.patients?.full_name,`${measured(r.systolic)??'—'}/${measured(r.diastolic)??'—'}`,measured(r.pulse)??'—',measured(r.spo2)??'—',measured(r.blood_sugar)??'—',r.computed_alert_level,fmt(r.recorded_at)])}))
   }
 
   function Medicines(){
@@ -1363,11 +1365,20 @@ Caring with Compassion. Living with Dignity.`;
       const number=Number(raw.replace(/,/g,''));
       return Number.isFinite(number)?number:null;
     };
-    const hasVitalValues=row=>vitalFields.some(key=>vitalNumber(row?.[key])!==null);
+    // Legacy blank vital fields may have been stored as numeric zero. Zero is not a
+    // plausible recorded value for BP, pulse, temperature, respiration, SpO2,
+    // blood sugar or weight, so treat it as "not entered". Pain score 0 remains valid.
+    const vitalMeasurement=(row,key)=>{
+      const number=vitalNumber(row?.[key]);
+      if(number===null)return null;
+      if(number===0&&key!=='pain_score')return null;
+      return number;
+    };
+    const hasVitalValues=row=>vitalFields.some(key=>vitalMeasurement(row,key)!==null);
     const validVitals=rows=>(rows||[]).filter(hasVitalValues);
     const vitalAlert=row=>{
       if(!hasVitalValues(row))return '';
-      const systolic=vitalNumber(row.systolic),diastolic=vitalNumber(row.diastolic),pulse=vitalNumber(row.pulse),temperature=vitalNumber(row.temperature),respiration=vitalNumber(row.respiration),spo2=vitalNumber(row.spo2),sugar=vitalNumber(row.blood_sugar);
+      const systolic=vitalMeasurement(row,'systolic'),diastolic=vitalMeasurement(row,'diastolic'),pulse=vitalMeasurement(row,'pulse'),temperature=vitalMeasurement(row,'temperature'),respiration=vitalMeasurement(row,'respiration'),spo2=vitalMeasurement(row,'spo2'),sugar=vitalMeasurement(row,'blood_sugar');
       const critical=(spo2!==null&&spo2<90)||(systolic!==null&&(systolic>=180||systolic<80))||(diastolic!==null&&(diastolic>=120||diastolic<50))||(pulse!==null&&(pulse>130||pulse<40))||(temperature!==null&&(temperature>=39.5||temperature<35))||(respiration!==null&&(respiration>30||respiration<8))||(sugar!==null&&(sugar>400||sugar<50));
       if(critical)return 'critical';
       const warning=(spo2!==null&&spo2<94)||(systolic!==null&&(systolic>=160||systolic<90))||(diastolic!==null&&(diastolic>=100||diastolic<60))||(pulse!==null&&(pulse>110||pulse<50))||(temperature!==null&&(temperature>=38||temperature<35.5))||(respiration!==null&&(respiration>24||respiration<10))||(sugar!==null&&(sugar>250||sugar<70));
@@ -1428,7 +1439,7 @@ Caring with Compassion. Living with Dignity.`;
       const careText='Care and Treatment Provided: '+careSentences.join('. ')+'.';
       const measured=validVitals(d.vitals);
       const latestVital=latest(measured,['recorded_at','created_at']);
-      const latestText=latestVital?`The latest measured observations were BP ${latestVital.systolic||'—'}/${latestVital.diastolic||'—'} mmHg, pulse ${latestVital.pulse||'—'}/min, SpO₂ ${latestVital.spo2||'—'}% and blood sugar ${latestVital.blood_sugar||'—'}.`:'No measured vital-sign values were entered for this reporting period.';
+      const latestText=latestVital?`The latest measured observations were BP ${vitalMeasurement(latestVital,'systolic')??'—'}/${vitalMeasurement(latestVital,'diastolic')??'—'} mmHg, pulse ${vitalMeasurement(latestVital,'pulse')??'—'}/min, SpO₂ ${vitalMeasurement(latestVital,'spo2')??'—'}% and blood sugar ${vitalMeasurement(latestVital,'blood_sugar')??'—'}.`:'No measured vital-sign values were entered for this reporting period.';
       const current=`Current Clinical Status: ${pronoun} is ${status.label.toLowerCase()} on the available records. ${status.reason} ${latestText}`;
       const familyNoted=d.incidents.some(i=>i.family_informed===true||/family|relative|attendant/i.test(String(i.immediate_action||i.remarks||i.description||'')));
       const family=`Family Communication: ${familyNoted?'The available records indicate that the family/attendant was informed regarding the patient’s condition or a significant event.':'No specific family communication entry is available for the selected reporting period.'}`;
@@ -1531,7 +1542,7 @@ Caring with Compassion. Living with Dignity.`;
         h('div',{className:'grid stats intelligent-stats'},(report.mode==='Day-wise'?[['Opening patients',report.summary.openingPatients],['New admissions',report.summary.newAdmissions],['Staff active',report.onDuty.length],['Critical alerts',report.summary.criticalVitals],['Incidents',report.data.incidents.length],['Medicine exceptions',report.summary.medicineExceptions],['Collections',money(report.summary.payments)],['Net outstanding',money(report.summary.outstanding)]]:[['Vitals recorded',validVitals(report.data.vitals).length],['Critical alerts',report.summary.criticalVitals],['Care activities',report.data.care.length],['Medicines given',report.summary.medicinesGiven],['Medicine exceptions',report.summary.medicineExceptions],['Incidents',report.data.incidents.length],['Charges',money(report.summary.charges)],['Outstanding',money(report.summary.outstanding)]]).map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,b)))),
         report.mode==='Day-wise'&&section('Patient-wise Daily Status',report.data.patients,p=>h(React.Fragment,null,h('strong',null,`${p.patient_id||'NO-ID'} · ${formalName(p)}`),h('span',null,dailyPatientNarrative(p,report.data)))),
         report.mode==='Day-wise'&&section('Employees Active / On Duty (derived from recorded activity)',report.onDuty,x=>h(React.Fragment,null,h('strong',null,formalName(x)),h('span',null,`${x.role||'Employee'} · ${x.employee_id||x.login_id||'—'}`))),
-        section('Abnormal and Critical Vital Signs',validVitals(report.data.vitals).filter(v=>['critical','warning','abnormal'].includes(vitalAlert(v))),r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`BP ${vitalNumber(r.systolic)??'—'}/${vitalNumber(r.diastolic)??'—'} · Pulse ${vitalNumber(r.pulse)??'—'} · SpO₂ ${vitalNumber(r.spo2)??'—'} · Sugar ${vitalNumber(r.blood_sugar)??'—'} · ${vitalAlert(r)==='critical'?'Critical':vitalAlert(r)==='warning'?'Warning':'Normal'} · ${fmt(r.recorded_at||r.created_at)}`))),
+        section('Abnormal and Critical Vital Signs',validVitals(report.data.vitals).filter(v=>['critical','warning','abnormal'].includes(vitalAlert(v))),r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`BP ${vitalMeasurement(r,'systolic')??'—'}/${vitalMeasurement(r,'diastolic')??'—'} · Pulse ${vitalMeasurement(r,'pulse')??'—'} · SpO₂ ${vitalMeasurement(r,'spo2')??'—'} · Sugar ${vitalMeasurement(r,'blood_sugar')??'—'} · ${vitalAlert(r)==='critical'?'Critical':vitalAlert(r)==='warning'?'Warning':'Normal'} · ${fmt(r.recorded_at||r.created_at)}`))),
         section('Medication Administration',report.data.mar,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.status||'—'} · Scheduled ${r.scheduled_time||'—'} · ${r.remarks||'No remarks'} · ${fmt(r.administered_at||r.created_at)}${r.administered_by?` · By ${roleName(r.administered_by)}`:''}`))),
         section('Daily Care and Nursing Support',report.data.care,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.shift||'—'} · ${r.status||'—'} · ${r.remarks||'—'} · ${fmt(r.completed_at||r.created_at)}${r.completed_by?` · By ${roleName(r.completed_by)}`:''}`))),
         section('Food, Diet and Intake',report.data.meals,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.meal_type||'Meal'} · ${r.menu||'—'} · ${r.consumption_status||'—'} · ${fmt(r.served_at||r.created_at)}`))),
