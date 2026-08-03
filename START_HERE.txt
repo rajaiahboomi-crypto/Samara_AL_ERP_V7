@@ -1,0 +1,16 @@
+Samara Care ERP 1.2.0 – Medication Register Fix
+
+Upload and REPLACE only these two files in the GitHub repository root:
+1. app.js
+2. service-worker.js
+
+No Supabase SQL is required.
+
+After GitHub publishes:
+1. Close all Samara Care ERP windows.
+2. Reopen the ERP.
+3. Tap 'App update available' if shown.
+4. Confirm the sidebar displays Assisted Living ERP 1.2.0.
+5. Open Nursing > Medicines.
+
+The Medicines page now reads medication_orders directly and joins patients in the browser, so it no longer depends on a fragile database relationship query or is_active=true filter.

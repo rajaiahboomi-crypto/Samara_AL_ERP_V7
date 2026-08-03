@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.1.9';
-  const APP_BUILD_DATE = '03-Aug-2026 21:10 IST';
+  const APP_VERSION = '1.2.0';
+  const APP_BUILD_DATE = '03-Aug-2026 22:35 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1656,8 +1656,89 @@ Caring with Compassion. Living with Dignity.`;
   }
 
   function Medicines(){
-    const [rows,setRows]=React.useState([]);async function load(){const {data}=await client.from('medication_orders').select('*,patients(full_name,room_no,bed_no)').eq('is_active',true).order('created_at',{ascending:false});setRows(data||[])}React.useEffect(()=>{load()},[]);
-    return h(LogTable,{title:'Active Prescription & MAR',subtitle:'All medicines transcribed at admission',heads:['Patient','Medicine','Dose / Route','Frequency','Duration','Time','Food','Special instruction'],rows:rows.map(r=>[`${r.patients?.full_name} · ${r.patients?.room_no}-${r.patients?.bed_no}`,`${r.medicine_name} ${r.strength||''}`,`${r.dose} · ${r.route}`,r.frequency||'—',r.duration||'—',(r.scheduled_times||[]).map(medicationTimeLabel).join(', '),r.food_instruction||'—',r.special_instruction||'—'])})
+    const today=new Date().toISOString().slice(0,10);
+    const [state,setState]=React.useState({loading:true,orders:[],mar:[],patients:[],error:''});
+    const [tab,setTab]=React.useState('Active Prescriptions');
+    const [patientFilter,setPatientFilter]=React.useState('');
+
+    function parseTimes(value){
+      if(Array.isArray(value))return value.filter(Boolean);
+      return String(value||'').split(',').map(normalizeMedicationTime).filter(Boolean);
+    }
+    function orderActive(order){
+      if(order.is_active===false)return false;
+      const status=String(order.status||'').trim().toLowerCase();
+      if(['completed','discontinued','stopped','inactive'].includes(status))return false;
+      const end=order.end_date||'';
+      return !end||end>=today;
+    }
+    function patientFor(order){return state.patients.find(p=>p.id===order.patient_id)||{};}
+    function patientLabel(order){
+      const p=patientFor(order);
+      const name=formalName(p)||p.full_name||'Patient';
+      const room=p.room_no?`Room ${p.room_no}${p.bed_no?`-${p.bed_no}`:''}`:'Room not assigned';
+      return `${name} · ${p.patient_id||'No ID'} · ${room}`;
+    }
+    function medicineLabel(order){return [order.medicine_name,order.strength||order.dose].filter(Boolean).join(' ');}
+    function marFor(order){return state.mar.filter(x=>x.order_id===order.id);}
+    function latestMar(order){return marFor(order).sort((a,b)=>String(b.administered_at||b.created_at||'').localeCompare(String(a.administered_at||a.created_at||'')))[0];}
+    function doseStatus(order,time){
+      return state.mar.find(x=>x.order_id===order.id&&String(x.scheduled_date||'')===today&&String(x.scheduled_time||'').slice(0,5)===String(time||'').slice(0,5));
+    }
+
+    async function load(){
+      setState(current=>({...current,loading:true,error:''}));
+      const [ordersResult,marResult,patientsResult]=await Promise.all([
+        client.from('medication_orders').select('*').order('created_at',{ascending:false}),
+        client.from('medication_administrations').select('*').order('scheduled_date',{ascending:false}).order('scheduled_time',{ascending:false}).limit(1000),
+        client.from('patients').select('id,title,full_name,patient_id,room_no,bed_no,is_active').order('full_name')
+      ]);
+      const errors=[ordersResult.error,marResult.error,patientsResult.error].filter(Boolean);
+      setState({loading:false,orders:ordersResult.data||[],mar:marResult.data||[],patients:patientsResult.data||[],error:errors.map(e=>e.message).join(' | ')});
+    }
+    React.useEffect(()=>{
+      load();
+      const ch=client.channel('medicines-register-live')
+        .on('postgres_changes',{event:'*',schema:'public',table:'medication_orders'},load)
+        .on('postgres_changes',{event:'*',schema:'public',table:'medication_administrations'},load)
+        .subscribe();
+      return()=>client.removeChannel(ch);
+    },[]);
+
+    const activeOrders=state.orders.filter(orderActive);
+    const todayRows=[];
+    activeOrders.forEach(order=>parseTimes(order.scheduled_times).forEach(time=>todayRows.push({order,time,log:doseStatus(order,time)})));
+    const missedRows=todayRows.filter(x=>x.log&&['missed','refused','delayed','not given'].includes(String(x.log.status||'').toLowerCase()));
+    const completedOrders=state.orders.filter(o=>String(o.status||'').toLowerCase()==='completed'||(o.end_date&&o.end_date<today&&o.is_active!==false));
+    const discontinuedOrders=state.orders.filter(o=>o.is_active===false||['discontinued','stopped','inactive'].includes(String(o.status||'').toLowerCase()));
+    const filtered=rows=>patientFilter?rows.filter(item=>(item.order||item).patient_id===patientFilter):rows;
+    const tabs=[['Active Prescriptions',activeOrders.length],['Today’s MAR',todayRows.length],['Missed Medicines',missedRows.length],['Completed Medicines',completedOrders.length],['Discontinued Medicines',discontinuedOrders.length]];
+
+    const prescriptionRows=orders=>filtered(orders).map(order=>[
+      patientLabel(order),medicineLabel(order),order.route||'—',order.frequency||'—',order.duration||'—',parseTimes(order.scheduled_times).map(medicationTimeLabel).join(', ')||'—',order.food_instruction||'—',order.special_instruction||order.special_instructions||'—',latestMar(order)?.status||'No MAR yet'
+    ]);
+    const marRows=items=>filtered(items).map(item=>[
+      patientLabel(item.order),medicineLabel(item.order),medicationTimeLabel(item.time),item.log?.status||'Pending',item.log?.administered_at?fmt(item.log.administered_at):'—',item.log?.remarks||'—'
+    ]);
+
+    let table=null;
+    if(tab==='Active Prescriptions')table=h(LogTable,{title:'Active Prescription Register',subtitle:'Current medicines transcribed during admission or patient update',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR'],rows:prescriptionRows(activeOrders)});
+    if(tab==='Today’s MAR')table=h(LogTable,{title:"Today’s Medication Administration",subtitle:'Scheduled doses and current administration status',heads:['Patient','Medicine','Time','Status','Administered','Remarks'],rows:marRows(todayRows)});
+    if(tab==='Missed Medicines')table=h(LogTable,{title:'Missed / Refused / Delayed Medicines',subtitle:'Medicine exceptions requiring clinical review',heads:['Patient','Medicine','Time','Status','Recorded','Reason / Remarks'],rows:marRows(missedRows)});
+    if(tab==='Completed Medicines')table=h(LogTable,{title:'Completed Medicine Courses',subtitle:'Prescription courses completed by status or end date',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR'],rows:prescriptionRows(completedOrders)});
+    if(tab==='Discontinued Medicines')table=h(LogTable,{title:'Discontinued Medicines',subtitle:'Stopped or inactive prescriptions retained for history',heads:['Patient','Medicine / Strength','Route','Frequency','Duration','Time','Food','Special instruction','Latest MAR'],rows:prescriptionRows(discontinuedOrders)});
+
+    return h(React.Fragment,null,
+      h(Section,{title:'Medication Administration & Prescription Register',subtitle:'Unified prescription history and MAR status from the patient record'},
+        state.error&&h('div',{className:'message error'},`Unable to load part of the medication register: ${state.error}`),
+        h('div',{className:'panel-head'},
+          h('div',{className:'field',style:{minWidth:'260px',marginBottom:0}},h('label',null,'Patient filter'),h('select',{value:patientFilter,onChange:e=>setPatientFilter(e.target.value)},h('option',{value:''},'All patients'),state.patients.filter(p=>p.is_active!==false).map(p=>h('option',{key:p.id,value:p.id},`${formalName(p)||p.full_name} · ${p.patient_id||'No ID'}`)))),
+          h('button',{type:'button',className:'btn btn-secondary',onClick:load},state.loading?'Loading…':'Refresh')
+        ),
+        h('div',{className:'time-chip-list',style:{marginTop:'16px'}},tabs.map(([name,count])=>h('button',{type:'button',key:name,className:`btn ${tab===name?'btn-primary':'btn-secondary'}`,onClick:()=>setTab(name)},`${name} (${count})`)))
+      ),
+      state.loading?h('div',{className:'card panel loading'},'Loading medication register…'):table
+    );
   }
 
   function FoodDiet({profile}){
