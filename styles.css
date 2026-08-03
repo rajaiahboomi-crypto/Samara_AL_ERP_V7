@@ -358,3 +358,5 @@ body{font-size:17px;line-height:1.42}
   .report-footer{margin-top:5mm!important;padding-top:3mm!important;break-inside:avoid!important}.report-footer strong{font-size:12pt!important}.report-footer span,.report-footer small{font-size:8.5pt!important}
   a[href]:after{content:none!important}
 }
+
+.build-info{display:block;opacity:.72;font-size:11px;margin-top:2px;line-height:1.2}

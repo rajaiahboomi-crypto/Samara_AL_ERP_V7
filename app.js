@@ -1,5 +1,15 @@
 (() => {
   'use strict';
+  const APP_VERSION = '1.0.8';
+  const APP_BUILD_DATE = '03-Aug-2026 10:45 IST';
+  const APP_SCHEMA_VERSION = '18';
+  window.APP_VERSION = APP_VERSION;
+  window.SAMARA_BUILD = Object.freeze({
+    version: APP_VERSION,
+    buildDate: APP_BUILD_DATE,
+    schemaVersion: APP_SCHEMA_VERSION
+  });
+  console.info(`Samara Care ERP ${APP_VERSION} | Build: ${APP_BUILD_DATE} | Schema: ${APP_SCHEMA_VERSION}`);
   const h = React.createElement;
   const cfg = window.SAMARA_CONFIG;
   const sdk = window.supabase;
@@ -315,7 +325,7 @@ Caring with Compassion. Living with Dignity.`;
           h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter login ID'})),
           h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true,placeholder:'Enter password'})),
           h('button',{className:'btn btn-primary full login-v3-button',disabled:busy},busy?'Signing in…':'Sign in'),
-          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.7')
+          h('div',{className:'login-v3-version'},`Samara Care ERP ${APP_VERSION}`)
         )
       )
     );
@@ -331,7 +341,7 @@ Caring with Compassion. Living with Dignity.`;
     },[page,allowed.join('|')]);
     function toggle(title){setOpenSection(current=>current===title?'':title)}
     return h('aside',{className:'sidebar'},
-      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.7'))),
+      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,`Assisted Living ERP ${APP_VERSION}`))),
       h('nav',{className:'nav-scroll'},sections.map(section=>{
         const expanded=openSection===section.title;
         return h('div',{className:`nav-section ${expanded?'expanded':''}`,key:section.title},
