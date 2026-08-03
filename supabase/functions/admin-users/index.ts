@@ -107,7 +107,10 @@ serve(async (req) => {
         const { error: profileError } = await admin.from('profiles').upsert({
           id: existingAuth.id,
           auth_user_id: existingAuth.id,
+          title: body.title || null,
+          preferred_name: body.preferred_name || null,
           full_name: body.full_name,
+          must_change_password: true,
           employee_id: employeeId || null,
           login_id: loginId,
           auth_email: internalEmail,
@@ -132,7 +135,7 @@ serve(async (req) => {
           is_active: true,
         }, { onConflict: 'id' })
         if (profileError) throw profileError
-        const { error: authError } = await admin.auth.admin.updateUserById(existingAuth.id, { password, email_confirm: true, ban_duration: 'none', user_metadata: { full_name: body.full_name, login_id: loginId, role } })
+        const { error: authError } = await admin.auth.admin.updateUserById(existingAuth.id, { password, email_confirm: true, ban_duration: 'none', user_metadata: { title: body.title || null, preferred_name: body.preferred_name || null, full_name: body.full_name, login_id: loginId, role, must_change_password: true } })
         if (authError) throw authError
         await audit('REPAIR_EMPLOYEE_PROFILE', existingAuth.id, { login_id: loginId, role })
         return json({ ok: true, repaired: true, user_id: existingAuth.id, role })
@@ -146,14 +149,17 @@ serve(async (req) => {
         email: internalEmail,
         password,
         email_confirm: true,
-        user_metadata: { full_name: body.full_name, login_id: loginId, role },
+        user_metadata: { title: body.title || null, preferred_name: body.preferred_name || null, full_name: body.full_name, login_id: loginId, role, must_change_password: true },
       })
       if (createError || !created.user) throw createError || new Error('Authentication user was not created')
 
       const { error: profileError } = await admin.from('profiles').upsert({
         id: created.user.id,
         auth_user_id: created.user.id,
+        title: body.title || null,
+        preferred_name: body.preferred_name || null,
         full_name: body.full_name,
+        must_change_password: true,
         employee_id: employeeId || null,
         login_id: loginId,
         auth_email: internalEmail,
@@ -299,6 +305,7 @@ serve(async (req) => {
       const { error: updateAuthError } = await admin.auth.admin.updateUserById(authUserId, { password, email_confirm: true, ban_duration: 'none' })
       if (updateAuthError) throw updateAuthError
       await setProfileActive(target.id, true)
+      await admin.from('profiles').update({ must_change_password: true }).eq('id', target.id)
       if (authUser.user.email) await admin.from('profiles').update({ auth_user_id: authUserId, auth_email: authUser.user.email }).eq('id', target.id)
       await audit('RESET_EMPLOYEE_PASSWORD', target.id, { login_id: target.login_id, restored_access: true })
       return json({ ok: true })

@@ -12,6 +12,9 @@
   });
 
   const ROLES = ['Admin','Manager','Nurse','Caregiver','Accounts','Kitchen'];
+  const PERSON_TITLES = ['Dr.','Prof.','Mr.','Mrs.','Ms.','Miss','Shri','Smt.','Selvi','Master','Baby','Kumari','Rev.','Fr.','Sr.','Other'];
+  const formalName = row => [String(row?.title||'').trim(),String(row?.full_name||'').trim()].filter(Boolean).join(' ');
+  const displayName = row => String(row?.preferred_name||'').trim() || formalName(row);
   const ROOM_NUMBER_OPTIONS = Array.from({length:26},(_,i)=>String(100+i));
   const BED_CODE_OPTIONS = ['A','B','C','D'];
   const NAV_SECTIONS = [
@@ -42,7 +45,41 @@
   const fmt = value => value ? new Date(value).toLocaleString() : '—';
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#039;'}[ch]));
   const whatsappNumber = value => { const digits=String(value||'').replace(/\D/g,''); if(!digits)return ''; if(digits.length===10)return `91${digits}`; if(digits.length===11&&digits.startsWith('0'))return `91${digits.slice(1)}`; return digits; };
-  const whatsappWelcomeUrl = row => { const number=whatsappNumber(row.mobile); if(!number)return ''; const text=`Welcome to Samara Health Care LLP, ${row.full_name}. Your Samara Care employee account has been created. Login ID: ${row.login_id}. Please keep your password confidential. We are pleased to have you with us.`; return `https://wa.me/${number}?text=${encodeURIComponent(text)}`; };
+  const whatsappWelcomeUrl = (row,tempPassword='') => {
+    const number=whatsappNumber(row.mobile); if(!number)return '';
+    const name=formalName(row)||row.full_name||'Colleague';
+    const roleLine={
+      Nurse:'As a Nurse, your compassion, patience and clinical skills will make a meaningful difference in the lives of our residents.',
+      Caregiver:'Your kindness, patience and gentle support will bring comfort and confidence to our residents every day.',
+      Manager:'Your leadership will help us maintain high standards of resident care, teamwork and operational excellence.',
+      Accounts:'Your careful work will help us serve residents and families with transparency and trust.',
+      Kitchen:'Your care in preparing safe and nourishing food is an important part of every resident’s wellbeing.'
+    }[row.role]||'Your contribution will help us provide compassionate, respectful and high-quality care.';
+    const credentials=tempPassword?`
+
+Your Login Details
+Login ID: ${row.login_id}
+Temporary Password: ${tempPassword}`:`
+
+Login ID: ${row.login_id}`;
+    const text=`Dear ${name},
+
+Welcome to the Samara Family! 💚
+
+We are delighted to have you with us. At Samara, every resident deserves dignity, compassion and respect. From today, you become an important part of that mission.
+
+${roleLine}${credentials}
+
+ERP Portal: https://rajaiahboomi-crypto.github.io/Samara_AL_ERP_V7/
+
+Please sign in and create a password of your own choice at the first login.
+
+We wish you a successful, fulfilling and rewarding journey with us. All the very best!
+
+Samara Health Care LLP
+Caring with Compassion. Living with Dignity.`;
+    return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
+  };
 
 
   function CameraCaptureModal({config,onClose}){
@@ -132,6 +169,7 @@
     if(loading) return h('div',{className:'loading'},'Loading Samara Care…');
     if(!session) return h(Login,{externalMessage:authMessage,onClearMessage:()=>setAuthMessage('')});
     if(!profile) return h('div',{className:'loading'},'Loading your employee profile…');
+    if(profile.must_change_password) return h(FirstLoginPasswordChange,{profile,onComplete:()=>setProfile({...profile,must_change_password:false})});
 
     const allowed = ROLE_NAV[profile.role]||['Dashboard'];
     if(!allowed.includes(page)) setTimeout(()=>setPage(ROLE_HOME[profile.role]||allowed[0]||'Notifications'),0);
@@ -165,6 +203,30 @@
         )
       )
     );
+  }
+
+  function FirstLoginPasswordChange({profile,onComplete}){
+    const [password,setPassword]=React.useState(''),[confirm,setConfirm]=React.useState(''),[busy,setBusy]=React.useState(false),[message,setMessage]=React.useState('');
+    async function submit(e){
+      e.preventDefault();setMessage('');
+      if(password.length<8){setMessage('Please choose a password containing at least 8 characters.');return}
+      if(password!==confirm){setMessage('The two passwords do not match.');return}
+      setBusy(true);
+      const {error:authError}=await client.auth.updateUser({password});
+      if(authError){setMessage(authError.message);setBusy(false);return}
+      const {error:profileError}=await client.from('profiles').update({must_change_password:false,updated_at:new Date().toISOString()}).eq('id',profile.id);
+      if(profileError){setMessage(profileError.message);setBusy(false);return}
+      setBusy(false);onComplete();
+    }
+    return h('div',{className:'login-shell'},h('form',{className:'card login-card first-login-card',onSubmit:submit},
+      h('div',{className:'brand'},h('div',{className:'logo'},'SC'),h('div',null,h('h1',null,`Welcome to the Samara Family, ${displayName(profile)} 👋`),h('p',null,'We are delighted that you are joining our Assisted Living Team.'))),
+      h('p',null,'Before you begin, please create your own secure password. This protects resident information and ensures that only you can access your account.'),
+      message&&h('div',{className:'message error'},message),
+      h('div',{className:'field'},h('label',null,'Create New Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),
+      h('div',{className:'field'},h('label',null,'Confirm New Password'),h('input',{type:'password',value:confirm,onChange:e=>setConfirm(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),
+      h('button',{className:'btn btn-primary full',disabled:busy},busy?'Activating your account…':'Create Password & Enter Samara ERP'),
+      h('p',{className:'small-note'},'Caring with Compassion. Living with Dignity.')
+    ));
   }
 
   function Login({externalMessage,onClearMessage}){
@@ -218,7 +280,7 @@
           h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter login ID'})),
           h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true,placeholder:'Enter password'})),
           h('button',{className:'btn btn-primary full login-v3-button',disabled:busy},busy?'Signing in…':'Sign in'),
-          h('div',{className:'login-v3-version'},'Samara Care ERP V9.5')
+          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.1')
         )
       )
     );
@@ -234,7 +296,7 @@
     },[page,allowed.join('|')]);
     function toggle(title){setOpenSection(current=>current===title?'':title)}
     return h('aside',{className:'sidebar'},
-      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP V9.5'))),
+      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.1'))),
       h('nav',{className:'nav-scroll'},sections.map(section=>{
         const expanded=openSection===section.title;
         return h('div',{className:`nav-section ${expanded?'expanded':''}`,key:section.title},
@@ -251,7 +313,7 @@
           },item)))
         );
       })),
-      h('div',{className:'sidebar-footer'},h('div',{className:'user-chip'},h('strong',null,profile.full_name),h('small',null,`${profile.login_id} · ${profile.role}`)),h('button',{className:'btn btn-secondary full',onClick:()=>client.auth.signOut()},'Sign out'))
+      h('div',{className:'sidebar-footer'},h('div',{className:'user-chip'},h('strong',null,formalName(profile)),h('small',null,`${profile.login_id} · ${profile.role}`)),h('button',{className:'btn btn-secondary full',onClick:()=>client.auth.signOut()},'Sign out'))
     );
   }
 
@@ -293,7 +355,7 @@
       {label:'Outstanding amount',value:`₹${stats.outstanding.toLocaleString('en-IN')}`,page:'Billing & Payments',icon:'₹'}
     ];
     return h(React.Fragment,null,
-      h('div',{className:'shift-summary'},h('div',null,h('strong',null,currentShift()),h('span',null,'Admin and Manager control dashboard')),h('span',{className:'badge'},profile.full_name)),
+      h('div',{className:'shift-summary'},h('div',null,h('strong',null,currentShift()),h('span',null,'Admin and Manager control dashboard')),h('span',{className:'badge'},formalName(profile))),
       h('div',{className:'grid stats dashboard-links'},cards.map(card=>h('button',{type:'button',className:'card stat dashboard-card',key:card.label,onClick:()=>onNavigate(card.page),title:`Open ${card.page}`},h('span',{className:'dashboard-icon','aria-hidden':'true'},card.icon),h('span',null,card.label),h('strong',null,card.value),h('small',null,`Open ${card.page} →`)))),
       h('div',{className:'grid two',style:{marginTop:'18px'}},
         h('button',{type:'button',className:'card panel dashboard-panel-link',onClick:()=>onNavigate('Shift Tasks')},h('div',{className:'panel-head'},h('h3',null,'Today’s operational focus')),h('p',null,'Open medicines, bathing, restroom assistance, feeding, mobility, physiotherapy and special-nurse tasks.'),h('span',{className:'badge'},'Open Shift Tasks →')),
@@ -322,7 +384,7 @@
     React.useEffect(()=>()=>{
       if(photoPreview&&photoPreview.startsWith('blob:')) URL.revokeObjectURL(photoPreview);
     },[photoPreview]);
-    const empty={full_name:'',employee_id:'',designation:'',mobile:'',emergency_contact:'',role:'Caregiver',login_id:'',employee_email:'',password:'',father_guardian_name:'',address:'',date_of_birth:'',date_of_joining:'',blood_group:'',id_card_type:'Aadhaar',id_card_number:'',qualification:'',previous_workplace:'',reference_type:'Direct',reference_name:'',reference_contact:''};
+    const empty={title:'',preferred_name:'',full_name:'',employee_id:'',designation:'',mobile:'',emergency_contact:'',role:'Caregiver',login_id:'',employee_email:'',password:'',father_guardian_name:'',address:'',date_of_birth:'',date_of_joining:'',blood_group:'',id_card_type:'Aadhaar',id_card_number:'',qualification:'',previous_workplace:'',reference_type:'Direct',reference_name:'',reference_contact:''};
     const [form,setForm]=React.useState(empty);
 
     async function adminRequest(payload){
@@ -511,7 +573,7 @@
           {type:'ID Card',files:idFiles},{type:'Qualification Certificate',files:qualificationFiles},{type:'Experience Certificate',files:experienceFiles},{type:'Other Certificate',files:otherFiles},{type:'Camera Capture',files:cameraFiles}
         ]);
         const createdRow={...employeeForm,id:result.user_id};
-        const link=whatsappWelcomeUrl(createdRow);setWelcomeLink(link);
+        const link=whatsappWelcomeUrl(createdRow,employeeForm.password);setWelcomeLink(link);
         if(preopened&&link){preopened.location.href=link}else if(preopened){preopened.close()}
         await load();
         setMsg(result.repaired?'Employee account repaired and personnel details saved successfully.':'Employee created successfully with personnel details. The employee can sign in immediately.');
@@ -594,7 +656,7 @@
       const win=window.open('','_blank','width=760,height=700');
       if(!win){alert('Please allow pop-ups to print the ID card.');return}
       const validUntil=currentRow.date_of_joining?new Date(new Date(currentRow.date_of_joining).setFullYear(new Date(currentRow.date_of_joining).getFullYear()+3)).toLocaleDateString('en-IN'):'As per employment';
-      win.document.write(`<!doctype html><html><head><title>Employee ID Card</title><style>body{font-family:Arial;margin:0;padding:30px;background:#eef6f4}.card{width:360px;height:570px;margin:auto;background:white;border-radius:24px;overflow:hidden;box-shadow:0 12px 35px #0002;border:2px solid #086b58}.head{background:#086b58;color:white;text-align:center;padding:22px}.head h1{margin:0;font-size:25px}.head p{margin:6px 0 0}.photo{width:130px;height:150px;border:4px solid white;border-radius:16px;object-fit:cover;background:#ddd;margin:-4px auto 16px;display:block;box-shadow:0 4px 15px #0003}.body{padding:16px 28px;text-align:center}.name{font-size:25px;font-weight:bold;color:#063f36}.role{font-size:18px;color:#086b58;margin:5px}.grid{text-align:left;margin-top:18px;line-height:1.75}.label{font-weight:bold;color:#555}.foot{position:absolute}.barcode{margin-top:15px;padding:10px;border-top:1px dashed #aaa;font-family:monospace}.print{display:block;margin:20px auto;padding:12px 24px}@media print{.print{display:none}body{background:white;padding:0}}</style></head><body><div class="card"><div class="head"><h1>SAMARA HEALTH CARE LLP</h1><p>Assisted Living Management System</p></div><div class="body">${photoUrl?`<img class="photo" src="${photoUrl}">`:`<div class="photo" style="display:flex;align-items:center;justify-content:center;font-size:48px">SC</div>`}<div class="name">${escapeHtml(currentRow.full_name)}</div><div class="role">${escapeHtml(currentRow.designation||currentRow.role)}</div><div class="grid"><div><span class="label">Employee ID:</span> ${escapeHtml(currentRow.employee_id||'—')}</div><div><span class="label">Role:</span> ${escapeHtml(currentRow.role||'—')}</div><div><span class="label">Mobile:</span> ${escapeHtml(currentRow.mobile||'—')}</div><div><span class="label">Blood Group:</span> ${escapeHtml(currentRow.blood_group||'—')}</div><div><span class="label">Date of Joining:</span> ${escapeHtml(currentRow.date_of_joining||'—')}</div><div><span class="label">Valid:</span> ${escapeHtml(validUntil)}</div></div><div class="barcode">${escapeHtml(currentRow.login_id||currentRow.id)}</div></div></div><button class="print" onclick="window.print()">Print ID Card</button></body></html>`);
+      win.document.write(`<!doctype html><html><head><title>Employee ID Card</title><style>body{font-family:Arial;margin:0;padding:30px;background:#eef6f4}.card{width:360px;height:570px;margin:auto;background:white;border-radius:24px;overflow:hidden;box-shadow:0 12px 35px #0002;border:2px solid #086b58}.head{background:#086b58;color:white;text-align:center;padding:22px}.head h1{margin:0;font-size:25px}.head p{margin:6px 0 0}.photo{width:130px;height:150px;border:4px solid white;border-radius:16px;object-fit:cover;background:#ddd;margin:-4px auto 16px;display:block;box-shadow:0 4px 15px #0003}.body{padding:16px 28px;text-align:center}.name{font-size:25px;font-weight:bold;color:#063f36}.role{font-size:18px;color:#086b58;margin:5px}.grid{text-align:left;margin-top:18px;line-height:1.75}.label{font-weight:bold;color:#555}.foot{position:absolute}.barcode{margin-top:15px;padding:10px;border-top:1px dashed #aaa;font-family:monospace}.print{display:block;margin:20px auto;padding:12px 24px}@media print{.print{display:none}body{background:white;padding:0}}</style></head><body><div class="card"><div class="head"><h1>SAMARA HEALTH CARE LLP</h1><p>Assisted Living Management System</p></div><div class="body">${photoUrl?`<img class="photo" src="${photoUrl}">`:`<div class="photo" style="display:flex;align-items:center;justify-content:center;font-size:48px">SC</div>`}<div class="name">${escapeHtml(formalName(currentRow))}</div><div class="role">${escapeHtml(currentRow.designation||currentRow.role)}</div><div class="grid"><div><span class="label">Employee ID:</span> ${escapeHtml(currentRow.employee_id||'—')}</div><div><span class="label">Role:</span> ${escapeHtml(currentRow.role||'—')}</div><div><span class="label">Mobile:</span> ${escapeHtml(currentRow.mobile||'—')}</div><div><span class="label">Blood Group:</span> ${escapeHtml(currentRow.blood_group||'—')}</div><div><span class="label">Date of Joining:</span> ${escapeHtml(currentRow.date_of_joining||'—')}</div><div><span class="label">Valid:</span> ${escapeHtml(validUntil)}</div></div><div class="barcode">${escapeHtml(currentRow.login_id||currentRow.id)}</div></div></div><button class="print" onclick="window.print()">Print ID Card</button></body></html>`);
       win.document.close();
     }
 
@@ -614,7 +676,7 @@
     const table=h('div',{className:'table-wrap'},h('table',{className:'table'},
       h('thead',null,h('tr',null,['Name','Employee ID','Login ID','Role','Profile Status','Authentication Status','Last sign-in','Actions'].map(x=>h('th',{key:x},x)))),
       h('tbody',null,rows.map(r=>{const enabled=Boolean(r.is_active??r.active),auth=authMap[r.auth_user_id||r.id],status=authenticationStatus(r),managerBlocked=profile.role==='Manager'&&String(r.role).toLowerCase()==='admin';return h('tr',{key:r.id},
-        h('td',null,r.full_name),h('td',null,r.employee_id||'—'),h('td',null,r.login_id),h('td',null,r.role),
+        h('td',null,formalName(r)),h('td',null,r.employee_id||'—'),h('td',null,r.login_id),h('td',null,r.role),
         h('td',null,h('span',{className:`badge ${enabled?'':'off'}`},enabled?'Active':'Disabled')),
         h('td',null,h('span',{className:`badge auth-status ${status.className}`},status.text)),h('td',null,fmt(auth?.last_sign_in_at||r.last_sign_in_at)),
         h('td',null,h('div',{className:'employee-actions'},h('button',{className:'btn btn-secondary',onClick:()=>openDetails(r)},'Personnel File'),h('button',{className:'btn btn-secondary',onClick:()=>openDetails(r)},'Documents'),h('button',{className:'btn btn-secondary',onClick:()=>printIdCard(r)},'Print ID Card'),r.mobile?h('a',{className:'btn btn-whatsapp',href:whatsappWelcomeUrl(r),target:'_blank',rel:'noopener'},'WhatsApp Welcome'):null,h('button',{className:enabled?'btn btn-danger':'btn btn-secondary',disabled:managerBlocked,onClick:()=>toggle(r)},enabled?'Disable':'Enable'),auth?h('button',{className:'btn btn-primary',disabled:managerBlocked,onClick:()=>openReset(r)},'Reset Password'):h('button',{className:'btn btn-warning',disabled:managerBlocked,onClick:()=>openRepair(r)},'Repair Account')))
@@ -622,7 +684,7 @@
     );
 
     const personnelFields=(state,setter,includeLogin=true)=>h(React.Fragment,null,
-      field('Employee Name','full_name',state,setter,true),field('Employee ID (auto-generated if blank)','employee_id',state,setter,false),field('Designation','designation',state,setter,false),selectField('Role','role',state,setter,ROLES),
+      selectField('Title / Salutation','title',state,setter,PERSON_TITLES),field('Employee Name','full_name',state,setter,true),field('Called As / Preferred Name','preferred_name',state,setter,false),field('Employee ID (auto-generated if blank)','employee_id',state,setter,false),field('Designation','designation',state,setter,false),selectField('Role','role',state,setter,ROLES),
       field('Father / Guardian Name','father_guardian_name',state,setter,false),field('Date of Birth','date_of_birth',state,setter,false,'date'),field('Date of Joining','date_of_joining',state,setter,false,'date'),field('Blood Group','blood_group',state,setter,false),
       field('Mobile Number','mobile',state,setter,false),field('Emergency Contact','emergency_contact',state,setter,false),field('Employee Email','employee_email',state,setter,false,'email'),
       field('ID Card Type','id_card_type',state,setter,false),field('ID Card Number','id_card_number',state,setter,false),field('Qualification','qualification',state,setter,false),field('Previous Working Place','previous_workplace',state,setter,false),
@@ -644,7 +706,7 @@
     )):null;
 
     const detailsModal=detailsTarget&&detailsForm?h('div',{className:'modal-backdrop'},h('form',{className:'card modal employee-modal',onSubmit:saveDetails},
-      h('div',{className:'panel-head',style:{alignItems:'flex-start'}},h('div',null,h('h3',null,'Employee Personnel File'),h('small',null,`${detailsTarget.full_name} · ${detailsTarget.login_id}`)),h('div',{style:{display:'flex',gap:'12px',alignItems:'flex-start'}},personnelPhotoPreview(),h('button',{type:'button',className:'close',onClick:()=>{setDetailsTarget(null);setPhotoPreview('');setPhotoFiles([])}},'×'))),
+      h('div',{className:'panel-head',style:{alignItems:'flex-start'}},h('div',null,h('h3',null,'Employee Personnel File'),h('small',null,`${formalName(detailsTarget)} · ${detailsTarget.login_id}`)),h('div',{style:{display:'flex',gap:'12px',alignItems:'flex-start'}},personnelPhotoPreview(),h('button',{type:'button',className:'close',onClick:()=>{setDetailsTarget(null);setPhotoPreview('');setPhotoFiles([])}},'×'))),
       detailsMsg&&h('div',{className:`message ${detailsMsg.startsWith('Employee information')?'success':'error'}`},detailsMsg),
       h('div',{className:'modal-grid'},personnelFields(detailsForm,setDetailsForm,false),uploadFields()),
       h('div',{className:'employee-doc-list'},h('h4',null,'Uploaded Documents'),detailsDocs.length?detailsDocs.map(d=>h('div',{className:'document-row',key:d.id},h('span',null,`${d.document_type}: ${d.file_name}`),h('button',{type:'button',className:'btn btn-secondary',onClick:()=>openDocument(d)},'Open'))):h('p',{className:'small-note'},'No documents uploaded yet.')),
@@ -689,7 +751,7 @@
 
   function Admissions({profile}){
     const today=new Date().toISOString().slice(0,10);
-    const initial={admission_type:'Hospital Discharge',patient_category:'Short Stay',full_name:'',age:'',gender:'Male',mobile:'',address:'',room_no:'',bed_no:'',admission_date:today,hospital_name:'',discharge_date:today,diagnosis:'',treating_doctor:'',doctor_phone:'',referring_doctor:'',referring_source:'',family_doctor:'',attendant_name:'',attendant_phone:'',allergies:'',special_instructions:'',diet_plan:'Normal diet',feeding_instruction:'',billing_package:'Standard Assisted Care',fall_risk:false,pressure_sore_risk:false,aspiration_risk:false,wandering_risk:false,infection_risk:false,seizure_history:false,oxygen_required:false,oxygen_instruction:'',dressing_required:false,dressing_instruction:'',special_nurse_required:false,special_nurse_name:'',special_nurse_shift:'Both shifts / 24-hour coverage',special_nurse_instructions:'',physio_required:false,therapy_type:'',physio_frequency:'Daily',physio_time:'10:00',physio_precautions:''};
+    const initial={admission_type:'Hospital Discharge',patient_category:'Short Stay',title:'',preferred_name:'',full_name:'',age:'',gender:'Male',mobile:'',address:'',room_no:'',bed_no:'',admission_date:today,hospital_name:'',discharge_date:today,diagnosis:'',treating_doctor:'',doctor_phone:'',referring_doctor:'',referring_source:'',family_doctor:'',attendant_name:'',attendant_phone:'',allergies:'',special_instructions:'',diet_plan:'Normal diet',feeding_instruction:'',billing_package:'Standard Assisted Care',fall_risk:false,pressure_sore_risk:false,aspiration_risk:false,wandering_risk:false,infection_risk:false,seizure_history:false,oxygen_required:false,oxygen_instruction:'',dressing_required:false,dressing_instruction:'',special_nurse_required:false,special_nurse_name:'',special_nurse_shift:'Both shifts / 24-hour coverage',special_nurse_instructions:'',physio_required:false,therapy_type:'',physio_frequency:'Daily',physio_time:'10:00',physio_precautions:''};
     const [form,setForm]=React.useState(initial),[meds,setMeds]=React.useState([blankMedicine()]),[care,setCare]=React.useState([blankCare()]),[busy,setBusy]=React.useState(false),[msg,setMsg]=React.useState('');
     const [photoFiles,setPhotoFiles]=React.useState([]),[idFiles,setIdFiles]=React.useState([]),[dischargeFiles,setDischargeFiles]=React.useState([]),[prescriptionFiles,setPrescriptionFiles]=React.useState([]),[reportFiles,setReportFiles]=React.useState([]),[cameraConfig,setCameraConfig]=React.useState(null),[patientPhotoPreview,setPatientPhotoPreview]=React.useState('');
     const [roomBeds,setRoomBeds]=React.useState([]);
@@ -778,7 +840,7 @@
       h('div',{className:'section-card'},h('h4',null,'1. Admission route and patient identity'),h('div',{className:'form-grid'},
         selectField('Admission type','admission_type',form,setForm,['Hospital Discharge','Direct Admission','Doctor Referral','Hospital Transfer']),
         selectField('Patient category','patient_category',form,setForm,['Short Stay','Respite Care','Post-Surgery','Rehabilitation','Stroke Recovery','Dementia Care','Parkinsonism','Palliative Care','Long-Term Assisted Living','Observation','Elderly Care']),
-        field('Patient name','full_name',form,setForm,true),field('Age','age',form,setForm,false,'number'),selectField('Gender','gender',form,setForm,['Male','Female','Other']),field('Mobile','mobile',form,setForm,false,'tel'),textareaField('Address','address',form,setForm,'span-2'),field('Family / attendant name','attendant_name',form,setForm,true),field('Attendant phone','attendant_phone',form,setForm,true,'tel')
+        selectField('Title / Salutation','title',form,setForm,PERSON_TITLES),field('Patient name','full_name',form,setForm,true),field('Called As / Preferred Name','preferred_name',form,setForm,false),field('Age','age',form,setForm,false,'number'),selectField('Gender','gender',form,setForm,['Male','Female','Other']),field('Mobile','mobile',form,setForm,false,'tel'),textareaField('Address','address',form,setForm,'span-2'),field('Family / attendant name','attendant_name',form,setForm,true),field('Attendant phone','attendant_phone',form,setForm,true,'tel')
       ),h('div',{className:'upload-grid'},patientCaptureInput('Patient Photo',photoFiles,setPhotoFiles,'image/*',true),patientCaptureInput('Identity Proof',idFiles,setIdFiles,'image/*,.pdf',false))),
       h('div',{className:'section-card'},h('h4',null,'2. Medical source and records'),h('div',{className:'form-grid'},
         needsHospital&&field('Hospital / previous centre','hospital_name',form,setForm,true),needsHospital&&field('Discharge / transfer date','discharge_date',form,setForm,true,'date'),
@@ -871,7 +933,7 @@
     function openEditPatient(row){
       setEditTarget(row);setEditMsg('');
       setEditForm({...row,
-        full_name:row.full_name||'',age:row.age||'',gender:row.gender||'Male',mobile:row.mobile||'',address:row.address||'',
+        title:row.title||'',preferred_name:row.preferred_name||'',full_name:row.full_name||'',age:row.age||'',gender:row.gender||'Male',mobile:row.mobile||'',address:row.address||'',
         attendant_name:row.attendant_name||'',attendant_phone:row.attendant_phone||'',diagnosis:row.diagnosis||'',
         referring_doctor:row.referring_doctor||'',treating_doctor:row.treating_doctor||'',doctor_phone:row.doctor_phone||'',
         hospital_name:row.hospital_name||'',admission_type:row.admission_type||'Direct Admission',patient_category:row.patient_category||'Short Stay',
@@ -881,7 +943,7 @@
     }
     async function savePatientEdit(e){
       e.preventDefault();setEditBusy(true);setEditMsg('');
-      const allowed=['full_name','age','gender','mobile','address','attendant_name','attendant_phone','diagnosis','referring_doctor','treating_doctor','doctor_phone','hospital_name','admission_type','patient_category','room_no','bed_no','allergies','special_instructions','admission_date','is_active'];
+      const allowed=['title','preferred_name','full_name','age','gender','mobile','address','attendant_name','attendant_phone','diagnosis','referring_doctor','treating_doctor','doctor_phone','hospital_name','admission_type','patient_category','room_no','bed_no','allergies','special_instructions','admission_date','is_active'];
       const payload={};allowed.forEach(k=>payload[k]=editForm[k]===''?null:editForm[k]);payload.age=editForm.age===''?null:Number(editForm.age);
       const {data,error}=await client.from('patients').update(payload).eq('id',editTarget.id).select().single();
       if(error){setEditMsg(error.message||'Unable to update patient');setEditBusy(false);return}
@@ -894,7 +956,7 @@
       const url=await resolvePatientPhoto(row);const win=window.open('','_blank','width=760,height=820');if(!win){alert('Please allow pop-ups to print the Patient ID card.');return}
       const doctor=row.referring_doctor||row.treating_doctor||row.family_doctor||'—';
       const emergencyName=row.attendant_name||'—';const emergencyPhone=row.attendant_phone||row.mobile||'—';
-      win.document.write(`<!doctype html><html><head><title>Patient ID Card</title><style>body{font-family:Arial;margin:0;padding:24px;background:#eef6f4}.card{width:390px;min-height:650px;margin:auto;background:white;border-radius:24px;overflow:hidden;box-shadow:0 12px 35px #0002;border:2px solid #086b58}.head{background:#086b58;color:white;text-align:center;padding:20px}.head h1{margin:0;font-size:24px}.head p{margin:6px 0 0}.photo{width:125px;height:145px;border:4px solid white;border-radius:16px;object-fit:cover;background:#ddd;margin:14px auto 10px;display:block;box-shadow:0 4px 15px #0003}.body{padding:10px 26px 24px;text-align:center}.name{font-size:25px;font-weight:bold;color:#063f36}.category{font-size:16px;color:#086b58;margin:4px 0 12px}.grid{text-align:left;line-height:1.55;font-size:15px}.row{padding:4px 0;border-bottom:1px solid #eef2f1}.label{font-weight:bold;color:#444}.emergency{margin-top:12px;padding:10px;background:#fff4e5;border:1px solid #f2c87d;border-radius:10px}.barcode{margin-top:14px;padding:9px;border-top:1px dashed #aaa;font-family:monospace}.print{display:block;margin:20px auto;padding:12px 24px}@media print{.print{display:none}body{background:white;padding:0}}</style></head><body><div class="card"><div class="head"><h1>SAMARA HEALTH CARE LLP</h1><p>Assisted Living Patient Identity & Emergency Card</p></div><div class="body">${url?`<img class="photo" src="${url}">`:`<div class="photo" style="display:flex;align-items:center;justify-content:center;font-size:48px">SC</div>`}<div class="name">${escapeHtml(row.full_name)}</div><div class="category">${escapeHtml(row.patient_category||'Patient')}</div><div class="grid"><div class="row"><span class="label">Patient ID:</span> ${escapeHtml(row.patient_id||'—')}</div><div class="row"><span class="label">Main Diagnosis:</span> ${escapeHtml(row.diagnosis||'—')}</div><div class="row"><span class="label">Referred / Treating Doctor:</span> ${escapeHtml(doctor)}</div><div class="row"><span class="label">Doctor Mobile:</span> ${escapeHtml(row.doctor_phone||'—')}</div><div class="row"><span class="label">Room / Bed:</span> ${escapeHtml(`${row.room_no||'—'} / ${row.bed_no||'—'}`)}</div><div class="row"><span class="label">Gender / Age:</span> ${escapeHtml(`${row.gender||'—'} / ${row.age||'—'}`)}</div><div class="row"><span class="label">Patient Mobile:</span> ${escapeHtml(row.mobile||'—')}</div><div class="row"><span class="label">Allergies:</span> ${escapeHtml(row.allergies||'None recorded')}</div><div class="emergency"><div><span class="label">Emergency Contact:</span> ${escapeHtml(emergencyName)}</div><div><span class="label">Emergency Mobile:</span> ${escapeHtml(emergencyPhone)}</div></div></div><div class="barcode">${escapeHtml(row.patient_id||row.id)}</div></div></div><button class="print" onclick="window.print()">Print Patient ID Card</button></body></html>`);win.document.close();
+      win.document.write(`<!doctype html><html><head><title>Patient ID Card</title><style>body{font-family:Arial;margin:0;padding:24px;background:#eef6f4}.card{width:390px;min-height:650px;margin:auto;background:white;border-radius:24px;overflow:hidden;box-shadow:0 12px 35px #0002;border:2px solid #086b58}.head{background:#086b58;color:white;text-align:center;padding:20px}.head h1{margin:0;font-size:24px}.head p{margin:6px 0 0}.photo{width:125px;height:145px;border:4px solid white;border-radius:16px;object-fit:cover;background:#ddd;margin:14px auto 10px;display:block;box-shadow:0 4px 15px #0003}.body{padding:10px 26px 24px;text-align:center}.name{font-size:25px;font-weight:bold;color:#063f36}.category{font-size:16px;color:#086b58;margin:4px 0 12px}.grid{text-align:left;line-height:1.55;font-size:15px}.row{padding:4px 0;border-bottom:1px solid #eef2f1}.label{font-weight:bold;color:#444}.emergency{margin-top:12px;padding:10px;background:#fff4e5;border:1px solid #f2c87d;border-radius:10px}.barcode{margin-top:14px;padding:9px;border-top:1px dashed #aaa;font-family:monospace}.print{display:block;margin:20px auto;padding:12px 24px}@media print{.print{display:none}body{background:white;padding:0}}</style></head><body><div class="card"><div class="head"><h1>SAMARA HEALTH CARE LLP</h1><p>Assisted Living Patient Identity & Emergency Card</p></div><div class="body">${url?`<img class="photo" src="${url}">`:`<div class="photo" style="display:flex;align-items:center;justify-content:center;font-size:48px">SC</div>`}<div class="name">${escapeHtml(formalName(row))}</div><div class="category">${escapeHtml(row.patient_category||'Patient')}</div><div class="grid"><div class="row"><span class="label">Patient ID:</span> ${escapeHtml(row.patient_id||'—')}</div><div class="row"><span class="label">Main Diagnosis:</span> ${escapeHtml(row.diagnosis||'—')}</div><div class="row"><span class="label">Referred / Treating Doctor:</span> ${escapeHtml(doctor)}</div><div class="row"><span class="label">Doctor Mobile:</span> ${escapeHtml(row.doctor_phone||'—')}</div><div class="row"><span class="label">Room / Bed:</span> ${escapeHtml(`${row.room_no||'—'} / ${row.bed_no||'—'}`)}</div><div class="row"><span class="label">Gender / Age:</span> ${escapeHtml(`${row.gender||'—'} / ${row.age||'—'}`)}</div><div class="row"><span class="label">Patient Mobile:</span> ${escapeHtml(row.mobile||'—')}</div><div class="row"><span class="label">Allergies:</span> ${escapeHtml(row.allergies||'None recorded')}</div><div class="emergency"><div><span class="label">Emergency Contact:</span> ${escapeHtml(emergencyName)}</div><div><span class="label">Emergency Mobile:</span> ${escapeHtml(emergencyPhone)}</div></div></div><div class="barcode">${escapeHtml(row.patient_id||row.id)}</div></div></div><button class="print" onclick="window.print()">Print Patient ID Card</button></body></html>`);win.document.close();
     }
     function duplicateCount(row){const name=String(row.full_name||'').trim().toLowerCase();const mobile=String(row.mobile||row.attendant_phone||'').replace(/\D/g,'');return rows.filter(x=>x.id!==row.id&&String(x.full_name||'').trim().toLowerCase()===name&&(!mobile||String(x.mobile||x.attendant_phone||'').replace(/\D/g,'')===mobile)).length}
     function billingSummary(list){return (list||[]).reduce((a,x)=>{const n=Number(x.amount||0);if(x.transaction_type==='Charge')a.charges+=n;else if(x.transaction_type==='Payment')a.payments+=n;else if(x.transaction_type==='Discount')a.discounts+=n;else if(x.transaction_type==='Refund')a.refunds+=n;return a},{charges:0,payments:0,discounts:0,refunds:0})}
@@ -912,10 +974,10 @@
       h('div',{className:'card panel'},
         h('div',{className:'panel-head'},h('div',null,h('h3',null,'Patient Master'),h('small',null,'Single source for identity, admission, nursing, medicines, diet, documents, billing and recovery'))),
         duplicateRows.length?h('div',{className:'message warning'},`${duplicateRows.length} record(s) may be duplicates. Review matching names/mobile numbers before entering new care data.`):null,
-        h('div',{className:'table-wrap'},h('table',{className:'table'},h('thead',null,h('tr',null,['Photo','Patient ID','Patient','Admission Type','Category','Room/Bed','Status','Action'].map(x=>h('th',{key:x},x)))),h('tbody',null,rows.map(r=>h('tr',{key:r.id,className:duplicateCount(r)?'duplicate-row':''},h('td',null,r.photo_storage_path?h('span',{className:'photo-dot'},'Photo'):'—'),h('td',null,r.patient_id||'—'),h('td',null,h('button',{type:'button',className:'patient-name-link',onClick:()=>openPatient(r)},r.full_name),duplicateCount(r)?h('div',{className:'small-note danger-text'},'Possible duplicate'):null),h('td',null,r.admission_type||'—'),h('td',null,r.patient_category||'—'),h('td',null,r.room_no&&r.bed_no?`${r.room_no}-${r.bed_no}`:h('span',{className:'pill warning'},'Unassigned')),h('td',null,h('span',{className:`badge ${r.is_active===false?'off':''}`},r.is_active===false?'Inactive':'Active')),h('td',null,h('div',{className:'employee-actions'},h('button',{className:'btn btn-secondary',onClick:()=>openPatient(r)},'Open Patient File'),h('button',{className:'btn btn-secondary',onClick:()=>openEditPatient(r)},'Edit'),h('button',{className:'btn btn-secondary',onClick:()=>printPatientIdCard(r)},'Print ID Card'))))),rows.length===0&&h('tr',null,h('td',{colSpan:8,className:'empty'},'No patients registered')))))
+        h('div',{className:'table-wrap'},h('table',{className:'table'},h('thead',null,h('tr',null,['Photo','Patient ID','Patient','Admission Type','Category','Room/Bed','Status','Action'].map(x=>h('th',{key:x},x)))),h('tbody',null,rows.map(r=>h('tr',{key:r.id,className:duplicateCount(r)?'duplicate-row':''},h('td',null,r.photo_storage_path?h('span',{className:'photo-dot'},'Photo'):'—'),h('td',null,r.patient_id||'—'),h('td',null,h('button',{type:'button',className:'patient-name-link',onClick:()=>openPatient(r)},formalName(r)),duplicateCount(r)?h('div',{className:'small-note danger-text'},'Possible duplicate'):null),h('td',null,r.admission_type||'—'),h('td',null,r.patient_category||'—'),h('td',null,r.room_no&&r.bed_no?`${r.room_no}-${r.bed_no}`:h('span',{className:'pill warning'},'Unassigned')),h('td',null,h('span',{className:`badge ${r.is_active===false?'off':''}`},r.is_active===false?'Inactive':'Active')),h('td',null,h('div',{className:'employee-actions'},h('button',{className:'btn btn-secondary',onClick:()=>openPatient(r)},'Open Patient File'),h('button',{className:'btn btn-secondary',onClick:()=>openEditPatient(r)},'Edit'),h('button',{className:'btn btn-secondary',onClick:()=>printPatientIdCard(r)},'Print ID Card'))))),rows.length===0&&h('tr',null,h('td',{colSpan:8,className:'empty'},'No patients registered')))))
       ),
       selected&&details&&h('div',{className:'modal-backdrop'},h('div',{className:'card modal patient-master-modal'},
-        h('div',{className:'panel-head patient-master-header'},h('div',{className:'patient-head'},photoUrl?h('img',{src:photoUrl,className:'patient-photo'}):h('div',{className:'patient-photo patient-photo-placeholder'},'SC'),h('div',null,h('h3',null,selected.full_name),h('small',null,`${selected.patient_id||'—'} · ${selected.admission_type||''} · ${selected.patient_category||''}`),h('div',{className:'patient-header-badges'},h('span',{className:'badge'},selected.is_active===false?'Inactive':'Active'),selected.room_no&&selected.bed_no?h('span',{className:'pill'},`Room ${selected.room_no} · Bed ${selected.bed_no}`):h('span',{className:'pill warning'},'Room not assigned'),selected.special_nurse_required?h('span',{className:'pill warning'},`Special nurse: ${selected.special_nurse_name||'Required'}`):null))),h('div',{className:'employee-actions'},h('button',{className:'btn btn-secondary',onClick:()=>openEditPatient(selected)},'Edit Patient'),h('button',{className:'close',onClick:()=>{setSelected(null);setDetails(null);setPhotoUrl('')}},'×'))),
+        h('div',{className:'panel-head patient-master-header'},h('div',{className:'patient-head'},photoUrl?h('img',{src:photoUrl,className:'patient-photo'}):h('div',{className:'patient-photo patient-photo-placeholder'},'SC'),h('div',null,h('h3',null,formalName(selected)),h('small',null,`${selected.patient_id||'—'} · ${selected.admission_type||''} · ${selected.patient_category||''}`),h('div',{className:'patient-header-badges'},h('span',{className:'badge'},selected.is_active===false?'Inactive':'Active'),selected.room_no&&selected.bed_no?h('span',{className:'pill'},`Room ${selected.room_no} · Bed ${selected.bed_no}`):h('span',{className:'pill warning'},'Room not assigned'),selected.special_nurse_required?h('span',{className:'pill warning'},`Special nurse: ${selected.special_nurse_name||'Required'}`):null))),h('div',{className:'employee-actions'},h('button',{className:'btn btn-secondary',onClick:()=>openEditPatient(selected)},'Edit Patient'),h('button',{className:'close',onClick:()=>{setSelected(null);setDetails(null);setPhotoUrl('')}},'×'))),
         h('div',{className:'patient-tab-bar'},tabButton('Overview'),tabButton('Documents',details.docs.length),tabButton('Medicines',details.meds.length),tabButton('Nursing',details.careLogs.length),tabButton('Vitals',details.vitals.length),tabButton('Physiotherapy',details.physioSessions.length),tabButton('Diet',details.meals.length),tabButton('Billing',details.billing.length),tabButton('Timeline',details.recovery.length+details.incidents.length)),
         h('div',{className:'patient-tab-content'},
           tab==='Overview'&&h('div',{className:'tabs-grid'},
@@ -938,7 +1000,7 @@
         h('div',{className:'panel-head'},h('div',null,h('h3',null,'Edit Patient Information'),h('small',null,`${editTarget.patient_id||'—'} · Correct duplicate or wrongly entered details`)),h('button',{type:'button',className:'close',onClick:()=>{setEditTarget(null);setEditForm(null)}},'×')),
         editMsg&&h('div',{className:`message ${editMsg.startsWith('Patient information')?'success':'error'}`},editMsg),
         h('div',{className:'modal-grid'},
-          field('Patient Name','full_name',editForm,setEditForm,true),field('Age','age',editForm,setEditForm,false,'number'),selectField('Gender','gender',editForm,setEditForm,['Male','Female','Other']),field('Patient Mobile','mobile',editForm,setEditForm,false,'tel'),
+          selectField('Title / Salutation','title',editForm,setEditForm,PERSON_TITLES),field('Patient Name','full_name',editForm,setEditForm,true),field('Called As / Preferred Name','preferred_name',editForm,setEditForm,false),field('Age','age',editForm,setEditForm,false,'number'),selectField('Gender','gender',editForm,setEditForm,['Male','Female','Other']),field('Patient Mobile','mobile',editForm,setEditForm,false,'tel'),
           field('Emergency Contact Name','attendant_name',editForm,setEditForm,false),field('Emergency Contact Number','attendant_phone',editForm,setEditForm,false,'tel'),
           field('Main Diagnosis','diagnosis',editForm,setEditForm,false),field('Referred By Doctor','referring_doctor',editForm,setEditForm,false),field('Treating Doctor','treating_doctor',editForm,setEditForm,false),field('Doctor Mobile','doctor_phone',editForm,setEditForm,false,'tel'),
           field('Hospital / Previous Centre','hospital_name',editForm,setEditForm,false),selectField('Admission Type','admission_type',editForm,setEditForm,['Hospital Discharge','Direct Admission','Doctor Referral','Hospital Transfer']),
@@ -958,7 +1020,7 @@
     React.useEffect(()=>{load();const ch=client.channel(`active-patients-${Math.random()}`).on('postgres_changes',{event:'*',schema:'public',table:'patients'},load).subscribe();return()=>client.removeChannel(ch)},[load]);
     return [rows,load];
   }
-  function patientSelect(rows,value,onChange,label='Patient'){return h('div',{className:'field'},h('label',null,label),h('select',{value,onChange:e=>onChange(e.target.value),required:true},h('option',{value:''},'Select patient'),rows.map(p=>h('option',{key:p.id,value:p.id},`${p.patient_id||'NO-ID'} · ${p.full_name} · ${p.room_no&&p.bed_no?`Room ${p.room_no}-${p.bed_no}`:'Room unassigned'}`))))}
+  function patientSelect(rows,value,onChange,label='Patient'){return h('div',{className:'field'},h('label',null,label),h('select',{value,onChange:e=>onChange(e.target.value),required:true},h('option',{value:''},'Select patient'),rows.map(p=>h('option',{key:p.id,value:p.id},`${p.patient_id||'NO-ID'} · ${formalName(p)} · ${p.room_no&&p.bed_no?`Room ${p.room_no}-${p.bed_no}`:'Room unassigned'}`))))}
   function roomBedSelect(rows,roomNo,bedNo,onChange,required=false,currentPatientId=''){
     const value=roomNo&&bedNo?`${roomNo}|||${bedNo}`:'';
     const sorted=[...(rows||[])].sort((a,b)=>String(a.room_no).localeCompare(String(b.room_no),undefined,{numeric:true})||String(a.bed_no).localeCompare(String(b.bed_no)));

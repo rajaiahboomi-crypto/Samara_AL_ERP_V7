@@ -1,8 +1,8 @@
-const CACHE = 'samara-v9-5-role-persistence';
+const CACHE = 'samara-erp-1-0-1-title-fields';
 const SHELL = [
-  './', './index.html', './styles.css?v=9.0.0', './app.js?v=9.0.0',
-  './bootstrap-error.js?v=9.0.0', './health-check.js?v=9.0.0',
-  './config.js?v=9.0.0', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.0.1', './app.js?v=1.0.1',
+  './bootstrap-error.js?v=1.0.1', './health-check.js?v=1.0.1',
+  './config.js?v=1.0.1', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', event => {

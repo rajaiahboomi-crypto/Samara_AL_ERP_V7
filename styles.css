@@ -300,3 +300,5 @@ body{font-size:17px;line-height:1.42}
   :root{font-size:16px}.login-v3-shell{padding:0}.login-v3-frame{width:100%;min-height:100vh;border-radius:0;grid-template-columns:1fr}.login-v3-hero{padding:34px 28px}.login-v3-hero h1{font-size:34px}.login-v3-description{font-size:17px;margin-bottom:24px}.login-v3-features{font-size:16px;gap:10px}.login-v3-form{padding:38px 26px}.login-v3-form h2{font-size:31px}
   .content{padding:13px}.panel{padding:14px}.table th,.table td{font-size:15px;padding:8px 9px}.btn{font-size:16px}.field input,.field select,.field textarea{font-size:16px}
 }
+
+.first-login-card{max-width:620px}.first-login-card h1{font-size:30px;line-height:1.2}.first-login-card p{font-size:17px;line-height:1.55}
