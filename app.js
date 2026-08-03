@@ -315,7 +315,7 @@ Caring with Compassion. Living with Dignity.`;
           h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter login ID'})),
           h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true,placeholder:'Enter password'})),
           h('button',{className:'btn btn-primary full login-v3-button',disabled:busy},busy?'Signing in…':'Sign in'),
-          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.3')
+          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.4')
         )
       )
     );
@@ -331,7 +331,7 @@ Caring with Compassion. Living with Dignity.`;
     },[page,allowed.join('|')]);
     function toggle(title){setOpenSection(current=>current===title?'':title)}
     return h('aside',{className:'sidebar'},
-      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.3'))),
+      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.4'))),
       h('nav',{className:'nav-scroll'},sections.map(section=>{
         const expanded=openSection===section.title;
         return h('div',{className:`nav-section ${expanded?'expanded':''}`,key:section.title},
@@ -931,6 +931,8 @@ Caring with Compassion. Living with Dignity.`;
     const [rows,setRows]=React.useState([]),[selected,setSelected]=React.useState(null),[details,setDetails]=React.useState(null),[photoUrl,setPhotoUrl]=React.useState(''),[tab,setTab]=React.useState('Overview');
     const [editTarget,setEditTarget]=React.useState(null),[editForm,setEditForm]=React.useState(null),[editBusy,setEditBusy]=React.useState(false),[editMsg,setEditMsg]=React.useState('');
     const [roomBeds,setRoomBeds]=React.useState([]);
+    const [editDocs,setEditDocs]=React.useState([]),[editPhotoUrl,setEditPhotoUrl]=React.useState(''),[editCameraConfig,setEditCameraConfig]=React.useState(null);
+    const [editUploads,setEditUploads]=React.useState({photo:[],identity:[],prescription:[],discharge:[],reports:[],other:[]});
     async function load(){const {data,error}=await client.from('patients').select('*').order('created_at',{ascending:false});if(error)console.error(error);setRows(data||[])}
     React.useEffect(()=>{const loadRooms=async()=>{const {data}=await client.from('room_beds').select('*').order('room_no').order('bed_no');setRoomBeds(data||[])};load();loadRooms();const ch=client.channel('patients-live').on('postgres_changes',{event:'*',schema:'public',table:'patients'},load).on('postgres_changes',{event:'*',schema:'public',table:'room_beds'},loadRooms).subscribe();return()=>client.removeChannel(ch)},[]);
     async function resolvePatientPhoto(p){
@@ -965,8 +967,15 @@ Caring with Compassion. Living with Dignity.`;
       setPhotoUrl(url);
     }
     async function openDoc(doc){if(doc.storage_path){const {data,error}=await client.storage.from('patient-documents').createSignedUrl(doc.storage_path,180);if(error)return alert(error.message);window.open(data.signedUrl,'_blank','noopener')}else if(doc.document_url)window.open(doc.document_url,'_blank','noopener')}
-    function openEditPatient(row){
-      setEditTarget(row);setEditMsg('');
+    async function loadEditMedia(row){
+      const [{data:docs},url]=await Promise.all([
+        client.from('patient_documents').select('*').eq('patient_id',row.id).order('created_at',{ascending:false}),
+        resolvePatientPhoto(row)
+      ]);
+      setEditDocs(docs||[]);setEditPhotoUrl(url||'');
+    }
+    async function openEditPatient(row){
+      setEditTarget(row);setEditMsg('');setEditUploads({photo:[],identity:[],prescription:[],discharge:[],reports:[],other:[]});setEditDocs([]);setEditPhotoUrl('');
       setEditForm({...row,
         title:row.title||'',full_name:row.full_name||'',age:row.age||'',gender:row.gender||'Male',mobile:row.mobile||'',address:row.address||'',
         attendant_name:row.attendant_name||'',attendant_phone:row.attendant_phone||'',diagnosis:row.diagnosis||'',
@@ -975,6 +984,33 @@ Caring with Compassion. Living with Dignity.`;
         room_no:row.room_no||'',bed_no:row.bed_no||'',allergies:row.allergies||'',special_instructions:row.special_instructions||'',
         admission_date:row.admission_date||'',is_active:row.is_active!==false
       });
+      await loadEditMedia(row);
+    }
+    function addEditFiles(key,files,replace=false){
+      const picked=Array.from(files||[]);setEditUploads(prev=>({...prev,[key]:replace?picked.slice(0,1):[...(prev[key]||[]),...picked]}));
+      if(key==='photo'&&picked[0]){if(editPhotoUrl&&editPhotoUrl.startsWith('blob:'))URL.revokeObjectURL(editPhotoUrl);setEditPhotoUrl(URL.createObjectURL(picked[0]))}
+    }
+    function editCaptureField(label,key,accept='image/*,.pdf',photo=false){
+      const files=editUploads[key]||[];
+      return h('div',{className:'field capture-field'},h('label',null,label),h('div',{className:'capture-actions'},
+        h('label',{className:'btn btn-secondary file-button'},'Upload File',h('input',{type:'file',multiple:!photo,accept,onChange:e=>addEditFiles(key,e.target.files,photo)})),
+        h('label',{className:'btn btn-secondary file-button'},'Mobile Camera',h('input',{type:'file',multiple:!photo,accept:'image/*',capture:photo?'user':'environment',onChange:e=>addEditFiles(key,e.target.files,photo)})),
+        h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setEditCameraConfig({title:label,facingMode:photo?'user':'environment',filePrefix:photo?'patient-photo':'patient-document',onCapture:file=>addEditFiles(key,[file],photo)})},'Webcam')
+      ),h('small',null,files.length?`${files.length} new file(s) selected`:'No new file selected'));
+    }
+    async function uploadEditDocument(patientId,file,type,isPhoto=false){
+      const safe=String(file.name||type).replace(/[^a-zA-Z0-9._-]/g,'_');const path=`${patientId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safe}`;
+      const {error:up}=await client.storage.from('patient-documents').upload(path,file,{upsert:false,contentType:file.type||undefined});if(up)throw up;
+      const {data:{user}}=await client.auth.getUser();
+      const {error:doc}=await client.from('patient_documents').insert({patient_id:patientId,document_type:type,document_name:file.name||type,storage_path:path,mime_type:file.type||null,file_size:file.size||null,uploaded_by:user?.id||null,is_verified:true});if(doc)throw doc;
+      if(isPhoto){const {error:pe}=await client.from('patients').update({photo_storage_path:path}).eq('id',patientId);if(pe)throw pe}
+    }
+    async function deleteEditDocument(doc){
+      if(!confirm(`Delete ${doc.document_name||doc.document_type||'this document'}?`))return;
+      if(doc.storage_path){const {error:se}=await client.storage.from('patient-documents').remove([doc.storage_path]);if(se)return alert(se.message)}
+      const {error}=await client.from('patient_documents').delete().eq('id',doc.id);if(error)return alert(error.message);
+      if(['Patient Photo','Patient Photograph'].includes(doc.document_type)){const next=editDocs.find(x=>x.id!==doc.id&&['Patient Photo','Patient Photograph'].includes(x.document_type));await client.from('patients').update({photo_storage_path:next?.storage_path||null}).eq('id',editTarget.id)}
+      await loadEditMedia(editTarget);await load();
     }
     async function savePatientEdit(e){
       e.preventDefault();setEditBusy(true);setEditMsg('');
@@ -982,9 +1018,17 @@ Caring with Compassion. Living with Dignity.`;
       const payload={};allowed.forEach(k=>payload[k]=editForm[k]===''?null:editForm[k]);payload.age=editForm.age===''?null:Number(editForm.age);
       const {data,error}=await client.from('patients').update(payload).eq('id',editTarget.id).select().single();
       if(error){setEditMsg(error.message||'Unable to update patient');setEditBusy(false);return}
-      setEditMsg('Patient information updated successfully.');await load();
+      try{
+        for(const f of editUploads.photo)await uploadEditDocument(editTarget.id,f,'Patient Photo',true);
+        for(const f of editUploads.identity)await uploadEditDocument(editTarget.id,f,'Identity Proof');
+        for(const f of editUploads.prescription)await uploadEditDocument(editTarget.id,f,'Current Prescription');
+        for(const f of editUploads.discharge)await uploadEditDocument(editTarget.id,f,'Discharge / Transfer Summary');
+        for(const f of editUploads.reports)await uploadEditDocument(editTarget.id,f,'Lab / Scan / Test Report');
+        for(const f of editUploads.other)await uploadEditDocument(editTarget.id,f,'Other Medical Document');
+      }catch(uploadError){setEditMsg(`Patient details saved, but media upload failed: ${uploadError.message}`);setEditBusy(false);return}
+      setEditMsg('Patient information and documents updated successfully.');await load();await loadEditMedia({...data,id:editTarget.id});
       if(selected?.id===editTarget.id){setSelected(data);setTimeout(()=>openPatient(data),0)}
-      setTimeout(()=>{setEditTarget(null);setEditForm(null)},700);setEditBusy(false);
+      setEditUploads({photo:[],identity:[],prescription:[],discharge:[],reports:[],other:[]});setEditBusy(false);
     }
 
     async function printPatientIdCard(row){
@@ -1044,8 +1088,16 @@ Caring with Compassion. Living with Dignity.`;
           field('Known Allergies','allergies',editForm,setEditForm,false),textareaField('Residential Address','address',editForm,setEditForm,'span-2'),textareaField('Special Instructions / Precautions','special_instructions',editForm,setEditForm,'span-2'),
           h('label',{className:'check-card span-2'},h('input',{type:'checkbox',checked:editForm.is_active!==false,onChange:e=>setEditForm({...editForm,is_active:e.target.checked})}),h('span',null,'Active Patient Record'))
         ),
-        h('button',{className:'btn btn-primary full',disabled:editBusy},editBusy?'Saving changes…':'Save Patient Changes')
-      ))
+        h('div',{className:'section-card patient-edit-media'},
+          h('div',{className:'panel-head'},h('div',null,h('h4',null,'Patient Photo and Medical Documents'),h('small',null,'Upload a file, use the mobile camera, or capture through the webcam.'))),
+          h('div',{className:'patient-edit-photo-row'},editPhotoUrl?h('img',{src:editPhotoUrl,className:'patient-photo',alt:'Patient photo'}):h('div',{className:'patient-photo patient-photo-placeholder'},'SC'),editCaptureField('Patient Photo','photo','image/*',true)),
+          h('div',{className:'upload-grid'},editCaptureField('Identity Proof','identity'),editCaptureField('Current Prescription','prescription'),editCaptureField('Discharge / Transfer Summary','discharge'),editCaptureField('Lab / Scan / Test Reports','reports'),editCaptureField('Other Medical Documents','other')),
+          h('h4',{style:{marginTop:'18px'}},'Uploaded Documents'),
+          editDocs.length?h('div',{className:'uploaded-documents-list'},editDocs.map(doc=>h('div',{className:'timeline-item',key:doc.id},h('div',null,h('strong',null,doc.document_type||'Document'),h('span',null,doc.document_name||'File')),h('div',{className:'employee-actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:()=>openDoc(doc)},'Open'),h('button',{type:'button',className:'btn btn-danger',onClick:()=>deleteEditDocument(doc)},'Delete'))))):h('p',{className:'small-note'},'No documents uploaded yet.')
+        ),
+        h('button',{className:'btn btn-primary full',disabled:editBusy},editBusy?'Saving changes…':'Save Patient Information & Documents')
+      )),
+      editCameraConfig?h(CameraCaptureModal,{config:editCameraConfig,onClose:()=>setEditCameraConfig(null)}):null
     );
   }
 
