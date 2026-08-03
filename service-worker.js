@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.0.25-consolidated-compatibility';
+const CACHE = 'samara-erp-1.1.0-consolidated-compatibility';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.0.25', './app.js?v=1.0.25',
-  './bootstrap-error.js?v=1.0.25', './health-check.js?v=1.0.25',
-  './config.js?v=1.0.25', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.1.0', './app.js?v=1.1.0',
+  './bootstrap-error.js?v=1.1.0', './health-check.js?v=1.1.0',
+  './config.js?v=1.1.0', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', event => {
