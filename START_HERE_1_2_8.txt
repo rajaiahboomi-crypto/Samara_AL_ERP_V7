@@ -1,0 +1,19 @@
+SAMARA CARE ERP 1.2.8 — OPEN PATIENT FILE PHOTO FIX
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+- styles.css
+
+No Supabase SQL is required.
+
+Correction:
+- Patient photo is restricted to a compact profile size.
+- Patient identity, badges, tabs and clinical details remain visible.
+- Large source photographs cannot expand across the modal.
+- Desktop and mobile layouts are both corrected.
+- Admin/Manager edit functions and Nurse/Caregiver view-only access remain unchanged.
+
+After uploading, close all ERP windows and reopen.
+Tap “App update available” if shown.

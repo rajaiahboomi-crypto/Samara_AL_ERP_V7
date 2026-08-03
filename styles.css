@@ -928,3 +928,79 @@ body{-webkit-tap-highlight-color:transparent}
     padding-left:34px !important;
   }
 }
+
+/* Samara Care ERP 1.2.8 — Open Patient File compact photo correction */
+.patient-master-modal{
+  overflow:auto;
+}
+.patient-master-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+}
+.patient-master-header .patient-head{
+  display:flex;
+  align-items:flex-start;
+  gap:18px;
+  min-width:0;
+  flex:1 1 auto;
+}
+.patient-master-header .patient-photo{
+  display:block;
+  width:150px !important;
+  height:170px !important;
+  min-width:150px;
+  max-width:150px !important;
+  max-height:170px !important;
+  object-fit:cover !important;
+  object-position:center;
+  border-radius:16px;
+  border:2px solid #d7e7e2;
+  background:#eef6f4;
+  box-shadow:0 4px 14px rgba(6,69,57,.12);
+  flex:0 0 150px;
+}
+.patient-master-header .patient-head > div:last-child{
+  min-width:0;
+  padding-top:4px;
+}
+.patient-master-header .patient-head h3{
+  margin:0 0 6px;
+}
+.patient-master-header .employee-actions{
+  flex:0 0 auto;
+}
+.patient-master-header + .patient-tab-bar{
+  top:198px;
+}
+.patient-tab-content{
+  min-height:280px;
+}
+@media (max-width:760px){
+  .patient-master-header{
+    position:relative;
+    top:auto;
+    flex-direction:column;
+  }
+  .patient-master-header .patient-head{
+    width:100%;
+    gap:14px;
+  }
+  .patient-master-header .patient-photo{
+    width:96px !important;
+    height:112px !important;
+    min-width:96px;
+    max-width:96px !important;
+    max-height:112px !important;
+    flex-basis:96px;
+    border-radius:14px;
+  }
+  .patient-master-header .employee-actions{
+    width:100%;
+    justify-content:flex-end;
+  }
+  .patient-master-header + .patient-tab-bar{
+    top:0;
+  }
+}
