@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.1.6';
+  const APP_VERSION = '1.1.7';
   const APP_BUILD_DATE = '03-Aug-2026 21:10 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
@@ -196,6 +196,7 @@ Caring with Compassion. Living with Dignity.`;
     const [profile,setProfile]=React.useState(null);
     const [loading,setLoading]=React.useState(true);
     const [page,setPage]=React.useState('Dashboard');
+    const [mobileDrawerOpen,setMobileDrawerOpen]=React.useState(false);
     const [authMessage,setAuthMessage]=React.useState('');
     const [recoveryMode,setRecoveryMode]=React.useState(false);
 
@@ -269,6 +270,10 @@ Caring with Compassion. Living with Dignity.`;
       h(Sidebar,{profile,page,setPage,allowed}),
       h('main',{className:'main'},
         h('header',{className:'topbar'},
+          h('div',{className:'mobile-brand-header'},
+            h('div',{className:'mobile-brand-logo'},'SC'),
+            h('strong',null,'Samara Care ERP')
+          ),
           h('button',{type:'button',className:'mobile-home-button','aria-label':'Go to dashboard',title:'Dashboard',onClick:()=>setPage(ROLE_HOME[profile.role]||allowed[0])},'⌂'),
           h('h2',null,displayNavLabel(page,profile.role)),
           h(GlobalSearch,{onNavigate:setPage,profile}),
@@ -298,7 +303,8 @@ Caring with Compassion. Living with Dignity.`;
           page==='Notifications'&&h(Notifications,{profile}),
           page==='Audit Trail'&&h(AuditTrail)
         ),
-        h(MobileBottomNav,{page,setPage,allowed,profile})
+        h(MobileBottomNav,{page,setPage,allowed,profile,onOpenMenu:()=>setMobileDrawerOpen(true)}),
+        mobileDrawerOpen&&h(MobileNavigationDrawer,{profile,allowed,page,onNavigate:(next)=>{setPage(next);setMobileDrawerOpen(false)},onClose:()=>setMobileDrawerOpen(false)})
       )
     );
   }
@@ -498,7 +504,7 @@ Caring with Compassion. Living with Dignity.`;
   }
 
 
-  function MobileBottomNav({page,setPage,allowed,profile}){
+  function MobileBottomNav({page,setPage,allowed,profile,onOpenMenu}){
     const home=ROLE_HOME[profile.role]||allowed[0]||'Dashboard';
     const choose=(preferred,fallbacks=[])=>[preferred,...fallbacks].find(item=>allowed.includes(item));
     const patients=choose('Patients');
@@ -512,14 +518,43 @@ Caring with Compassion. Living with Dignity.`;
       work&&{page:work,icon:'✚',label:CLINICAL_ROLES.includes(profile.role)?'Tasks':'Work'},
       reports&&{page:reports,icon:'▥',label:'Reports'}
     ].filter(Boolean);
-    function openMenu(){
-      const select=document.querySelector('.mobile-menu select');
-      document.querySelector('.mobile-menu')?.scrollIntoView({behavior:'smooth',block:'nearest'});
-      if(select){setTimeout(()=>{select.focus();select.click();},180)}
-    }
     return h('nav',{className:'mobile-bottom-nav','aria-label':'Mobile navigation'},
       items.map(item=>h('button',{type:'button',key:item.label,className:page===item.page?'active':'',onClick:()=>setPage(item.page),'aria-label':item.label},h('span',{className:'mobile-nav-icon'},item.icon),h('span',null,item.label))),
-      h('button',{type:'button',onClick:openMenu,'aria-label':'Open all modules'},h('span',{className:'mobile-nav-icon'},'☰'),h('span',null,'Menu'))
+      h('button',{type:'button',onClick:onOpenMenu,'aria-label':'Open all modules'},h('span',{className:'mobile-nav-icon'},'☰'),h('span',null,'Menu'))
+    );
+  }
+
+
+  function MobileNavigationDrawer({profile,allowed,page,onNavigate,onClose}){
+    const sections=sectionsFor(allowed,profile.role);
+    const home=ROLE_HOME[profile.role]||allowed[0]||'Dashboard';
+    React.useEffect(()=>{
+      const onKey=e=>{if(e.key==='Escape')onClose()};
+      document.addEventListener('keydown',onKey);
+      document.body.classList.add('mobile-drawer-open');
+      return()=>{document.removeEventListener('keydown',onKey);document.body.classList.remove('mobile-drawer-open')};
+    },[]);
+    async function signOut(){
+      if(!window.confirm('Are you sure you want to sign out?'))return;
+      onClose();
+      await client.auth.signOut();
+    }
+    return h('div',{className:'mobile-drawer-layer',role:'presentation',onClick:e=>{if(e.target===e.currentTarget)onClose()}},
+      h('aside',{className:'mobile-nav-drawer',role:'dialog','aria-modal':'true','aria-label':'Samara Care mobile menu'},
+        h('div',{className:'mobile-drawer-head'},
+          h('div',{className:'mobile-drawer-brand'},h('div',{className:'mobile-brand-logo'},'SC'),h('div',null,h('strong',null,'Samara Care ERP'),h('small',null,`Version ${APP_VERSION}`))),
+          h('button',{type:'button',className:'mobile-drawer-close',onClick:onClose,'aria-label':'Close menu'},'×')
+        ),
+        h('div',{className:'mobile-drawer-user'},h('strong',null,formalName(profile)),h('span',{className:'badge'},profile.role)),
+        h('button',{type:'button',className:`mobile-drawer-home ${page===home?'active':''}`,onClick:()=>onNavigate(home)},'⌂  Dashboard'),
+        h('div',{className:'mobile-drawer-scroll'},sections.map(section=>h('section',{className:'mobile-drawer-section',key:section.title},
+          h('h4',null,section.title),
+          section.items.map(item=>h('button',{type:'button',key:item,className:page===item?'active':'',onClick:()=>onNavigate(item)},displayNavLabel(item,profile.role)))
+        ))),
+        h('div',{className:'mobile-drawer-footer'},
+          h('button',{type:'button',className:'mobile-signout-button',onClick:signOut},'⇥  Sign Out')
+        )
+      )
     );
   }
 

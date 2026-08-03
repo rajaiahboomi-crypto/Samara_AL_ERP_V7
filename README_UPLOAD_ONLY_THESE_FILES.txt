@@ -1,6 +1,6 @@
-SAMARA CARE ERP 1.1.6 - MOBILE NAVIGATION
+SAMARA CARE ERP 1.1.7 — BRANDED MOBILE HEADER + WORKING MENU / SIGN OUT
 
-Upload and replace only these five files in the repository root:
+Upload and replace ONLY these 5 files in the ROOT of the existing GitHub repository:
 1. app.js
 2. styles.css
 3. index.html
@@ -9,9 +9,12 @@ Upload and replace only these five files in the repository root:
 
 No Supabase SQL is required.
 
-Mobile improvements:
-- Persistent bottom navigation
-- Home button beside every page title
-- One-tap return to each role's dashboard
-- Patients, Work/Tasks, Reports and Menu shortcuts
-- Desktop layout and ERP functions remain unchanged
+After GitHub finishes:
+1. Close all Samara ERP tabs/windows.
+2. Reopen the app.
+3. Tap “App update available” if shown.
+4. The top of the mobile app will show: SC  Samara Care ERP  [Role].
+5. Tap Menu in the bottom navigation.
+6. Sign Out is the final red button. It asks for confirmation before signing out.
+
+Desktop layout and existing ERP modules are unchanged.

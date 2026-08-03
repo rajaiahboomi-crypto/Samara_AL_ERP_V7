@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.1.6-mobile-ui-pack';
+const CACHE = 'samara-erp-1.1.7-branded-menu-signout';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.1.6', './app.js?v=1.1.6',
-  './bootstrap-error.js?v=1.1.6', './health-check.js?v=1.1.6',
-  './config.js?v=1.1.6', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.1.7', './app.js?v=1.1.7',
+  './bootstrap-error.js?v=1.1.7', './health-check.js?v=1.1.7',
+  './config.js?v=1.1.7', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', event => {
