@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.1.8';
+  const APP_VERSION = '1.1.9';
   const APP_BUILD_DATE = '03-Aug-2026 21:10 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
@@ -203,7 +203,7 @@ Caring with Compassion. Living with Dignity.`;
     React.useEffect(()=>{
       const splash=document.getElementById('app-splash');
       const removeSplash=()=>{ if(splash){ splash.classList.add('splash-hide'); setTimeout(()=>splash.remove(),320); } };
-      const splashTimer=setTimeout(removeSplash,650);
+      const splashTimer=setTimeout(removeSplash,1450);
       client.auth.getSession().then(({data})=>setSession(data.session||null)).finally(()=>setLoading(false));
       const {data:{subscription}}=client.auth.onAuthStateChange((event,next)=>{
         if(event==='PASSWORD_RECOVERY') setRecoveryMode(true);

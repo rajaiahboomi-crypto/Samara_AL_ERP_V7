@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.1.8-pwa-app-experience';
+const CACHE = 'samara-erp-1.1.9-premium-splash';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.1.8', './app.js?v=1.1.8',
-  './bootstrap-error.js?v=1.1.8', './health-check.js?v=1.1.8',
-  './config.js?v=1.1.8', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.1.9', './app.js?v=1.1.9',
+  './bootstrap-error.js?v=1.1.9', './health-check.js?v=1.1.9',
+  './config.js?v=1.1.9', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

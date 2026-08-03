@@ -1,18 +1,18 @@
-SAMARA CARE ERP 1.1.8 — PWA APP EXPERIENCE
+SAMARA CARE ERP 1.1.9 — PREMIUM SPLASH SCREEN
 
-Upload only these items to the ROOT of your existing GitHub repository:
-
+Upload and replace ONLY these files in the GitHub repository root:
 1. app.js
 2. styles.css
 3. index.html
 4. service-worker.js
 5. manifest.webmanifest
-6. icons folder (replace/upload the four icon files inside it)
 
 No Supabase SQL is required.
 
-After GitHub finishes publishing:
-- Close all Samara Care tabs/apps.
-- Reopen once in Safari/Chrome.
+After GitHub publishes the changes:
+- Close all open Samara Care ERP tabs/apps.
+- Reopen the installed app.
 - Tap “App update available” if shown.
-- For an old Home Screen installation, remove the old icon and add/install it again so the new icon is used.
+- On iPhone, if the old launch screen is cached, remove the Home Screen app and add it again once.
+
+The premium splash appears briefly while the secure session and application are loading.
