@@ -1,8 +1,8 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.0.24';
-  const APP_BUILD_DATE = '03-Aug-2026 15:40 IST';
-  const APP_SCHEMA_VERSION = '22';
+  const APP_VERSION = '1.0.25';
+  const APP_BUILD_DATE = '03-Aug-2026 16:55 IST';
+  const APP_SCHEMA_VERSION = '23';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
     version: APP_VERSION,
@@ -42,15 +42,28 @@
   const ROLE_NAV={
     Admin:ALL_NAV,
     Manager:ALL_NAV,
-    Nurse:['Clinical Dashboard','Notifications','Patients','Documents','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Shift Handover','Rooms & Beds','Incidents','Recovery Timeline'],
-    Caregiver:['Clinical Dashboard','Notifications','Patients','Shift Tasks','Daily Care','Shift Handover','Rooms & Beds','Incidents','Food & Diet','Recovery Timeline'],
+    Nurse:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Shift Handover','Incidents','Notifications'],
+    Caregiver:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Shift Handover','Incidents','Notifications'],
     Accounts:['Notifications','Patients','Rooms & Beds','Billing & Payments','Reports','Intelligent Reports'],
     Kitchen:['Notifications','Patients','Food & Diet']
   };
-  const ROLE_HOME={Admin:'Dashboard',Manager:'Dashboard',Nurse:'Shift Tasks',Caregiver:'Shift Tasks',Accounts:'Billing & Payments',Kitchen:'Food & Diet'};
-  const sectionsFor = allowed => NAV_SECTIONS
-    .map(section=>({...section,items:section.items.filter(item=>allowed.includes(item))}))
-    .filter(section=>section.items.length);
+  const ROLE_HOME={Admin:'Dashboard',Manager:'Dashboard',Nurse:'Clinical Dashboard',Caregiver:'Clinical Dashboard',Accounts:'Billing & Payments',Kitchen:'Food & Diet'};
+  const CLINICAL_ROLES=['Nurse','Caregiver'];
+  const ROLE_LABELS={
+    'Clinical Dashboard':'Nursing Dashboard',
+    'Patients':'My Patients',
+    'Medicines':'Medication Administration',
+    'Notifications':'Alerts'
+  };
+  const displayNavLabel=(item,role)=>CLINICAL_ROLES.includes(role)?(ROLE_LABELS[item]||item):item;
+  const sectionsFor = (allowed,role) => {
+    if(CLINICAL_ROLES.includes(role)){
+      return [
+        {title:'NURSING WORKSPACE',items:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Shift Handover','Incidents','Notifications'].filter(item=>allowed.includes(item))}
+      ];
+    }
+    return NAV_SECTIONS.map(section=>({...section,items:section.items.filter(item=>allowed.includes(item))})).filter(section=>section.items.length);
+  };
   const normalizeLogin = value => value.trim().toLowerCase().replace(/[^a-z0-9._-]/g,'');
   const loginEmail = value => `${normalizeLogin(value)}@${cfg.employeeEmailDomain}`;
   const fmt = value => value ? new Date(value).toLocaleString() : '—';
@@ -143,7 +156,7 @@ Caring with Compassion. Living with Dignity.`;
     ));
   }
 
-  function GlobalSearch({onNavigate}){
+  function GlobalSearch({onNavigate,profile}){
     const [query,setQuery]=React.useState('');
     const [results,setResults]=React.useState([]);
     const [busy,setBusy]=React.useState(false);
@@ -158,8 +171,9 @@ Caring with Compassion. Living with Dignity.`;
       if(trimmed.length<2){setResults([]);setOpen(false);return}
       timerRef.current=setTimeout(async()=>{
         setBusy(true);
+        const clinicalOnly=CLINICAL_ROLES.includes(profile?.role);
         const [employees,patients]=await Promise.all([
-          client.from('profiles').select('id,title,full_name,employee_id,login_id,mobile,role,is_active').limit(300),
+          clinicalOnly?Promise.resolve({data:[]}):client.from('profiles').select('id,title,full_name,employee_id,login_id,mobile,role,is_active').limit(300),
           client.from('patients').select('id,title,full_name,patient_id,mobile,attendant_phone,room_no,bed_no,diagnosis,treating_doctor,referring_doctor,hospital_name,is_active').limit(500)
         ]);
         const employeeRows=(employees.data||[]).filter(row=>matches(row,trimmed,['title','full_name','employee_id','login_id','mobile','role'])).map(row=>({type:'Employee',row,label:formalName(row),sub:[row.employee_id,row.login_id,row.role,row.mobile].filter(Boolean).join(' · ')}));
@@ -172,8 +186,8 @@ Caring with Compassion. Living with Dignity.`;
       onNavigate(result.type==='Patient'?'Patients':'Employees');
     }
     return h('div',{className:'global-search'},
-      h('div',{className:'global-search-box'},h('span',{className:'global-search-icon','aria-hidden':'true'},'⌕'),h('input',{value:query,onChange:e=>change(e.target.value),onFocus:()=>query.trim().length>=2&&setOpen(true),placeholder:'Search patient or employee…','aria-label':'Global search'}),query&&h('button',{type:'button',className:'global-search-clear',onClick:()=>{setQuery('');setResults([]);setOpen(false)}},'×')),
-      open&&h('div',{className:'global-search-results'},busy?h('div',{className:'global-search-empty'},'Searching…'):results.length?results.map((result,index)=>h('button',{type:'button',className:'global-search-result',key:`${result.type}-${result.row.id}-${index}`,onClick:()=>choose(result)},h('span',{className:`search-type ${result.type.toLowerCase()}`},result.type),h('span',{className:'search-result-main'},h('strong',null,result.label||'Unnamed'),h('small',null,result.sub||'No additional details')))):h('div',{className:'global-search-empty'},'No matching patients or employees found.'))
+      h('div',{className:'global-search-box'},h('span',{className:'global-search-icon','aria-hidden':'true'},'⌕'),h('input',{value:query,onChange:e=>change(e.target.value),onFocus:()=>query.trim().length>=2&&setOpen(true),placeholder:CLINICAL_ROLES.includes(profile?.role)?'Search patient…':'Search patient or employee…','aria-label':'Global search'}),query&&h('button',{type:'button',className:'global-search-clear',onClick:()=>{setQuery('');setResults([]);setOpen(false)}},'×')),
+      open&&h('div',{className:'global-search-results'},busy?h('div',{className:'global-search-empty'},'Searching…'):results.length?results.map((result,index)=>h('button',{type:'button',className:'global-search-result',key:`${result.type}-${result.row.id}-${index}`,onClick:()=>choose(result)},h('span',{className:`search-type ${result.type.toLowerCase()}`},result.type),h('span',{className:'search-result-main'},h('strong',null,result.label||'Unnamed'),h('small',null,result.sub||'No additional details')))):h('div',{className:'global-search-empty'},CLINICAL_ROLES.includes(profile?.role)?'No matching patients found.':'No matching patients or employees found.'))
     );
   }
 
@@ -240,15 +254,15 @@ Caring with Compassion. Living with Dignity.`;
     return h('div',{className:'app'},
       h(Sidebar,{profile,page,setPage,allowed}),
       h('main',{className:'main'},
-        h('header',{className:'topbar'},h('h2',null,page),h(GlobalSearch,{onNavigate:setPage}),h('span',{className:'badge'},profile.role)),
-        h(MobileMenu,{page,setPage,allowed}),
+        h('header',{className:'topbar'},h('h2',null,displayNavLabel(page,profile.role)),h(GlobalSearch,{onNavigate:setPage,profile}),h('span',{className:'badge'},profile.role)),
+        h(MobileMenu,{page,setPage,allowed,profile}),
         h('section',{className:'content'},
           page==='Dashboard'&&h(Dashboard,{profile,onNavigate:setPage}),
           page==='Employees'&&h(Employees,{profile}),
           page==='Enquiries'&&h(Enquiries,{profile}),
           page==='Admissions'&&h(Admissions,{profile}),
           page==='Clinical Dashboard'&&h(ClinicalDashboard,{profile,onNavigate:setPage}),page==='Shift Tasks'&&h(ShiftTasks,{profile}),
-          page==='Patients'&&h(Patients),
+          page==='Patients'&&h(Patients,{profile}),
           page==='Rooms & Beds'&&h(RoomsBeds,{profile}),
           page==='Daily Care'&&h(DailyCare,{profile}),
           page==='Vital Signs'&&h(VitalSigns,{profile}),
@@ -367,7 +381,7 @@ Caring with Compassion. Living with Dignity.`;
   }
 
   function Sidebar({profile,page,setPage,allowed}){
-    const sections=sectionsFor(allowed);
+    const sections=sectionsFor(allowed,profile.role);
     const activeSection=sections.find(section=>section.items.includes(page))?.title||sections[0]?.title||'';
     const [openSection,setOpenSection]=React.useState(activeSection);
     React.useEffect(()=>{
@@ -390,19 +404,19 @@ Caring with Compassion. Living with Dignity.`;
             key:item,
             className:page===item?'active':'',
             onClick:()=>setPage(item)
-          },item)))
+          },displayNavLabel(item,profile.role))))
         );
       })),
       h('div',{className:'sidebar-footer'},h('div',{className:'user-chip'},h('strong',null,formalName(profile)),h('small',null,`${profile.login_id} · ${profile.role}`)),h('button',{className:'btn btn-secondary full',onClick:()=>client.auth.signOut()},'Sign out'))
     );
   }
 
-  function MobileMenu({page,setPage,allowed}){
-    const sections=sectionsFor(allowed);
+  function MobileMenu({page,setPage,allowed,profile}){
+    const sections=sectionsFor(allowed,profile.role);
     return h('div',{className:'mobile-menu'},
       h('label',null,'Module'),
       h('select',{value:page,onChange:e=>setPage(e.target.value)},
-        sections.map(section=>h('optgroup',{label:section.title,key:section.title},section.items.map(item=>h('option',{value:item,key:item},item))))
+        sections.map(section=>h('optgroup',{label:section.title,key:section.title},section.items.map(item=>h('option',{value:item,key:item},displayNavLabel(item,profile.role)))))
       )
     );
   }
@@ -972,7 +986,9 @@ Caring with Compassion. Living with Dignity.`;
   function currentShift(){const h=new Date().getHours();return h>=7&&h<19?'Day Shift (7 AM–7 PM)':'Night Shift (7 PM–7 AM)'}
   function shiftForTime(value){const h=Number(String(value).slice(0,2));return h>=7&&h<19?'Day Shift (7 AM–7 PM)':'Night Shift (7 PM–7 AM)'}
 
-  function Patients(){
+  function Patients({profile}){
+    const canEdit=['Admin','Manager'].includes(profile?.role);
+    const clinicalView=CLINICAL_ROLES.includes(profile?.role);
     const [rows,setRows]=React.useState([]),[selected,setSelected]=React.useState(null),[details,setDetails]=React.useState(null),[photoUrl,setPhotoUrl]=React.useState(''),[tab,setTab]=React.useState('Overview');
     const [editTarget,setEditTarget]=React.useState(null),[editForm,setEditForm]=React.useState(null),[editBusy,setEditBusy]=React.useState(false),[editMsg,setEditMsg]=React.useState('');
     const [roomBeds,setRoomBeds]=React.useState([]);
@@ -1098,11 +1114,32 @@ Caring with Compassion. Living with Dignity.`;
       h('div',{className:'card panel'},
         h('div',{className:'panel-head'},h('div',null,h('h3',null,'Patient Master'),h('small',null,'Single source for identity, admission, nursing, medicines, diet, documents, billing and recovery'))),
         duplicateRows.length?h('div',{className:'message warning'},`${duplicateRows.length} record(s) may be duplicates. Review matching names/mobile numbers before entering new care data.`):null,
-        h('div',{className:'table-wrap'},h('table',{className:'table'},h('thead',null,h('tr',null,['Photo','Patient ID','Patient','Admission Type','Category','Room/Bed','Status','Action'].map(x=>h('th',{key:x},x)))),h('tbody',null,rows.map(r=>h('tr',{key:r.id,className:duplicateCount(r)?'duplicate-row':''},h('td',null,r.photo_storage_path?h('span',{className:'photo-dot'},'Photo'):'—'),h('td',null,r.patient_id||'—'),h('td',null,h('button',{type:'button',className:'patient-name-link',onClick:()=>openPatient(r)},formalName(r)),duplicateCount(r)?h('div',{className:'small-note danger-text'},'Possible duplicate'):null),h('td',null,r.admission_type||'—'),h('td',null,r.patient_category||'—'),h('td',null,r.room_no&&r.bed_no?`${r.room_no}-${r.bed_no}`:h('span',{className:'pill warning'},'Unassigned')),h('td',null,h('span',{className:`badge ${r.is_active===false?'off':''}`},r.is_active===false?'Inactive':'Active')),h('td',null,h('div',{className:'employee-actions'},h('button',{className:'btn btn-secondary',onClick:()=>openPatient(r)},'Open Patient File'),h('button',{className:'btn btn-secondary',onClick:()=>openEditPatient(r)},'Edit'),h('button',{className:'btn btn-secondary',onClick:()=>printPatientIdCard(r)},'Print ID Card'))))),rows.length===0&&h('tr',null,h('td',{colSpan:8,className:'empty'},'No patients registered')))))
+        h('div',{className:'table-wrap'},
+          h('table',{className:'table'},
+            h('thead',null,h('tr',null,['Photo','Patient ID','Patient','Admission Type','Category','Room/Bed','Status','Action'].map(x=>h('th',{key:x},x)))),
+            h('tbody',null,
+              rows.map(r=>h('tr',{key:r.id,className:duplicateCount(r)?'duplicate-row':''},
+                h('td',null,r.photo_storage_path?h('span',{className:'photo-dot'},'Photo'):'—'),
+                h('td',null,r.patient_id||'—'),
+                h('td',null,h('button',{type:'button',className:'patient-name-link',onClick:()=>openPatient(r)},formalName(r)),duplicateCount(r)?h('div',{className:'small-note danger-text'},'Possible duplicate'):null),
+                h('td',null,r.admission_type||'—'),
+                h('td',null,r.patient_category||'—'),
+                h('td',null,r.room_no&&r.bed_no?`${r.room_no}-${r.bed_no}`:h('span',{className:'pill warning'},'Unassigned')),
+                h('td',null,h('span',{className:`badge ${r.is_active===false?'off':''}`},r.is_active===false?'Inactive':'Active')),
+                h('td',null,h('div',{className:'employee-actions'},
+                  h('button',{className:'btn btn-secondary',onClick:()=>openPatient(r)},clinicalView?'View Patient File':'Open Patient File'),
+                  canEdit?h('button',{className:'btn btn-secondary',onClick:()=>openEditPatient(r)},'Edit'):null,
+                  canEdit?h('button',{className:'btn btn-secondary',onClick:()=>printPatientIdCard(r)},'Print ID Card'):null
+                ))
+              )),
+              rows.length===0&&h('tr',null,h('td',{colSpan:8,className:'empty'},'No patients registered'))
+            )
+          )
+        )
       ),
       selected&&details&&h('div',{className:'modal-backdrop'},h('div',{className:'card modal patient-master-modal'},
-        h('div',{className:'panel-head patient-master-header'},h('div',{className:'patient-head'},photoUrl?h('img',{src:photoUrl,className:'patient-photo'}):h('div',{className:'patient-photo patient-photo-placeholder'},'SC'),h('div',null,h('h3',null,formalName(selected)),h('small',null,`${selected.patient_id||'—'} · ${selected.admission_type||''} · ${selected.patient_category||''}`),h('div',{className:'patient-header-badges'},h('span',{className:'badge'},selected.is_active===false?'Inactive':'Active'),selected.room_no&&selected.bed_no?h('span',{className:'pill'},`Room ${selected.room_no} · Bed ${selected.bed_no}`):h('span',{className:'pill warning'},'Room not assigned'),selected.special_nurse_required?h('span',{className:'pill warning'},`Special nurse: ${selected.special_nurse_name||'Required'}`):null))),h('div',{className:'employee-actions'},h('button',{className:'btn btn-secondary',onClick:()=>openEditPatient(selected)},'Edit Patient'),h('button',{className:'close',onClick:()=>{setSelected(null);setDetails(null);setPhotoUrl('')}},'×'))),
-        h('div',{className:'patient-tab-bar'},tabButton('Overview'),tabButton('Documents',details.docs.length),tabButton('Medicines',details.meds.length),tabButton('Nursing',details.careLogs.length),tabButton('Vitals',details.vitals.length),tabButton('Physiotherapy',details.physioSessions.length),tabButton('Diet',details.meals.length),tabButton('Billing',details.billing.length),tabButton('Timeline',details.recovery.length+details.incidents.length)),
+        h('div',{className:'panel-head patient-master-header'},h('div',{className:'patient-head'},photoUrl?h('img',{src:photoUrl,className:'patient-photo'}):h('div',{className:'patient-photo patient-photo-placeholder'},'SC'),h('div',null,h('h3',null,formalName(selected)),h('small',null,`${selected.patient_id||'—'} · ${selected.admission_type||''} · ${selected.patient_category||''}`),h('div',{className:'patient-header-badges'},h('span',{className:'badge'},selected.is_active===false?'Inactive':'Active'),selected.room_no&&selected.bed_no?h('span',{className:'pill'},`Room ${selected.room_no} · Bed ${selected.bed_no}`):h('span',{className:'pill warning'},'Room not assigned'),selected.special_nurse_required?h('span',{className:'pill warning'},`Special nurse: ${selected.special_nurse_name||'Required'}`):null))),h('div',{className:'employee-actions'},canEdit?h('button',{className:'btn btn-secondary',onClick:()=>openEditPatient(selected)},'Edit Patient'):h('span',{className:'pill'},'View only'),h('button',{className:'close',onClick:()=>{setSelected(null);setDetails(null);setPhotoUrl('')}},'×'))),
+        h('div',{className:'patient-tab-bar'},tabButton('Overview'),tabButton('Documents',details.docs.length),tabButton('Medicines',details.meds.length),tabButton('Nursing',details.careLogs.length),tabButton('Vitals',details.vitals.length),tabButton('Physiotherapy',details.physioSessions.length),tabButton('Diet',details.meals.length),!clinicalView?tabButton('Billing',details.billing.length):null,tabButton('Timeline',details.recovery.length+details.incidents.length)),
         h('div',{className:'patient-tab-content'},
           tab==='Overview'&&h('div',{className:'tabs-grid'},
             h('div',{className:'section-card'},h('h4',null,'Identity & Contacts'),h('p',null,`Patient ID: ${selected.patient_id||'—'}`),h('p',null,`Gender / Age: ${selected.gender||'—'} / ${selected.age||'—'}`),h('p',null,`Mobile: ${selected.mobile||'—'}`),h('p',null,selected.address||'Address not recorded'),h('p',null,`Attendant: ${selected.attendant_name||'—'} · ${selected.attendant_phone||'—'}`)),
@@ -1110,17 +1147,17 @@ Caring with Compassion. Living with Dignity.`;
             h('div',{className:'section-card'},h('h4',null,'Care Plan Summary'),h('p',null,`${details.meds.length} active medicine order(s)`),h('p',null,`${details.care.length} master care task(s)`),h('p',null,`${details.physio.length} physiotherapy order(s)`),h('p',null,`Diet: ${selected.diet_plan||'Not recorded'}`)),
             h('div',{className:'section-card'},h('h4',null,'Risk & Safety'),h('p',null,[selected.fall_risk&&'Fall risk',selected.pressure_sore_risk&&'Pressure sore risk',selected.aspiration_risk&&'Aspiration risk',selected.wandering_risk&&'Wandering risk',selected.oxygen_required&&'Oxygen required',selected.dressing_required&&'Dressing required'].filter(Boolean).join(', ')||'No active risk flags'),h('p',null,`Open incidents: ${details.incidents.filter(x=>x.status==='Open').length}`))
           ),
-          tab==='Documents'&&h('div',{className:'section-card'},h('div',{className:'panel-head'},h('h4',null,'Patient Documents'),h('button',{className:'btn btn-secondary',onClick:()=>printPatientIdCard(selected)},'Print Patient ID Card')),details.docs.length?details.docs.map(d=>h('div',{className:'timeline-item',key:d.id},h('strong',null,d.document_type||'Document'),h('span',null,d.document_name||d.file_name||'File'),h('button',{className:'btn btn-secondary',onClick:()=>openDoc(d)},'Open'))):sectionEmpty('No documents uploaded.')),
+          tab==='Documents'&&h('div',{className:'section-card'},h('div',{className:'panel-head'},h('h4',null,'Patient Documents'),canEdit?h('button',{className:'btn btn-secondary',onClick:()=>printPatientIdCard(selected)},'Print Patient ID Card'):null),details.docs.length?details.docs.map(d=>h('div',{className:'timeline-item',key:d.id},h('strong',null,d.document_type||'Document'),h('span',null,d.document_name||d.file_name||'File'),h('button',{className:'btn btn-secondary',onClick:()=>openDoc(d)},'Open'))):sectionEmpty('No documents uploaded.')),
           tab==='Medicines'&&h('div',{className:'section-card'},h('h4',null,'Prescription & Medication Administration'),details.meds.length?details.meds.map(m=>h('div',{className:'timeline-item',key:m.id},h('strong',null,`${m.medicine_name} ${m.strength||''} — ${m.dose}`),h('div',{className:'time-list'},(m.scheduled_times||[]).map(t=>h('span',{className:'time-chip',key:t},String(t).slice(0,5)))),h('div',{className:'small-note'},`${m.route||''} · ${m.food_instruction||''} · ${m.special_instruction||''}`))):sectionEmpty('No medicine orders.'),h('h4',{style:{marginTop:'18px'}},'Recent MAR'),details.mar.length?details.mar.slice(0,25).map(x=>h('div',{className:'timeline-item',key:x.id},h('strong',null,`${x.scheduled_date} ${String(x.scheduled_time||'').slice(0,5)} · ${x.status}`),h('span',null,x.remarks||'—'))):sectionEmpty('No medicine administration records.')),
           tab==='Nursing'&&h('div',{className:'section-card'},h('h4',null,'Master Care Plan'),details.care.length?details.care.map(c=>h('div',{className:'timeline-item',key:c.id},h('strong',null,c.care_type),h('span',null,`${c.shift} · ${c.frequency} · ${c.instruction||''}`))):sectionEmpty('No care orders.'),h('h4',{style:{marginTop:'18px'}},'Recent Care Records'),details.careLogs.length?details.careLogs.slice(0,30).map(x=>h('div',{className:'timeline-item',key:x.id},h('strong',null,`${x.care_date} · ${x.shift} · ${x.status}`),h('span',null,x.remarks||'—'))):sectionEmpty('No care records.')),
           tab==='Vitals'&&h('div',{className:'section-card'},h('h4',null,'Vital Signs History'),details.vitals.length?details.vitals.map(v=>h('div',{className:'timeline-item',key:v.id},h('strong',null,`${fmt(v.recorded_at)} · BP ${v.systolic||'—'}/${v.diastolic||'—'}`),h('span',null,`Pulse ${v.pulse||'—'} · SpO₂ ${v.spo2||'—'} · Temp ${v.temperature||'—'} · Sugar ${v.blood_sugar_type||'Not Taken'} ${v.blood_sugar||'—'} · ${v.alert_level||'Normal'}`))):sectionEmpty('No vital signs recorded.')),
           tab==='Physiotherapy'&&h('div',{className:'section-card'},h('h4',null,'Physiotherapy Plan'),details.physio.length?details.physio.map(x=>h('div',{className:'timeline-item',key:x.id},h('strong',null,x.therapy_type),h('span',null,`${x.frequency||'—'} · ${x.preferred_time||'—'} · ${x.precautions||''}`))):sectionEmpty('No physiotherapy order.'),h('h4',{style:{marginTop:'18px'}},'Sessions'),details.physioSessions.length?details.physioSessions.map(x=>h('div',{className:'timeline-item',key:x.id},h('strong',null,`${x.session_date} · ${x.status}`),h('span',null,x.notes||'—'))):sectionEmpty('No physiotherapy sessions.')),
           tab==='Diet'&&h('div',{className:'section-card'},h('h4',null,`Diet Plan: ${selected.diet_plan||'Not recorded'}`),h('p',null,selected.feeding_instruction||'No special feeding instruction.'),h('h4',{style:{marginTop:'18px'}},'Meal Records'),details.meals.length?details.meals.map(x=>h('div',{className:'timeline-item',key:x.id},h('strong',null,`${x.meal_date||''} · ${x.meal_type} · ${x.consumption_status}`),h('span',null,`${x.menu||'—'} · ${x.remarks||''}`))):sectionEmpty('No meal records.')),
-          tab==='Billing'&&(()=>{const b=billingSummary(details.billing),due=b.charges-b.payments-b.discounts+b.refunds;return h('div',null,h('div',{className:'grid stats'},[['Charges',b.charges],['Payments',b.payments],['Discounts',b.discounts],['Outstanding',due]].map(([k,v])=>h('div',{className:'card stat',key:k},h('span',null,k),h('strong',null,`₹${v.toLocaleString('en-IN')}`)))),h('div',{className:'section-card'},h('h4',null,'Patient Ledger'),details.billing.length?details.billing.map(x=>h('div',{className:'timeline-item',key:x.id},h('strong',null,`${x.transaction_type} · ${x.category} · ₹${Number(x.amount||0).toLocaleString('en-IN')}`),h('span',null,`${fmt(x.transaction_date)} · ${x.description||''}`))):sectionEmpty('No billing transactions.')))} )(),
+          !clinicalView&&tab==='Billing'&&(()=>{const b=billingSummary(details.billing),due=b.charges-b.payments-b.discounts+b.refunds;return h('div',null,h('div',{className:'grid stats'},[['Charges',b.charges],['Payments',b.payments],['Discounts',b.discounts],['Outstanding',due]].map(([k,v])=>h('div',{className:'card stat',key:k},h('span',null,k),h('strong',null,`₹${v.toLocaleString('en-IN')}`)))),h('div',{className:'section-card'},h('h4',null,'Patient Ledger'),details.billing.length?details.billing.map(x=>h('div',{className:'timeline-item',key:x.id},h('strong',null,`${x.transaction_type} · ${x.category} · ₹${Number(x.amount||0).toLocaleString('en-IN')}`),h('span',null,`${fmt(x.transaction_date)} · ${x.description||''}`))):sectionEmpty('No billing transactions.')))} )(),
           tab==='Timeline'&&h('div',{className:'section-card'},h('h4',null,'Recovery & Incident Timeline'),[...details.recovery.map(x=>({id:`r-${x.id}`,date:x.event_at,title:x.event_type,note:x.note,type:'Recovery'})),...details.incidents.map(x=>({id:`i-${x.id}`,date:x.incident_at,title:x.incident_type,note:`${x.severity||''} · ${x.description||''} · ${x.status||''}`,type:'Incident'}))].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(x=>h('div',{className:'timeline-item',key:x.id},h('strong',null,`${fmt(x.date)} · ${x.type}: ${x.title}`),h('span',null,x.note||'—'))),details.recovery.length+details.incidents.length===0&&sectionEmpty('No recovery or incident events.'))
         )
       )),
-      editTarget&&editForm&&h('div',{className:'modal-backdrop'},h('form',{className:'card modal patient-edit-modal',onSubmit:savePatientEdit},
+      canEdit&&editTarget&&editForm&&h('div',{className:'modal-backdrop'},h('form',{className:'card modal patient-edit-modal',onSubmit:savePatientEdit},
         h('div',{className:'panel-head'},h('div',null,h('h3',null,'Edit Patient Information'),h('small',null,`${editTarget.patient_id||'—'} · Correct duplicate or wrongly entered details`)),h('button',{type:'button',className:'close',onClick:()=>{setEditTarget(null);setEditForm(null)}},'×')),
         editMsg&&h('div',{className:`message ${editMsg.startsWith('Patient information')?'success':'error'}`},editMsg),
         h('div',{className:'modal-grid'},
