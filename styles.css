@@ -411,3 +411,59 @@ body{font-size:17px;line-height:1.42}
 @media(max-width:1000px){.intelligent-report-controls-v3{grid-template-columns:1fr 1.6fr}.intelligent-report-controls-v3 .btn{width:100%}}
 @media(max-width:700px){.intelligent-report-controls-v3{grid-template-columns:1fr}.patient-report-v2{grid-template-columns:92px 1fr}}
 @media print{.intelligent-report-controls-v3{display:none!important}.intelligent-summary{break-inside:avoid}.patient-report-v2{break-inside:avoid}}
+
+/* ERP 1.0.13 - final Resident Overview alignment */
+.patient-report-v2{
+  display:grid!important;
+  grid-template-columns:112px minmax(0,1fr)!important;
+  grid-template-areas:
+    "overview overview"
+    "photo identity"
+    "facts facts"!important;
+  align-items:start!important;
+  gap:14px 20px!important;
+}
+.patient-report-v2:before{
+  grid-area:overview!important;
+  display:block!important;
+  margin:0!important;
+}
+.patient-report-v2 .patient-report-photo{
+  grid-area:photo!important;
+  grid-row:auto!important;
+  align-self:start!important;
+}
+.patient-report-v2 .patient-report-identity{
+  grid-area:identity!important;
+  align-self:start!important;
+  min-width:0!important;
+}
+.patient-report-v2 .patient-report-identity strong,
+.patient-report-v2 .patient-report-identity span{
+  display:block!important;
+  white-space:normal!important;
+  word-break:normal!important;
+}
+.patient-report-v2 .patient-report-facts{
+  grid-area:facts!important;
+  grid-column:auto!important;
+}
+@media(max-width:700px){
+  .patient-report-v2{
+    grid-template-columns:92px minmax(0,1fr)!important;
+    grid-template-areas:
+      "overview overview"
+      "photo identity"
+      "facts facts"!important;
+  }
+}
+@media print{
+  .patient-report-v2{
+    grid-template-columns:26mm minmax(0,1fr)!important;
+    grid-template-areas:
+      "overview overview"
+      "photo identity"
+      "facts facts"!important;
+    gap:3mm 5mm!important;
+  }
+}
