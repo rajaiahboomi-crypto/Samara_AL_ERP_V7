@@ -1,0 +1,27 @@
+SAMARA CARE ERP 1.2.7 — MEDICATION OPTIONS
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Changes in both New Admission and Existing Patient Edit:
+Frequency:
+- Added HS
+- Added STAT
+- Removed Every 6 Hours
+- Removed Every 8 Hours
+- Removed Every 12 Hours
+
+Route:
+- Oral
+- IV
+- IM
+- Removed Injection and the other earlier route choices
+
+HS suggests 10:00 PM.
+STAT requires staff to select the immediate administration time.
+
+After uploading, close and reopen the ERP and tap “App update available” if shown.
