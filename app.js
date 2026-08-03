@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.0.15';
+  const APP_VERSION = '1.0.16';
   const APP_BUILD_DATE = '03-Aug-2026 10:45 IST';
   const APP_SCHEMA_VERSION = '18';
   window.APP_VERSION = APP_VERSION;
@@ -33,7 +33,7 @@
     { title:'ADMIN', items:['Employees','Audit Trail'] },
     { title:'ADMISSION', items:['Enquiries','Admissions','Patients','Documents'] },
     { title:'MANAGER', items:['Reports','Intelligent Reports','Recovery Timeline'] },
-    { title:'NURSING', items:['Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Shift Handover'] },
+    { title:'NURSING', items:['Clinical Dashboard','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Shift Handover'] },
     { title:'OPERATIONS', items:['Rooms & Beds','Incidents'] },
     { title:'FOOD & DIET', items:['Food & Diet'] },
     { title:'ACCOUNTS / BILLING', items:['Billing & Payments'] }
@@ -42,8 +42,8 @@
   const ROLE_NAV={
     Admin:ALL_NAV,
     Manager:ALL_NAV,
-    Nurse:['Notifications','Patients','Documents','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Shift Handover','Rooms & Beds','Incidents','Recovery Timeline'],
-    Caregiver:['Notifications','Patients','Shift Tasks','Daily Care','Shift Handover','Rooms & Beds','Incidents','Food & Diet','Recovery Timeline'],
+    Nurse:['Clinical Dashboard','Notifications','Patients','Documents','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Shift Handover','Rooms & Beds','Incidents','Recovery Timeline'],
+    Caregiver:['Clinical Dashboard','Notifications','Patients','Shift Tasks','Daily Care','Shift Handover','Rooms & Beds','Incidents','Food & Diet','Recovery Timeline'],
     Accounts:['Notifications','Patients','Rooms & Beds','Billing & Payments','Reports','Intelligent Reports'],
     Kitchen:['Notifications','Patients','Food & Diet']
   };
@@ -228,7 +228,7 @@ Caring with Compassion. Living with Dignity.`;
           page==='Employees'&&h(Employees,{profile}),
           page==='Enquiries'&&h(Enquiries,{profile}),
           page==='Admissions'&&h(Admissions,{profile}),
-          page==='Shift Tasks'&&h(ShiftTasks,{profile}),
+          page==='Clinical Dashboard'&&h(ClinicalDashboard,{profile,onNavigate:setPage}),page==='Shift Tasks'&&h(ShiftTasks,{profile}),
           page==='Patients'&&h(Patients),
           page==='Rooms & Beds'&&h(RoomsBeds,{profile}),
           page==='Daily Care'&&h(DailyCare,{profile}),
@@ -1273,6 +1273,58 @@ Caring with Compassion. Living with Dignity.`;
     );
   }
 
+  function ClinicalDashboard({profile,onNavigate}){
+    const [state,setState]=React.useState({loading:true,patients:[],medOrders:[],medLogs:[],careOrders:[],careLogs:[],vitals:[],physioOrders:[],physioSessions:[],incidents:[],handovers:[]});
+    const today=new Date().toISOString().slice(0,10);
+    const timeToMinutes=value=>{const text=String(value||'').trim();const m=text.match(/^(\d{1,2}):(\d{2})/);return m?Number(m[1])*60+Number(m[2]):9999};
+    const nowMinutes=new Date().getHours()*60+new Date().getMinutes();
+    async function load(){
+      const results=await Promise.all([
+        client.from('patients').select('*').eq('is_active',true),
+        client.from('medication_orders').select('*,patients(full_name,title,patient_id,room_no,bed_no)').eq('is_active',true),
+        client.from('medication_administrations').select('*').eq('scheduled_date',today),
+        client.from('care_orders').select('*,patients(full_name,title,patient_id,room_no,bed_no)').eq('is_active',true),
+        client.from('care_logs').select('*').eq('care_date',today),
+        client.from('vital_signs').select('*,patients(full_name,title,patient_id,room_no,bed_no)').gte('recorded_at',today+'T00:00:00').order('recorded_at',{ascending:false}),
+        client.from('physiotherapy_orders').select('*,patients(full_name,title,patient_id,room_no,bed_no)').eq('is_active',true),
+        client.from('physiotherapy_sessions').select('*').eq('session_date',today),
+        client.from('incidents').select('*,patients(full_name,title,patient_id,room_no,bed_no)').eq('status','Open').order('incident_at',{ascending:false}),
+        client.from('shift_handovers').select('*,profiles!shift_handovers_submitted_by_fkey(full_name,title)').order('created_at',{ascending:false}).limit(5)
+      ]);
+      const data=results.map(r=>r.data||[]);
+      setState({loading:false,patients:data[0],medOrders:data[1],medLogs:data[2],careOrders:data[3],careLogs:data[4],vitals:data[5],physioOrders:data[6],physioSessions:data[7],incidents:data[8],handovers:data[9]});
+    }
+    React.useEffect(()=>{load();const ch=client.channel('clinical-dashboard-live').on('postgres_changes',{event:'*',schema:'public',table:'vital_signs'},load).on('postgres_changes',{event:'*',schema:'public',table:'medication_administrations'},load).on('postgres_changes',{event:'*',schema:'public',table:'care_logs'},load).on('postgres_changes',{event:'*',schema:'public',table:'incidents'},load).subscribe();return()=>client.removeChannel(ch)},[]);
+    const medTasks=[];
+    state.medOrders.forEach(order=>(order.scheduled_times||[]).forEach(time=>{const done=state.medLogs.some(log=>log.order_id===order.id&&String(log.scheduled_time||'').slice(0,5)===String(time).slice(0,5));if(!done)medTasks.push({order,time,overdue:timeToMinutes(time)<nowMinutes})}));
+    const carePending=state.careOrders.filter(order=>!state.careLogs.some(log=>log.care_order_id===order.id));
+    const vitalPatientIds=new Set(state.vitals.map(v=>v.patient_id));
+    const vitalsPending=state.patients.filter(p=>!vitalPatientIds.has(p.id));
+    const physioDoneIds=new Set(state.physioSessions.map(x=>x.order_id));
+    const physioPending=state.physioOrders.filter(x=>!physioDoneIds.has(x.id));
+    const patientName=row=>formalName(row?.patients||row)||row?.patients?.full_name||row?.full_name||'Patient';
+    const cards=[
+      ['Patients under care',state.patients.length,'Patients','👥','clinical-green'],
+      ['Medicines due',medTasks.length,'Shift Tasks','💊',medTasks.some(x=>x.overdue)?'clinical-red':'clinical-blue'],
+      ['Vitals pending',vitalsPending.length,'Vital Signs','🩺',vitalsPending.length?'clinical-amber':'clinical-green'],
+      ['Care tasks pending',carePending.length,'Daily Care','✅',carePending.length?'clinical-amber':'clinical-green'],
+      ['Physiotherapy pending',physioPending.length,'Physiotherapy','🏃','clinical-purple'],
+      ['Open incidents',state.incidents.length,'Incidents','⚠️',state.incidents.length?'clinical-red':'clinical-green']
+    ];
+    return h(React.Fragment,null,
+      h('div',{className:'clinical-welcome'},h('div',null,h('small',null,currentShift().toUpperCase()),h('h2',null,`Good ${new Date().getHours()<12?'Morning':new Date().getHours()<17?'Afternoon':'Evening'}, ${formalName(profile)}`),h('p',null,'Your clinical worklist for today — complete urgent and overdue items first.')),h('div',{className:'clinical-date'},new Date().toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'short',year:'numeric'}))),
+      h('div',{className:'clinical-card-grid'},cards.map(([label,value,page,icon,tone])=>h('button',{type:'button',className:`clinical-metric ${tone}`,key:label,onClick:()=>onNavigate(page)},h('span',{className:'clinical-metric-icon'},icon),h('strong',null,value),h('span',null,label),h('small',null,`Open ${page} →`)))),
+      h('div',{className:'clinical-columns'},
+        h('section',{className:'card clinical-panel'},h('div',{className:'clinical-panel-head'},h('div',null,h('h3',null,'Priority Worklist'),h('small',null,'Overdue and pending tasks requiring attention')),h('button',{className:'btn btn-secondary',onClick:load},'Refresh')),
+          medTasks.filter(x=>x.overdue).slice(0,5).map((x,i)=>h('div',{className:'clinical-work-row urgent',key:'m'+i},h('span',null,'💊'),h('div',null,h('strong',null,patientName(x.order)),h('small',null,`${x.order.medicine_name} ${x.order.dose||''} · Due ${x.time}`)),h('b',null,'OVERDUE'))),
+          vitalsPending.slice(0,4).map(p=>h('div',{className:'clinical-work-row',key:p.id},h('span',null,'🩺'),h('div',null,h('strong',null,formalName(p)),h('small',null,`${p.patient_id||''} · Room ${p.room_no||'—'}-${p.bed_no||'—'} · Vitals not entered today`)),h('button',{className:'mini-link',onClick:()=>onNavigate('Vital Signs')},'Enter'))),
+          !medTasks.some(x=>x.overdue)&&!vitalsPending.length&&h('div',{className:'clinical-empty'},'No urgent clinical tasks are pending at present.')),
+        h('section',{className:'card clinical-panel'},h('div',{className:'clinical-panel-head'},h('div',null,h('h3',null,'Latest Shift Handover'),h('small',null,'Important information from the previous shift'))),
+          state.handovers.length?state.handovers.slice(0,3).map(x=>h('div',{className:`handover-card ${String(x.priority||'').toLowerCase()}`,key:x.id},h('div',null,h('strong',null,`${x.shift} · ${x.priority}`),h('small',null,fmt(x.created_at))),h('p',null,x.patient_summary||'No patient summary.'),x.pending_tasks&&h('p',null,h('b',null,'Pending: '),x.pending_tasks),h('small',null,`Submitted by ${formalName(x.profiles||{})||x.profiles?.full_name||'Staff'}`))):h('div',{className:'clinical-empty'},'No shift handover has been submitted yet.'))
+      )
+    );
+  }
+
   function DailyCare({profile}){
     const [patients]=usePatients(),[rows,setRows]=React.useState([]),[form,setForm]=React.useState({patient_id:'',care_type:'Bathing assistance',shift:currentShift(),status:'Completed',remarks:''});
     async function load(){const {data}=await client.from('care_logs').select('*,patients(full_name,room_no,bed_no),profiles!care_logs_completed_by_fkey(full_name)').order('created_at',{ascending:false}).limit(100);setRows(data||[])}
@@ -1282,12 +1334,25 @@ Caring with Compassion. Living with Dignity.`;
   }
 
   function VitalSigns({profile}){
-    const [patients]=usePatients(),[rows,setRows]=React.useState([]),[form,setForm]=React.useState({patient_id:'',temperature:'',systolic:'',diastolic:'',pulse:'',spo2:'',blood_sugar:'',remarks:''});
-    const measured=(value)=>{if(value===null||value===undefined||String(value).trim()==='')return null;const n=Number(value);return Number.isFinite(n)&&n!==0?n:null};
-    const calculateLevel=(v)=>{const systolic=measured(v.systolic),diastolic=measured(v.diastolic),pulse=measured(v.pulse),temperature=measured(v.temperature),spo2=measured(v.spo2),sugar=measured(v.blood_sugar);const any=[systolic,diastolic,pulse,temperature,spo2,sugar].some(x=>x!==null);if(!any)return 'Not Recorded';if((spo2!==null&&spo2<90)||(systolic!==null&&(systolic>=180||systolic<80))||(diastolic!==null&&(diastolic>=120||diastolic<50))||(pulse!==null&&(pulse>130||pulse<40))||(temperature!==null&&(temperature>=39.5||temperature<35))||(sugar!==null&&(sugar>400||sugar<50)))return 'Critical';if((spo2!==null&&spo2<94)||(systolic!==null&&(systolic>=160||systolic<90))||(diastolic!==null&&(diastolic>=100||diastolic<60))||(pulse!==null&&(pulse>110||pulse<50))||(temperature!==null&&(temperature>=38||temperature<35.5))||(sugar!==null&&(sugar>250||sugar<70)))return 'Warning';return 'Normal'};
-    async function load(){const {data}=await client.from('vital_signs').select('*,patients(full_name,room_no,bed_no)').order('recorded_at',{ascending:false}).limit(100);setRows((data||[]).map(r=>({...r,computed_alert_level:calculateLevel(r)})))}React.useEffect(()=>{load()},[]);
-    async function save(e){e.preventDefault();const payload={...form,temperature:num(form.temperature),systolic:num(form.systolic),diastolic:num(form.diastolic),pulse:num(form.pulse),spo2:num(form.spo2),blood_sugar:num(form.blood_sugar),recorded_by:profile.id};const level=calculateLevel(payload);if(level==='Not Recorded')return window.alert('Please enter at least one actual vital-sign measurement before saving.');payload.alert_level=level;const {error}=await client.from('vital_signs').insert(payload);if(error)return window.alert(error.message);setForm({...form,temperature:'',systolic:'',diastolic:'',pulse:'',spo2:'',blood_sugar:'',remarks:''});load()}
-    return h(React.Fragment,null,h(Section,{title:'Vital Signs',subtitle:'Record and highlight abnormal readings'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),...['temperature','systolic','diastolic','pulse','spo2','blood_sugar'].map(k=>miniInput(k.replace('_',' ').replace(/^./,c=>c.toUpperCase()),form[k],v=>setForm({...form,[k]:v}),false,'number')),miniInput('Remarks',form.remarks,v=>setForm({...form,remarks:v})),h('button',{className:'btn btn-primary'},'Save vitals'))),h(LogTable,{title:'Recent Vital Signs',heads:['Patient','BP','Pulse','SpO₂','Sugar','Alert','Time'],rows:rows.map(r=>[r.patients?.full_name,`${measured(r.systolic)??'—'}/${measured(r.diastolic)??'—'}`,measured(r.pulse)??'—',measured(r.spo2)??'—',measured(r.blood_sugar)??'—',r.computed_alert_level,fmt(r.recorded_at)])}))
+    const [patients]=usePatients(),[rows,setRows]=React.useState([]),[selectedPatient,setSelectedPatient]=React.useState(''),[form,setForm]=React.useState({patient_id:'',temperature:'',systolic:'',diastolic:'',pulse:'',respiration:'',spo2:'',blood_sugar:'',weight:'',pain_score:'',remarks:''});
+    const measured=value=>{if(value===null||value===undefined||String(value).trim()==='')return null;const n=Number(value);return Number.isFinite(n)&&n!==0?n:null};
+    const tempC=value=>{const n=measured(value);if(n===null)return null;return n>=70&&n<=115?(n-32)*5/9:n};
+    const calculateLevel=v=>{const systolic=measured(v.systolic),diastolic=measured(v.diastolic),pulse=measured(v.pulse),temperature=tempC(v.temperature),respiration=measured(v.respiration),spo2=measured(v.spo2),sugar=measured(v.blood_sugar);const any=[systolic,diastolic,pulse,temperature,respiration,spo2,sugar,measured(v.weight),v.pain_score!==''&&v.pain_score!==null?Number(v.pain_score):null].some(x=>x!==null);if(!any)return 'Not Recorded';if((spo2!==null&&spo2<90)||(systolic!==null&&(systolic>=180||systolic<80))||(diastolic!==null&&(diastolic>=120||diastolic<50))||(pulse!==null&&(pulse>130||pulse<40))||(temperature!==null&&(temperature>=39.5||temperature<35))||(respiration!==null&&(respiration>30||respiration<8))||(sugar!==null&&(sugar>400||sugar<50)))return 'Critical';if((spo2!==null&&spo2<94)||(systolic!==null&&(systolic>=160||systolic<90))||(diastolic!==null&&(diastolic>=100||diastolic<60))||(pulse!==null&&(pulse>110||pulse<50))||(temperature!==null&&(temperature>=38||temperature<35.5))||(respiration!==null&&(respiration>24||respiration<10))||(sugar!==null&&(sugar>250||sugar<70)))return 'Warning';return 'Normal'};
+    async function load(){const {data}=await client.from('vital_signs').select('*,patients(full_name,title,patient_id,room_no,bed_no)').order('recorded_at',{ascending:false}).limit(150);setRows((data||[]).map(r=>({...r,computed_alert_level:calculateLevel(r)})))}
+    React.useEffect(()=>{load();const ch=client.channel('vitals-live').on('postgres_changes',{event:'*',schema:'public',table:'vital_signs'},load).subscribe();return()=>client.removeChannel(ch)},[]);
+    async function save(e){e.preventDefault();const payload={...form,temperature:num(form.temperature),systolic:num(form.systolic),diastolic:num(form.diastolic),pulse:num(form.pulse),respiration:num(form.respiration),spo2:num(form.spo2),blood_sugar:num(form.blood_sugar),weight:num(form.weight),pain_score:form.pain_score===''?null:Number(form.pain_score),recorded_at:new Date().toISOString(),recorded_by:profile.id};const level=calculateLevel(payload);if(level==='Not Recorded')return window.alert('Please enter at least one actual vital-sign measurement before saving.');payload.alert_level=level;const {error}=await client.from('vital_signs').insert(payload);if(error)return window.alert(error.message);setSelectedPatient(form.patient_id);setForm({...form,temperature:'',systolic:'',diastolic:'',pulse:'',respiration:'',spo2:'',blood_sugar:'',weight:'',pain_score:'',remarks:''});load()}
+    const patientRows=selectedPatient?rows.filter(r=>r.patient_id===selectedPatient).slice(0,10):rows.slice(0,10);
+    const latest=patientRows[0];
+    const input=(label,key,unit,opts={})=>h('div',{className:'vital-input'},h('label',null,label),h('div',{className:'vital-input-wrap'},h('input',{type:'number',step:opts.step||'any',min:opts.min,max:opts.max,value:form[key],placeholder:opts.placeholder||'',onChange:e=>setForm({...form,[key]:e.target.value})}),unit&&h('span',null,unit)));
+    return h(React.Fragment,null,
+      h(Section,{title:'Vital Signs',subtitle:'Fast clinical observation entry with automatic Normal, Warning and Critical classification'},
+        h('form',{className:'vitals-entry-card',onSubmit:save},
+          h('div',{className:'vitals-patient-row'},patientSelect(patients,form.patient_id,v=>{setForm({...form,patient_id:v});setSelectedPatient(v)}),h('div',{className:`vital-live-status ${calculateLevel(form).toLowerCase().replace(' ','-')}`},h('small',null,'Current entry'),h('strong',null,calculateLevel(form)))),
+          h('div',{className:'vitals-grid'},input('Temperature','temperature','°C / °F',{placeholder:'98.6'}),input('Systolic BP','systolic','mmHg'),input('Diastolic BP','diastolic','mmHg'),input('Pulse','pulse','/min'),input('Respiration','respiration','/min'),input('SpO₂','spo2','%'),input('Blood Sugar','blood_sugar','mg/dL'),input('Weight','weight','kg',{step:'0.1'}),input('Pain Score','pain_score','/10',{min:0,max:10})),
+          h('div',{className:'vitals-bottom'},h('div',{className:'field'},h('label',null,'Clinical remarks'),h('textarea',{rows:2,value:form.remarks,onChange:e=>setForm({...form,remarks:e.target.value}),placeholder:'Symptoms, oxygen support, position, food status or other observations'})),h('button',{className:'btn btn-primary vitals-save'},'Save Vital Signs')))),
+      selectedPatient&&latest&&h('div',{className:'latest-vitals-strip'},h('div',null,h('small',null,'Latest for selected patient'),h('strong',null,formalName(latest.patients||{})||latest.patients?.full_name)),[['BP',`${measured(latest.systolic)??'—'}/${measured(latest.diastolic)??'—'}`],['Pulse',measured(latest.pulse)??'—'],['SpO₂',measured(latest.spo2)??'—'],['Sugar',measured(latest.blood_sugar)??'—'],['Status',latest.computed_alert_level]].map(([a,b])=>h('div',{key:a},h('small',null,a),h('strong',null,b)))),
+      h(LogTable,{title:selectedPatient?'Patient Vital Trend':'Recent Vital Signs',heads:['Patient','BP','Temp','Pulse','Resp.','SpO₂','Sugar','Pain','Alert','Recorded'],rows:patientRows.map(r=>[formalName(r.patients||{})||r.patients?.full_name,`${measured(r.systolic)??'—'}/${measured(r.diastolic)??'—'}`,measured(r.temperature)??'—',measured(r.pulse)??'—',measured(r.respiration)??'—',measured(r.spo2)??'—',measured(r.blood_sugar)??'—',r.pain_score??'—',r.computed_alert_level,fmt(r.recorded_at)])})
+    );
   }
 
   function Medicines(){
