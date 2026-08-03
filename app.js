@@ -1,8 +1,8 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.0.17';
-  const APP_BUILD_DATE = '03-Aug-2026 10:45 IST';
-  const APP_SCHEMA_VERSION = '19';
+  const APP_VERSION = '1.0.20';
+  const APP_BUILD_DATE = '03-Aug-2026 15:40 IST';
+  const APP_SCHEMA_VERSION = '22';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
     version: APP_VERSION,
@@ -193,22 +193,41 @@ Caring with Compassion. Living with Dignity.`;
 
     React.useEffect(()=>{
       if(!session){setProfile(null);return;}
-      client.from('profiles').select('*').or(`id.eq.${session.user.id},auth_user_id.eq.${session.user.id}`).maybeSingle().then(async({data,error})=>{
-        if(error) console.error(error);
+      (async()=>{
+        let data=null;
+        const direct=await client.from('profiles').select('*').or(`id.eq.${session.user.id},auth_user_id.eq.${session.user.id}`).maybeSingle();
+        if(direct.error) console.error(direct.error);
+        data=direct.data||null;
+
+        // Login-only compatibility repair: securely locate and link an existing
+        // employee profile when the Authentication account was created separately.
         if(!data){
-          setAuthMessage('Your employee profile is not available. Please contact the Administrator.');
+          const repaired=await client.rpc('get_my_employee_profile');
+          if(repaired.error) console.error(repaired.error);
+          data=repaired.data||null;
+        }
+
+        if(!data){
+          setAuthMessage('Your employee profile is not linked to this Login ID. Please contact the Administrator.');
           await client.auth.signOut();
           return;
         }
-        if(!data.is_active){
+        if(data.is_active===false||data.active===false){
           setAuthMessage('This employee account is inactive. Please contact the Administrator.');
           await client.auth.signOut();
           return;
         }
+        // Recovery for accounts whose Auth password was already changed but whose
+        // profile flag remained set because an older deployment/RLS blocked the update.
+        const authCompleted = session.user?.user_metadata?.must_change_password === false;
+        if(data.must_change_password && authCompleted){
+          data={...data,must_change_password:false};
+          client.rpc('complete_my_first_login').then(()=>{}).catch(()=>{});
+        }
         setProfile(data);
         setPage(ROLE_HOME[data.role]||'Notifications');
         client.from('profiles').update({last_sign_in_at:new Date().toISOString()}).eq('id',data.id).then(()=>{});
-      });
+      })();
     },[session]);
 
     if(loading) return h('div',{className:'loading'},'Loading Samara Care…');
@@ -257,18 +276,34 @@ Caring with Compassion. Living with Dignity.`;
       if(password.length<8){setMessage('Please choose a password containing at least 8 characters.');return}
       if(password!==confirm){setMessage('The two passwords do not match.');return}
       setBusy(true);
-      const {error:authError}=await client.auth.updateUser({password});
-      if(authError){setMessage(authError.message);setBusy(false);return}
-      const {error:profileError}=await client.from('profiles').update({must_change_password:false,updated_at:new Date().toISOString()}).eq('id',profile.id);
-      if(profileError){setMessage(profileError.message);setBusy(false);return}
+      const currentMeta=(await client.auth.getUser()).data?.user?.user_metadata||{};
+      const {error:authError}=await client.auth.updateUser({
+        password,
+        data:{...currentMeta,must_change_password:false,password_changed_at:new Date().toISOString()}
+      });
+      if(authError){
+        const msg=String(authError.message||'');
+        setMessage(msg.toLowerCase().includes('different from the old')
+          ? 'Please enter a completely new password. Do not use the temporary password again.'
+          : msg);
+        setBusy(false);return;
+      }
+      // Primary database completion. Authentication metadata above is also kept as
+      // a safe recovery marker, preventing a repeated onboarding loop.
+      const {error:profileError}=await client.rpc('complete_my_first_login');
+      if(profileError){
+        console.warn('Profile completion RPC unavailable; continuing with secure Auth completion marker.',profileError);
+      }
+      await client.auth.refreshSession();
       setBusy(false);onComplete();
     }
     return h('div',{className:'login-shell'},h('form',{className:'card login-card first-login-card',onSubmit:submit},
       h('div',{className:'brand'},h('div',{className:'logo'},'SC'),h('div',null,h('h1',null,`Welcome to the Samara Family, ${displayName(profile)} 👋`),h('p',null,'We are delighted that you are joining our Assisted Living Team.'))),
       h('p',null,'Before you begin, please create your own secure password. This protects resident information and ensures that only you can access your account.'),
       message&&h('div',{className:'message error'},message),
-      h('div',{className:'field'},h('label',null,'Create New Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),
-      h('div',{className:'field'},h('label',null,'Confirm New Password'),h('input',{type:'password',value:confirm,onChange:e=>setConfirm(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),
+      h('div',{className:'field'},h('label',null,'Create New Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password',name:'samara-new-secure-password'})),
+      h('div',{className:'field'},h('label',null,'Confirm New Password'),h('input',{type:'password',value:confirm,onChange:e=>setConfirm(e.target.value),minLength:8,required:true,autoComplete:'new-password',name:'samara-confirm-secure-password'})),
+      h('p',{className:'small-note'},'Use a completely new password. Do not repeat the temporary password.'),
       h('button',{className:'btn btn-primary full',disabled:busy},busy?'Activating your account…':'Create Password & Enter Samara ERP'),
       h('p',{className:'small-note'},'Caring with Compassion. Living with Dignity.')
     ));

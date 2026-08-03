@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.0.17-dashboard';
+const CACHE = 'samara-erp-1.0.20-first-login';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.0.17', './app.js?v=1.0.17',
-  './bootstrap-error.js?v=1.0.17', './health-check.js?v=1.0.17',
-  './config.js?v=1.0.17', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.0.20', './app.js?v=1.0.20',
+  './bootstrap-error.js?v=1.0.20', './health-check.js?v=1.0.20',
+  './config.js?v=1.0.20', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', event => {
