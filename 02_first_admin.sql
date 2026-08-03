@@ -1,22 +1,31 @@
--- SAMARA CARE v3: TWO 12-HOUR SHIFTS AND SPECIAL NURSE REQUIREMENT
-alter table public.patients add column if not exists special_nurse_required boolean not null default false;
-alter table public.patients add column if not exists special_nurse_name text;
-alter table public.patients add column if not exists special_nurse_shift text;
-alter table public.patients add column if not exists special_nurse_instructions text;
+-- Samara Care ERP V5.5
+-- Safe compatibility for employee account creation and recovery.
 
--- Convert earlier three-shift values into the new two-shift system.
-update public.care_orders set shift='Day Shift (7 AM–7 PM)' where shift in ('Morning','Afternoon');
-update public.care_orders set shift='Night Shift (7 PM–7 AM)' where shift='Night';
-update public.care_orders set shift='Both shifts' where shift='All shifts';
+alter table public.profiles
+  add column if not exists active boolean default true;
 
-update public.care_logs set shift='Day Shift (7 AM–7 PM)' where shift in ('Morning','Afternoon');
-update public.care_logs set shift='Night Shift (7 PM–7 AM)' where shift='Night';
-update public.care_logs set shift='Both shifts' where shift='All shifts';
+alter table public.profiles
+  add column if not exists is_active boolean default true;
 
-alter table public.care_orders drop constraint if exists care_orders_shift_check;
-alter table public.care_orders add constraint care_orders_shift_check
-  check (shift in ('Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)','Both shifts'));
+update public.profiles
+set active = coalesce(active, is_active, true),
+    is_active = coalesce(is_active, active, true);
 
-alter table public.care_logs drop constraint if exists care_logs_shift_check;
-alter table public.care_logs add constraint care_logs_shift_check
-  check (shift in ('Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)','Both shifts'));
+create unique index if not exists profiles_login_id_lower_unique
+  on public.profiles (lower(login_id))
+  where login_id is not null and trim(login_id) <> '';
+
+-- Employee IDs are checked in the Edge Function because older data may contain duplicates.
+-- This query displays profiles that do not currently match an Authentication user.
+select
+  p.id,
+  p.full_name,
+  p.employee_id,
+  p.login_id,
+  p.role,
+  p.active,
+  p.is_active,
+  case when u.id is null then 'AUTH USER MISSING' else 'CONNECTED' end as authentication_status
+from public.profiles p
+left join auth.users u on u.id = p.id
+order by p.full_name;

@@ -1,32 +1,54 @@
-(() => {
-  'use strict';
-  const report = { version: '7.1.0', checkedAt: new Date().toISOString(), checks: {} };
-  function set(name, ok, detail) { report.checks[name] = { ok: Boolean(ok), detail: detail || '' }; }
-  set('browser', Boolean(window.Promise && window.fetch), 'Modern browser APIs');
-  set('react', Boolean(window.React && window.ReactDOM), 'React libraries loaded');
-  set('supabaseSdk', Boolean(window.supabase), 'Supabase browser SDK loaded');
-  set('configuration', Boolean(window.SAMARA_CONFIG?.supabaseUrl && window.SAMARA_CONFIG?.supabasePublishableKey), 'Supabase URL and publishable key');
-  set('secureContext', window.isSecureContext || location.hostname === 'localhost', window.isSecureContext ? 'HTTPS' : 'Camera requires HTTPS');
-  set('cameraApi', Boolean(navigator.mediaDevices?.getUserMedia), 'Camera / webcam API');
-  window.SAMARA_HEALTH = report;
-  window.addEventListener('load', async () => {
-    try {
-      if (!window.supabase || !window.SAMARA_CONFIG) return;
-      const c = window.supabase.createClient(window.SAMARA_CONFIG.supabaseUrl, window.SAMARA_CONFIG.supabasePublishableKey, { auth: { persistSession: false } });
-      const { error: profileError } = await c.from('profiles').select('id').limit(1);
-      set('profilesTable', !profileError, profileError?.message || 'Available');
-      const { error: docsError } = await c.from('employee_documents').select('id,document_type').limit(1);
-      set('employeeDocumentsTable', !docsError, docsError?.message || 'Available');
-      const { data: buckets, error: bucketError } = await c.storage.listBuckets();
-      if (bucketError) set('storage', false, bucketError.message);
-      else {
-        const names = (buckets || []).map(b => b.name);
-        set('employeeDocumentsBucket', names.includes('employee-documents'), names.includes('employee-documents') ? 'Available' : 'Missing');
-        set('patientDocumentsBucket', names.includes('patient-documents'), names.includes('patient-documents') ? 'Available' : 'Missing');
-      }
-    } catch (error) {
-      set('cloudConnection', false, error.message || String(error));
-    }
-    console.info('Samara Care health check', window.SAMARA_HEALTH);
-  });
-})();
+-- Samara Care ERP V5.4
+-- Employee authentication status, active-column compatibility and account recovery support.
+
+alter table public.profiles
+  add column if not exists active boolean not null default true;
+
+alter table public.profiles
+  add column if not exists is_active boolean not null default true;
+
+update public.profiles
+set active = coalesce(is_active, active, true),
+    is_active = coalesce(is_active, active, true);
+
+create or replace function public.sync_profile_active_columns()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.is_active is distinct from old.is_active then
+    new.active := new.is_active;
+  elsif new.active is distinct from old.active then
+    new.is_active := new.active;
+  else
+    new.active := coalesce(new.active, new.is_active, true);
+    new.is_active := coalesce(new.is_active, new.active, true);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists sync_profile_active_columns_trigger on public.profiles;
+create trigger sync_profile_active_columns_trigger
+before update on public.profiles
+for each row execute function public.sync_profile_active_columns();
+
+update auth.users
+set banned_until = null
+where id in (select id from public.profiles where coalesce(is_active, active, true) = true);
+
+select
+  p.full_name,
+  p.login_id,
+  p.role,
+  p.active,
+  p.is_active,
+  case when u.id is null then 'MISSING AUTH USER'
+       when u.banned_until is not null and u.banned_until > now() then 'BLOCKED'
+       when u.email_confirmed_at is null then 'UNCONFIRMED'
+       else 'CONNECTED'
+  end as authentication_status,
+  u.last_sign_in_at
+from public.profiles p
+left join auth.users u on u.id = p.id
+order by p.full_name;

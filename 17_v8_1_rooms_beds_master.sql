@@ -1,111 +1,81 @@
--- Samara Care ERP V6.2 - Stable authentication foundation
--- This migration keeps existing employee profile IDs and links them to Supabase Auth users.
+-- SAMARA CARE v2: POST-DISCHARGE ADMISSION, PRESCRIPTION AND SHIFT TASKS
+alter table public.patients add column if not exists hospital_name text;
+alter table public.patients add column if not exists discharge_date date;
+alter table public.patients add column if not exists diagnosis text;
+alter table public.patients add column if not exists treating_doctor text;
+alter table public.patients add column if not exists doctor_phone text;
+alter table public.patients add column if not exists attendant_name text;
+alter table public.patients add column if not exists attendant_phone text;
+alter table public.patients add column if not exists allergies text;
+alter table public.patients add column if not exists special_instructions text;
+alter table public.patients add column if not exists prescription_verified boolean not null default false;
+alter table public.patients add column if not exists prescription_verified_by uuid references public.profiles(id);
+alter table public.patients add column if not exists prescription_verified_at timestamptz;
 
-alter table public.profiles
-  add column if not exists auth_user_id uuid;
+create table if not exists public.medication_orders (
+  id uuid primary key default gen_random_uuid(), patient_id uuid not null references public.patients(id) on delete cascade,
+  medicine_name text not null, strength text, dose text not null, route text not null default 'Oral',
+  food_instruction text, scheduled_times time[] not null, start_date date not null, end_date date,
+  special_instruction text, is_prn boolean not null default false, is_active boolean not null default true,
+  entered_by uuid not null references public.profiles(id), verified_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create table if not exists public.medication_administrations (
+  id uuid primary key default gen_random_uuid(), order_id uuid not null references public.medication_orders(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade, scheduled_date date not null,
+  scheduled_time time not null, status text not null check(status in ('Given','Refused','Withheld','Unavailable','Missed')),
+  administered_at timestamptz, administered_by uuid references public.profiles(id), remarks text,
+  created_at timestamptz not null default now(), unique(order_id,scheduled_date,scheduled_time)
+);
+create table if not exists public.care_orders (
+  id uuid primary key default gen_random_uuid(), patient_id uuid not null references public.patients(id) on delete cascade,
+  care_type text not null, shift text not null check(shift in ('Morning','Afternoon','Night','All shifts')),
+  frequency text not null default 'Daily', instruction text, is_active boolean not null default true,
+  entered_by uuid not null references public.profiles(id), created_at timestamptz not null default now()
+);
+create table if not exists public.care_logs (
+  id uuid primary key default gen_random_uuid(), care_order_id uuid not null references public.care_orders(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade, care_date date not null,
+  shift text not null, status text not null check(status in ('Completed','Refused','Not required','Pending')),
+  completed_at timestamptz, completed_by uuid references public.profiles(id), remarks text,
+  created_at timestamptz not null default now(), unique(care_order_id,care_date,shift)
+);
+create table if not exists public.physiotherapy_orders (
+  id uuid primary key default gen_random_uuid(), patient_id uuid not null references public.patients(id) on delete cascade,
+  advised_by text, therapy_type text not null, frequency text not null, preferred_time time,
+  precautions text, start_date date not null, end_date date, is_active boolean not null default true,
+  entered_by uuid not null references public.profiles(id), created_at timestamptz not null default now()
+);
+create table if not exists public.physiotherapy_sessions (
+  id uuid primary key default gen_random_uuid(), order_id uuid not null references public.physiotherapy_orders(id) on delete cascade,
+  patient_id uuid not null references public.patients(id) on delete cascade, session_date date not null,
+  status text not null check(status in ('Completed','Refused','Postponed','Pending')), session_at timestamptz,
+  performed_by uuid references public.profiles(id), notes text, created_at timestamptz not null default now()
+);
 
-create unique index if not exists profiles_auth_user_id_unique
-  on public.profiles(auth_user_id)
-  where auth_user_id is not null;
+alter table public.medication_orders enable row level security; alter table public.medication_administrations enable row level security;
+alter table public.care_orders enable row level security; alter table public.care_logs enable row level security;
+alter table public.physiotherapy_orders enable row level security; alter table public.physiotherapy_sessions enable row level security;
 
-alter table public.profiles
-  add column if not exists auth_email text;
+-- all authenticated care staff may read; clinical staff may create/update
+DO $$ DECLARE t text; BEGIN FOREACH t IN ARRAY ARRAY['medication_orders','medication_administrations','care_orders','care_logs','physiotherapy_orders','physiotherapy_sessions'] LOOP
+  EXECUTE format('drop policy if exists "staff read %1$s" on public.%1$I',t);
+  EXECUTE format('create policy "staff read %1$s" on public.%1$I for select to authenticated using (public.current_user_has_role(array[''Admin'',''Manager'',''Nurse'',''Caregiver'']))',t);
+END LOOP; END $$;
 
-alter table public.profiles
-  add column if not exists active boolean default true;
+drop policy if exists "clinical manage med orders" on public.medication_orders;
+create policy "clinical manage med orders" on public.medication_orders for all to authenticated using(public.current_user_has_role(array['Admin','Manager','Nurse'])) with check(public.current_user_has_role(array['Admin','Manager','Nurse']));
+drop policy if exists "nurses administer medicines" on public.medication_administrations;
+create policy "nurses administer medicines" on public.medication_administrations for all to authenticated using(public.current_user_has_role(array['Admin','Manager','Nurse'])) with check(public.current_user_has_role(array['Admin','Manager','Nurse']));
+drop policy if exists "clinical manage care orders" on public.care_orders;
+create policy "clinical manage care orders" on public.care_orders for all to authenticated using(public.current_user_has_role(array['Admin','Manager','Nurse'])) with check(public.current_user_has_role(array['Admin','Manager','Nurse']));
+drop policy if exists "care staff log care" on public.care_logs;
+create policy "care staff log care" on public.care_logs for all to authenticated using(public.current_user_has_role(array['Admin','Manager','Nurse','Caregiver'])) with check(public.current_user_has_role(array['Admin','Manager','Nurse','Caregiver']));
+drop policy if exists "clinical manage physio orders" on public.physiotherapy_orders;
+create policy "clinical manage physio orders" on public.physiotherapy_orders for all to authenticated using(public.current_user_has_role(array['Admin','Manager','Nurse'])) with check(public.current_user_has_role(array['Admin','Manager','Nurse']));
+drop policy if exists "staff log physio" on public.physiotherapy_sessions;
+create policy "staff log physio" on public.physiotherapy_sessions for all to authenticated using(public.current_user_has_role(array['Admin','Manager','Nurse','Caregiver'])) with check(public.current_user_has_role(array['Admin','Manager','Nurse','Caregiver']));
 
-alter table public.profiles
-  add column if not exists is_active boolean default true;
-
--- Link profiles that already use the same UUID as auth.users.
-update public.profiles p
-set auth_user_id = u.id,
-    auth_email = lower(u.email)
-from auth.users u
-where p.id = u.id
-  and (p.auth_user_id is null or p.auth_email is null);
-
--- Link by an already stored authentication email.
-update public.profiles p
-set auth_user_id = u.id,
-    auth_email = lower(u.email)
-from auth.users u
-where p.auth_user_id is null
-  and p.auth_email is not null
-  and lower(p.auth_email) = lower(u.email);
-
--- Link legacy accounts by metadata Login ID or email prefix.
-update public.profiles p
-set auth_user_id = u.id,
-    auth_email = lower(u.email)
-from auth.users u
-where p.auth_user_id is null
-  and lower(trim(p.login_id)) = lower(coalesce(u.raw_user_meta_data ->> 'login_id', split_part(u.email, '@', 1)));
-
--- Employee creation is handled by the protected admin-users Edge Function.
--- Remove old auth triggers that attempted a second insert into profiles.
-do $$
-declare r record;
-begin
-  for r in
-    select t.tgname
-    from pg_trigger t
-    join pg_class c on c.oid = t.tgrelid
-    join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = 'auth'
-      and c.relname = 'users'
-      and not t.tgisinternal
-  loop
-    execute format('drop trigger if exists %I on auth.users', r.tgname);
-  end loop;
-end $$;
-
-create or replace function public.resolve_employee_login(p_login_id text)
-returns text
-language plpgsql
-security definer
-set search_path = public, auth
-as $$
-declare
-  v_login text := lower(trim(p_login_id));
-  v_email text;
-begin
-  select lower(u.email)
-  into v_email
-  from public.profiles p
-  join auth.users u
-    on u.id = coalesce(p.auth_user_id, p.id)
-  where lower(trim(p.login_id)) = v_login
-    and coalesce(p.active, true)
-    and coalesce(p.is_active, true)
-  limit 1;
-  return v_email;
-end;
-$$;
-
-revoke all on function public.resolve_employee_login(text) from public;
-grant execute on function public.resolve_employee_login(text) to anon, authenticated;
-
--- Diagnostic view for Admin checks.
-create or replace view public.employee_auth_diagnostics as
-select
-  p.id as profile_id,
-  p.auth_user_id,
-  p.full_name,
-  p.login_id,
-  p.role,
-  p.active,
-  p.is_active,
-  p.auth_email,
-  u.email as actual_auth_email,
-  u.last_sign_in_at,
-  case
-    when p.auth_user_id is null then 'AUTH USER MISSING'
-    when u.id is null then 'AUTH LINK BROKEN'
-    when not coalesce(p.active, true) or not coalesce(p.is_active, true) then 'DISABLED'
-    else 'READY'
-  end as authentication_status
-from public.profiles p
-left join auth.users u on u.id = p.auth_user_id;
-
-select * from public.employee_auth_diagnostics order by full_name;
+DO $$ DECLARE t text; BEGIN FOREACH t IN ARRAY ARRAY['medication_orders','medication_administrations','care_orders','care_logs','physiotherapy_orders','physiotherapy_sessions'] LOOP
+  BEGIN EXECUTE format('alter publication supabase_realtime add table public.%I',t); EXCEPTION WHEN duplicate_object THEN NULL; END;
+END LOOP; END $$;
