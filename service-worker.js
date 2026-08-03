@@ -1,8 +1,8 @@
 const CACHE = 'samara-erp-1-0-2-global-search';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.0.2', './app.js?v=1.0.2',
-  './bootstrap-error.js?v=1.0.2', './health-check.js?v=1.0.2',
-  './config.js?v=1.0.2', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.0.3', './app.js?v=1.0.3',
+  './bootstrap-error.js?v=1.0.3', './health-check.js?v=1.0.3',
+  './config.js?v=1.0.3', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png'
 ];
 self.addEventListener('install', event => {

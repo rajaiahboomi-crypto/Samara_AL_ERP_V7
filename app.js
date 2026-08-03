@@ -315,7 +315,7 @@ Caring with Compassion. Living with Dignity.`;
           h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter login ID'})),
           h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true,placeholder:'Enter password'})),
           h('button',{className:'btn btn-primary full login-v3-button',disabled:busy},busy?'Signing in…':'Sign in'),
-          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.2')
+          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.3')
         )
       )
     );
@@ -331,7 +331,7 @@ Caring with Compassion. Living with Dignity.`;
     },[page,allowed.join('|')]);
     function toggle(title){setOpenSection(current=>current===title?'':title)}
     return h('aside',{className:'sidebar'},
-      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.2'))),
+      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.3'))),
       h('nav',{className:'nav-scroll'},sections.map(section=>{
         const expanded=openSection===section.title;
         return h('div',{className:`nav-section ${expanded?'expanded':''}`,key:section.title},
@@ -1295,7 +1295,7 @@ Caring with Compassion. Living with Dignity.`;
       return d.toISOString().slice(0,10);
     };
     const eventDate=(row,fields)=>{for(const f of fields){if(row&&row[f])return dateOnly(row[f]);}return '';};
-    const patientName=id=>patients.find(p=>p.id===id)?.full_name||'Unknown patient';
+    const patientName=id=>{const row=patients.find(p=>p.id===id);return row?formalName(row):'Unknown patient';};
     const money=value=>`₹${Number(value||0).toLocaleString('en-IN')}`;
     const safeRows=result=>result?.data||[];
     const byPatient=(rows,id)=>rows.filter(r=>r.patient_id===id);
@@ -1303,7 +1303,18 @@ Caring with Compassion. Living with Dignity.`;
     const latest=(rows,fields)=>[...rows].sort((a,b)=>new Date(eventDate(b,fields)||0)-new Date(eventDate(a,fields)||0))[0]||null;
     const text=value=>String(value||'').trim();
     const sentence=value=>{const v=text(value);return v?v.replace(/[.\s]+$/,'')+'.':'';};
-    const roleName=id=>report?.staffMap?.[id]?.full_name||id||'Staff member';
+    const roleName=id=>{const row=report?.staffMap?.[id];return row?formalName(row):(id||'Staff member');};
+    async function resolveReportPatientPhoto(patient,documents){
+      if(!patient)return '';
+      let path=patient.photo_storage_path||'';
+      if(!path){
+        const photo=(documents||[]).filter(d=>d.patient_id===patient.id&&/patient photo|photograph/i.test(String(d.document_type||''))).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0))[0];
+        path=photo?.storage_path||'';
+      }
+      if(!path)return '';
+      const {data}=await client.storage.from('patient-documents').createSignedUrl(path,1800);
+      return data?.signedUrl||'';
+    }
 
     function conditionAssessment(patient,vitals,incidents,mar){
       const critical=vitals.filter(v=>String(v.alert_level||'').toLowerCase()==='critical');
@@ -1326,18 +1337,20 @@ Caring with Compassion. Living with Dignity.`;
     function patientHumanNarrative(p,d){
       const status=conditionAssessment(p,d.vitals,d.incidents,d.mar);
       const admissionSource=p.admission_type==='Hospital Discharge'?`following discharge from ${p.hospital_name||'a hospital'}`:p.admission_type==='Doctor Referral'?`on referral by Dr. ${p.referring_doctor||p.treating_doctor||'the referring doctor'}`:p.admission_type==='Hospital Transfer'?`as a transfer from ${p.hospital_name||'another care centre'}`:'as a direct admission to Samara';
-      const intro=`${p.full_name||'The patient'} (${p.patient_id||'patient ID not assigned'}) was admitted ${admissionSource} on ${p.admission_date||'the recorded admission date'} for ${p.diagnosis||p.patient_category||'assisted-living care'}. ${p.allergies?`Known allergies: ${p.allergies}.`:'No allergy information is recorded.'}`;
+      const intro='Admission Summary: '+`${formalName(p)||'The patient'} (${p.patient_id||'patient ID not assigned'}) was admitted ${admissionSource} on ${p.admission_date||'the recorded admission date'} for ${p.diagnosis||p.patient_category||'assisted-living care'}. ${p.allergies?`Known allergies: ${p.allergies}.`:'No allergy information is recorded.'}`;
       const careParts=[];
       if(d.medicationOrders.length)careParts.push(`prescribed medicines were scheduled and ${d.mar.filter(x=>String(x.status||'').toLowerCase()==='given').length} dose(s) were documented as administered`);
       if(d.care.length)careParts.push(`${d.care.length} basic-care activity/activities were recorded, including hygiene, mobility, feeding or toileting support as applicable`);
       if(d.physioSessions.length)careParts.push(`${d.physioSessions.length} physiotherapy session(s) were completed or reviewed`);
       if(d.meals.length)careParts.push(`${d.meals.length} meal/intake record(s) were documented`);
-      const careText=careParts.length?`During the reported period, ${careParts.join('; ')}.`:'No detailed treatment or care activity is recorded for the selected period.';
+      const careText=careParts.length?'Care and Treatment Provided: '+`During the reported period, ${careParts.join('; ')}.`:'Care and Treatment Provided: No detailed treatment or care activity is recorded for the selected period.';
       const latestVital=latest(d.vitals,['recorded_at','created_at']);
       const latestText=latestVital?`The latest recorded observations were BP ${latestVital.systolic||'—'}/${latestVital.diastolic||'—'} mmHg, pulse ${latestVital.pulse||'—'}/min, SpO₂ ${latestVital.spo2||'—'}% and blood sugar ${latestVital.blood_sugar||'—'}.`:'No recent vital-sign entry is available.';
-      const current=`Current status: ${status.label}. ${status.reason} ${latestText}`;
-      const next=`Plan and recommendation: ${referralAssessment(p,d.vitals,d.incidents)} Continue medicine administration, nursing assistance, diet, physiotherapy and risk precautions according to the active care plan.`;
-      return [intro,careText,current,next];
+      const current=`Current Clinical Status: ${status.label}. ${status.reason} ${latestText}`;
+      const familyNoted=d.incidents.some(i=>i.family_informed===true||/family|relative|attendant/i.test(String(i.immediate_action||i.remarks||i.description||'')));
+      const family=`Family Communication: ${familyNoted?'The available records indicate that the family/attendant was informed regarding the patient’s condition or a significant event.':'No documented family communication is available for the selected reporting period.'}`;
+      const next=`Plan and Recommendation: ${referralAssessment(p,d.vitals,d.incidents)} Continue medicine administration, nursing assistance, diet, physiotherapy and risk precautions according to the active care plan.`;
+      return [intro,careText,current,family,next];
     }
 
     function dailyPatientNarrative(p,all){
@@ -1352,7 +1365,7 @@ Caring with Compassion. Living with Dignity.`;
       if(d.physioSessions.length)activity.push(`${d.physioSessions.length} physiotherapy session(s)`);
       if(d.vitals.length)activity.push(`${d.vitals.length} vital-sign check(s)`);
       const exception=d.mar.filter(x=>String(x.status||'').toLowerCase()!=='given').length;
-      return `${p.full_name} (${p.patient_id||'No ID'}, Room ${p.room_no||'unassigned'}${p.bed_no?`/${p.bed_no}`:''}) — ${status.label}. ${activity.length?activity.join(', '):'No clinical activity was entered'}.${exception?` ${exception} medicine exception(s) require review.`:''}${d.incidents.length?` ${d.incidents.length} incident(s) were recorded.`:''}`;
+      return `${formalName(p)} (${p.patient_id||'No ID'}, Room ${p.room_no||'unassigned'}${p.bed_no?`/${p.bed_no}`:''}) — ${status.label}. ${activity.length?activity.join(', '):'No clinical activity was entered'}.${exception?` ${exception} medicine exception(s) require review.`:''}${d.incidents.length?` ${d.incidents.length} incident(s) were recorded.`:''}`;
     }
 
     async function generate(e){
@@ -1371,7 +1384,7 @@ Caring with Compassion. Living with Dignity.`;
           vitals:byDay(vitals,reportDate,['recorded_at','created_at']),care:byDay(care,reportDate,['completed_at','created_at','care_date']),mar:byDay(mar,reportDate,['administered_at','created_at','scheduled_date']),meals:byDay(meals,reportDate,['served_at','created_at','meal_date']),physioSessions:byDay(physioSessions,reportDate,['session_at','created_at','session_date']),incidents:byDay(incidents,reportDate,['incident_at','created_at']),billing:byDay(billing,reportDate,['transaction_date','created_at']),recovery:byDay(recovery,reportDate,['event_at','created_at']),handovers:byDay(handovers,reportDate,['created_at','handover_date']),documents:byDay(documents,reportDate,['created_at','report_date']),audit:byDay(audit,reportDate,['created_at'])
         };
         const data=mode==='Patient-wise'?{
-          patients:selectedPatient?[selectedPatient]:[],vitals:byPatient(vitals,patientId),care:byPatient(care,patientId),medicationOrders:byPatient(orders,patientId),mar:byPatient(mar,patientId),meals:byPatient(meals,patientId),physioOrders:byPatient(physioOrders,patientId),physioSessions:byPatient(physioSessions,patientId),incidents:byPatient(incidents,patientId),billing:byPatient(billing,patientId),recovery:byPatient(recovery,patientId),handovers:handovers.filter(r=>text(r.patient_summary).toLowerCase().includes(text(selectedPatient?.full_name).toLowerCase())),documents:byPatient(documents,patientId)
+          patients:selectedPatient?[selectedPatient]:[],vitals:byPatient(vitals,patientId),care:byPatient(care,patientId),medicationOrders:byPatient(orders,patientId),mar:byPatient(mar,patientId),meals:byPatient(meals,patientId),physioOrders:byPatient(physioOrders,patientId),physioSessions:byPatient(physioSessions,patientId),incidents:byPatient(incidents,patientId),billing:byPatient(billing,patientId),recovery:byPatient(recovery,patientId),handovers:handovers.filter(r=>text(r.patient_summary).toLowerCase().includes(text(formalName(selectedPatient)).toLowerCase())),documents:byPatient(documents,patientId)
         }:{...dayData,patients:pats.filter(p=>p.is_active!==false&&dateOnly(p.admission_date)<=reportDate),newAdmissions:pats.filter(p=>dateOnly(p.admission_date)===reportDate)};
         const charges=data.billing.filter(x=>x.transaction_type==='Charge').reduce((a,x)=>a+Number(x.amount||0),0);
         const payments=data.billing.filter(x=>x.transaction_type==='Payment').reduce((a,x)=>a+Number(x.amount||0),0);
@@ -1382,7 +1395,8 @@ Caring with Compassion. Living with Dignity.`;
         [...data.care,...data.mar,...data.vitals,...data.physioSessions,...data.incidents,...(data.audit||[])].forEach(r=>[r.completed_by,r.administered_by,r.recorded_by,r.performed_by,r.reported_by,r.user_id].filter(Boolean).forEach(id=>activeStaffIds.add(id)));
         const staffMap=Object.fromEntries(staff.map(x=>[x.id,x]));
         const onDuty=staff.filter(x=>activeStaffIds.has(x.id));
-        setReport({mode,patient:selectedPatient,date:reportDate,data,staffMap,onDuty,summary:{charges,payments,discounts,outstanding:charges-payments-discounts,criticalVitals:criticalVitals.length,medicinesGiven:data.mar.filter(x=>String(x.status||'').toLowerCase()==='given').length,medicineExceptions:medicineExceptions.length,openingPatients:mode==='Day-wise'?data.patients.length:0,newAdmissions:mode==='Day-wise'?data.newAdmissions.length:0}});
+        const patientPhoto=mode==='Patient-wise'?await resolveReportPatientPhoto(selectedPatient,documents):'';
+        setReport({mode,patient:selectedPatient,patientPhoto,date:reportDate,data,staffMap,onDuty,summary:{charges,payments,discounts,outstanding:charges-payments-discounts,criticalVitals:criticalVitals.length,medicinesGiven:data.mar.filter(x=>String(x.status||'').toLowerCase()==='given').length,medicineExceptions:medicineExceptions.length,openingPatients:mode==='Day-wise'?data.patients.length:0,newAdmissions:mode==='Day-wise'?data.newAdmissions.length:0}});
       }catch(error){setMessage(error.message||'Unable to generate report.');}
       setBusy(false);
     }
@@ -1393,9 +1407,9 @@ Caring with Compassion. Living with Dignity.`;
       if(!report)return [];
       if(report.mode==='Patient-wise')return patientHumanNarrative(report.patient||{},report.data);
       const d=report.data,s=report.summary;
-      const opening=`The facility opened the day with ${s.openingPatients} active patient(s). ${s.newAdmissions} new admission(s) were recorded${d.newAdmissions?.length?`: ${d.newAdmissions.map(p=>p.full_name).join(', ')}`:'.'}`;
+      const opening=`The facility opened the day with ${s.openingPatients} active patient(s). ${s.newAdmissions} new admission(s) were recorded${d.newAdmissions?.length?`: ${d.newAdmissions.map(p=>formalName(p)).join(', ')}`:'.'}`;
       const clinical=`Clinical activity included ${d.vitals.length} vital-sign check(s), ${d.care.length} care task(s), ${d.mar.length} medicine action(s), ${d.meals.length} meal/intake record(s) and ${d.physioSessions.length} physiotherapy session(s). ${s.criticalVitals} critical vital alert(s), ${s.medicineExceptions} medicine exception(s) and ${d.incidents.length} incident(s) require review.`;
-      const staffing=`Recorded care activity was entered by ${report.onDuty.length} employee(s) during the day${report.onDuty.length?`: ${report.onDuty.map(x=>`${x.full_name} (${x.role})`).join(', ')}`:'. No staff activity could be derived from the available records.'}`;
+      const staffing=`Recorded care activity was entered by ${report.onDuty.length} employee(s) during the day${report.onDuty.length?`: ${report.onDuty.map(x=>`${formalName(x)} (${x.role})`).join(', ')}`:'. No staff activity could be derived from the available records.'}`;
       const finance=`The financial statement for the day shows charges of ${money(s.charges)}, payments of ${money(s.payments)}, discounts of ${money(s.discounts)} and a net outstanding movement of ${money(s.outstanding)}.`;
       const close=`Overall, the day was ${s.criticalVitals||d.incidents.length?'clinically active and requires managerial/medical follow-up on the alerts noted below':'operationally stable on the available records'}. Patient-wise details are provided in the following section.`;
       return [opening,clinical,staffing,finance,close];
@@ -1405,17 +1419,27 @@ Caring with Compassion. Living with Dignity.`;
       h(Section,{title:'Intelligent Reports',subtitle:'Human-readable patient progress and complete day-wise operational reports'},
         h('form',{className:'intelligent-report-controls',onSubmit:generate},
           h('div',{className:'field'},h('label',null,'Report type'),h('select',{value:mode,onChange:e=>{setMode(e.target.value);setReport(null);setMessage('')}},h('option',null,'Patient-wise'),h('option',null,'Day-wise'))),
-          mode==='Patient-wise'?h('div',{className:'field'},h('label',null,'Patient'),h('select',{value:patientId,onChange:e=>setPatientId(e.target.value),required:true},h('option',{value:''},'Select patient'),patients.map(p=>h('option',{key:p.id,value:p.id},`${p.patient_id||'NO-ID'} · ${p.full_name}${p.room_no?` · Room ${p.room_no}${p.bed_no?`-${p.bed_no}`:''}`:''}`)))):h('div',{className:'field'},h('label',null,'Date'),h('input',{type:'date',value:reportDate,onChange:e=>setReportDate(e.target.value),required:true})),
+          mode==='Patient-wise'?h('div',{className:'field'},h('label',null,'Patient'),h('select',{value:patientId,onChange:e=>setPatientId(e.target.value),required:true},h('option',{value:''},'Select patient'),patients.map(p=>h('option',{key:p.id,value:p.id},`${p.patient_id||'NO-ID'} · ${formalName(p)}${p.room_no?` · Room ${p.room_no}${p.bed_no?`-${p.bed_no}`:''}`:''}`)))):h('div',{className:'field'},h('label',null,'Date'),h('input',{type:'date',value:reportDate,onChange:e=>setReportDate(e.target.value),required:true})),
           h('button',{className:'btn btn-primary',disabled:busy},busy?'Generating…':'Generate Human Report')
         ),message&&h('div',{className:'message error'},message)
       ),
       report&&h('div',{className:'card panel intelligent-report printable-report'},
-        h('div',{className:'panel-head'},h('div',null,h('h2',null,report.mode==='Patient-wise'?`Patient Care Report – ${report.patient?.full_name||''}`:`Daily Facility Report – ${report.date}`),h('small',null,`Prepared by ${profile.full_name} on ${new Date().toLocaleString()}`)),h('button',{className:'btn btn-secondary no-print',onClick:printReport},'Print / Save PDF')),
-        report.mode==='Patient-wise'&&report.patient&&h('div',{className:'patient-report-header'},h('div',null,h('strong',null,report.patient.patient_id||'—'),h('span',null,report.patient.full_name)),h('div',null,`Admission: ${report.patient.admission_type||'—'} · ${report.patient.admission_date||'—'}`),h('div',null,`Diagnosis: ${report.patient.diagnosis||'—'}`),h('div',null,`Referred/Treating Doctor: ${report.patient.referring_doctor||report.patient.treating_doctor||'—'} · ${report.patient.doctor_phone||'—'}`),h('div',null,`Emergency Contact: ${report.patient.emergency_contact_name||report.patient.attendant_name||'—'} · ${report.patient.emergency_contact_number||report.patient.attendant_phone||'—'}`)),
+        h('div',{className:'panel-head'},h('div',null,h('h2',null,report.mode==='Patient-wise'?`Patient Care Report – ${formalName(report.patient)||''}`:`Daily Facility Report – ${report.date}`),h('small',null,`Prepared by ${formalName(profile)} on ${new Date().toLocaleString()}`)),h('button',{className:'btn btn-secondary no-print',onClick:printReport},'Print / Save PDF')),
+        report.mode==='Patient-wise'&&report.patient&&(()=>{const status=conditionAssessment(report.patient,report.data.vitals,report.data.incidents,report.data.mar);return h('div',{className:'patient-report-header patient-report-v2'},
+          h('div',{className:'patient-report-photo'},report.patientPhoto?h('img',{src:report.patientPhoto,alt:formalName(report.patient)}):h('div',{className:'report-photo-placeholder'},'SC')),
+          h('div',{className:'patient-report-identity'},h('strong',null,formalName(report.patient)),h('span',null,`${report.patient.patient_id||'—'} · Room ${report.patient.room_no||'Unassigned'}${report.patient.bed_no?`-${report.patient.bed_no}`:''}`),h('span',null,`Admission: ${report.patient.admission_type||'—'} · ${report.patient.admission_date||'—'}`)),
+          h('div',{className:`report-status-badge ${status.tone}`},status.label),
+          h('div',{className:'patient-report-facts'},
+            h('div',null,h('b',null,'Diagnosis: '),report.patient.diagnosis||'Not recorded'),
+            h('div',null,h('b',null,'Doctor: '),report.patient.referring_doctor||report.patient.treating_doctor||'Not recorded',report.patient.doctor_phone?` · ${report.patient.doctor_phone}`:''),
+            h('div',null,h('b',null,'Emergency contact: '),report.patient.emergency_contact_name||report.patient.attendant_name||'Not recorded',` · ${report.patient.emergency_contact_number||report.patient.attendant_phone||'—'}`),
+            h('div',null,h('b',null,'Allergies: '),report.patient.allergies||'None recorded')
+          )
+        )})(),
         h('div',{className:'intelligent-summary human-report'},h('h3',null,report.mode==='Patient-wise'?'Clinical Care Summary':'Executive Daily Summary'),narrative().map((p,i)=>h('p',{key:i},p))),
         h('div',{className:'grid stats intelligent-stats'},(report.mode==='Day-wise'?[['Opening patients',report.summary.openingPatients],['New admissions',report.summary.newAdmissions],['Staff active',report.onDuty.length],['Critical alerts',report.summary.criticalVitals],['Incidents',report.data.incidents.length],['Medicine exceptions',report.summary.medicineExceptions],['Collections',money(report.summary.payments)],['Net outstanding',money(report.summary.outstanding)]]:[['Vitals',report.data.vitals.length],['Critical alerts',report.summary.criticalVitals],['Care activities',report.data.care.length],['Medicines given',report.summary.medicinesGiven],['Medicine exceptions',report.summary.medicineExceptions],['Incidents',report.data.incidents.length],['Charges',money(report.summary.charges)],['Outstanding',money(report.summary.outstanding)]]).map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,b)))),
-        report.mode==='Day-wise'&&section('Patient-wise Daily Status',report.data.patients,p=>h(React.Fragment,null,h('strong',null,`${p.patient_id||'NO-ID'} · ${p.full_name}`),h('span',null,dailyPatientNarrative(p,report.data)))),
-        report.mode==='Day-wise'&&section('Employees Active / On Duty (derived from recorded activity)',report.onDuty,x=>h(React.Fragment,null,h('strong',null,x.full_name),h('span',null,`${x.role||'Employee'} · ${x.employee_id||x.login_id||'—'}`))),
+        report.mode==='Day-wise'&&section('Patient-wise Daily Status',report.data.patients,p=>h(React.Fragment,null,h('strong',null,`${p.patient_id||'NO-ID'} · ${formalName(p)}`),h('span',null,dailyPatientNarrative(p,report.data)))),
+        report.mode==='Day-wise'&&section('Employees Active / On Duty (derived from recorded activity)',report.onDuty,x=>h(React.Fragment,null,h('strong',null,formalName(x)),h('span',null,`${x.role||'Employee'} · ${x.employee_id||x.login_id||'—'}`))),
         section('Abnormal and Critical Vital Signs',report.data.vitals.filter(v=>['critical','warning','abnormal'].includes(String(v.alert_level||'').toLowerCase())),r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`BP ${r.systolic||'—'}/${r.diastolic||'—'} · Pulse ${r.pulse||'—'} · SpO₂ ${r.spo2||'—'} · Sugar ${r.blood_sugar||'—'} · ${r.alert_level||'Abnormal'} · ${fmt(r.recorded_at||r.created_at)}`))),
         section('Medication Administration',report.data.mar,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.status||'—'} · Scheduled ${r.scheduled_time||'—'} · ${r.remarks||'No remarks'} · ${fmt(r.administered_at||r.created_at)}${r.administered_by?` · By ${roleName(r.administered_by)}`:''}`))),
         section('Daily Care and Nursing Support',report.data.care,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.shift||'—'} · ${r.status||'—'} · ${r.remarks||'—'} · ${fmt(r.completed_at||r.created_at)}${r.completed_by?` · By ${roleName(r.completed_by)}`:''}`))),
@@ -1424,7 +1448,8 @@ Caring with Compassion. Living with Dignity.`;
         section('Incident Reports',report.data.incidents,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.incident_type||r.type||'Incident'} · Severity ${r.severity||'—'} · ${r.description||r.remarks||'—'} · Status ${r.status||'—'} · ${fmt(r.incident_at||r.created_at)}`))),
         section('Financial Statement',report.data.billing,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.transaction_type||'—'} · ${r.category||'—'} · ${money(r.amount)} · ${r.description||'—'} · ${fmt(r.transaction_date||r.created_at)}`))),
         section('Recovery / Progress Timeline',report.data.recovery,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.event_type||'Milestone'} · ${r.note||'—'} · ${fmt(r.event_at||r.created_at)}`))),
-        section('Documents and Reports',report.data.documents,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.document_type||'Document'} · ${r.document_name||r.file_name||'—'} · ${r.report_date||dateOnly(r.created_at)||'—'}`)))
+        section('Documents and Reports',report.data.documents,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.document_type||'Document'} · ${r.document_name||r.file_name||'—'} · ${r.report_date||dateOnly(r.created_at)||'—'}`))),
+        h('div',{className:'report-footer'},h('strong',null,'Samara Health Care LLP'),h('span',null,'Assisted Living Management System'),h('span',null,'Caring with Compassion. Living with Dignity.'),h('small',null,`Prepared by ${formalName(profile)} · Generated ${new Date().toLocaleString()}`))
       )
     );
   }
