@@ -1,4 +1,4 @@
-const CACHE = 'samara-v9-1-intelligent-reports';
+const CACHE = 'samara-v9-5-role-persistence';
 const SHELL = [
   './', './index.html', './styles.css?v=9.0.0', './app.js?v=9.0.0',
   './bootstrap-error.js?v=9.0.0', './health-check.js?v=9.0.0',

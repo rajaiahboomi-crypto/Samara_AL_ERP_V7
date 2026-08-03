@@ -52,7 +52,7 @@ serve(async (req) => {
     }
 
     async function getTargetProfile(userId: string) {
-      const { data, error } = await admin.from('profiles').select('*').eq('id', userId).single()
+      const { data, error } = await admin.from('profiles').select('*').or(`id.eq.${userId},auth_user_id.eq.${userId}`).single()
       if (error || !data) throw new Error('Employee profile not found')
       if (callerRole === 'manager' && String(data.role).toLowerCase() === 'admin') throw new Error('Managers cannot change Administrator accounts')
       return data
@@ -135,7 +135,7 @@ serve(async (req) => {
         const { error: authError } = await admin.auth.admin.updateUserById(existingAuth.id, { password, email_confirm: true, ban_duration: 'none', user_metadata: { full_name: body.full_name, login_id: loginId, role } })
         if (authError) throw authError
         await audit('REPAIR_EMPLOYEE_PROFILE', existingAuth.id, { login_id: loginId, role })
-        return json({ ok: true, repaired: true, user_id: existingAuth.id })
+        return json({ ok: true, repaired: true, user_id: existingAuth.id, role })
       }
 
       if (existingProfileByLogin && !existingAuth) {
@@ -185,7 +185,7 @@ serve(async (req) => {
       const { data: savedRole, error: roleSaveError } = await admin
         .from('profiles')
         .update({ role })
-        .eq('id', created.user.id)
+        .or(`id.eq.${created.user.id},auth_user_id.eq.${created.user.id}`)
         .select('id,role')
         .single()
       if (roleSaveError || savedRole?.role !== role) {
@@ -203,7 +203,33 @@ serve(async (req) => {
       }
 
       await audit('CREATE_EMPLOYEE', created.user.id, { login_id: loginId, role })
-      return json({ ok: true, repaired: false, user_id: created.user.id })
+      return json({ ok: true, repaired: false, user_id: created.user.id, role })
+    }
+
+    if (body.action === 'set_role') {
+      const requestedRole = normalizeRole(body.role)
+      const target = await getTargetProfile(String(body.user_id || body.profile_id || ''))
+      if (callerRole === 'manager' && requestedRole === 'Admin') throw new Error('Managers cannot assign the Administrator role')
+
+      const authUserId = String(target.auth_user_id || target.id)
+      const { error: profileRoleError } = await admin
+        .from('profiles')
+        .update({ role: requestedRole, updated_at: new Date().toISOString() })
+        .or(`id.eq.${target.id},auth_user_id.eq.${authUserId}`)
+      if (profileRoleError) throw profileRoleError
+
+      const { data: authResult, error: authRoleError } = await admin.auth.admin.getUserById(authUserId)
+      if (!authRoleError && authResult?.user) {
+        const metadata = { ...(authResult.user.user_metadata || {}), role: requestedRole }
+        const { error: metadataError } = await admin.auth.admin.updateUserById(authUserId, { user_metadata: metadata })
+        if (metadataError) throw metadataError
+      }
+
+      const { data: verified, error: verifyError } = await admin
+        .from('profiles').select('id,auth_user_id,role').or(`id.eq.${target.id},auth_user_id.eq.${authUserId}`).single()
+      if (verifyError || verified?.role !== requestedRole) throw new Error('The selected employee role could not be saved correctly')
+      await audit('SET_EMPLOYEE_ROLE', verified.id, { role: requestedRole })
+      return json({ ok: true, user_id: verified.id, role: verified.role })
     }
 
     if (body.action === 'repair_account') {

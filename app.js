@@ -218,7 +218,7 @@
           h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter login ID'})),
           h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true,placeholder:'Enter password'})),
           h('button',{className:'btn btn-primary full login-v3-button',disabled:busy},busy?'Signing in…':'Sign in'),
-          h('div',{className:'login-v3-version'},'Samara Care ERP V9.4')
+          h('div',{className:'login-v3-version'},'Samara Care ERP V9.5')
         )
       )
     );
@@ -234,7 +234,7 @@
     },[page,allowed.join('|')]);
     function toggle(title){setOpenSection(current=>current===title?'':title)}
     return h('aside',{className:'sidebar'},
-      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP V9.4'))),
+      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP V9.5'))),
       h('nav',{className:'nav-scroll'},sections.map(section=>{
         const expanded=openSection===section.title;
         return h('div',{className:`nav-section ${expanded?'expanded':''}`,key:section.title},
@@ -503,6 +503,9 @@
           employeeForm.employee_id=generatedId;
         }
         const result=await adminRequest({action:'create_or_repair',...employeeForm});
+        // Enforce and verify the selected role through the protected server function.
+        const roleResult=await adminRequest({action:'set_role',user_id:result.user_id,role:employeeForm.role});
+        if(roleResult.role!==employeeForm.role)throw new Error(`Selected role ${employeeForm.role} was not saved correctly.`);
         await uploadEmployeePhoto(result.user_id,photoFiles);
         await uploadEmployeeFiles(result.user_id,[
           {type:'ID Card',files:idFiles},{type:'Qualification Certificate',files:qualificationFiles},{type:'Experience Certificate',files:experienceFiles},{type:'Other Certificate',files:otherFiles},{type:'Camera Capture',files:cameraFiles}
@@ -564,7 +567,11 @@
       e.preventDefault();setDetailsBusy(true);setDetailsMsg('');
       try{
         const payload={...detailsForm};delete payload.password;delete payload.id;delete payload.created_at;delete payload.updated_at;delete payload.last_sign_in_at;
-        const {error}=await client.from('profiles').update(payload).eq('id',detailsTarget.id);if(error)throw error;
+        const requestedRole=payload.role;
+        delete payload.role;
+        const {error}=await client.from('profiles').update(payload).or(`id.eq.${detailsTarget.id},auth_user_id.eq.${detailsTarget.auth_user_id||detailsTarget.id}`);if(error)throw error;
+        const roleResult=await adminRequest({action:'set_role',user_id:detailsTarget.id,role:requestedRole});
+        if(roleResult.role!==requestedRole)throw new Error(`Selected role ${requestedRole} was not saved correctly.`);
         await uploadEmployeePhoto(detailsTarget.id,photoFiles);
         await uploadEmployeeFiles(detailsTarget.id,[{type:'ID Card',files:idFiles},{type:'Qualification Certificate',files:qualificationFiles},{type:'Experience Certificate',files:experienceFiles},{type:'Other Certificate',files:otherFiles},{type:'Camera Capture',files:cameraFiles}]);
         setDetailsMsg('Employee information and documents updated successfully.');setIdFiles([]);setQualificationFiles([]);setExperienceFiles([]);setOtherFiles([]);setCameraFiles([]);setPhotoFiles([]);await load();
