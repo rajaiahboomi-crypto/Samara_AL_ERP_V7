@@ -1,8 +1,8 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.1.0';
-  const APP_BUILD_DATE = '03-Aug-2026 16:55 IST';
-  const APP_SCHEMA_VERSION = '23';
+  const APP_VERSION = '1.1.1';
+  const APP_BUILD_DATE = '03-Aug-2026 17:20 IST';
+  const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
     version: APP_VERSION,
@@ -18,7 +18,7 @@
     return;
   }
   const client = sdk.createClient(cfg.supabaseUrl, cfg.supabasePublishableKey, {
-    auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: true }
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
 
   const ROLES = ['Admin','Manager','Nurse','Caregiver','Accounts','Kitchen'];
@@ -197,10 +197,14 @@ Caring with Compassion. Living with Dignity.`;
     const [loading,setLoading]=React.useState(true);
     const [page,setPage]=React.useState('Dashboard');
     const [authMessage,setAuthMessage]=React.useState('');
+    const [recoveryMode,setRecoveryMode]=React.useState(false);
 
     React.useEffect(()=>{
       client.auth.getSession().then(({data})=>setSession(data.session||null)).finally(()=>setLoading(false));
-      const {data:{subscription}}=client.auth.onAuthStateChange((_event,next)=>setSession(next));
+      const {data:{subscription}}=client.auth.onAuthStateChange((event,next)=>{
+        if(event==='PASSWORD_RECOVERY') setRecoveryMode(true);
+        setSession(next);
+      });
       if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
       return()=>subscription.unsubscribe();
     },[]);
@@ -244,7 +248,17 @@ Caring with Compassion. Living with Dignity.`;
       })();
     },[session]);
 
+    React.useEffect(()=>{
+      if(!session||recoveryMode)return;
+      let timer;
+      const reset=()=>{clearTimeout(timer);timer=setTimeout(async()=>{await client.auth.signOut();setAuthMessage('You were signed out after 30 minutes of inactivity for security.');},30*60*1000)};
+      const events=['click','keydown','touchstart','mousemove'];
+      events.forEach(name=>window.addEventListener(name,reset,{passive:true}));reset();
+      return()=>{clearTimeout(timer);events.forEach(name=>window.removeEventListener(name,reset))};
+    },[session,recoveryMode]);
+
     if(loading) return h('div',{className:'loading'},'Loading Samara Care…');
+    if(recoveryMode&&session) return h(RecoveryPasswordChange,{onComplete:async()=>{setRecoveryMode(false);await client.auth.signOut();setAuthMessage('Password changed successfully. Please sign in with your new password.')}});
     if(!session) return h(Login,{externalMessage:authMessage,onClearMessage:()=>setAuthMessage('')});
     if(!profile) return h('div',{className:'loading'},'Loading your employee profile…');
     if(profile.must_change_password) return h(FirstLoginPasswordChange,{profile,onComplete:()=>setProfile({...profile,must_change_password:false})});
@@ -328,30 +342,52 @@ Caring with Compassion. Living with Dignity.`;
     const [password,setPassword]=React.useState('');
     const [busy,setBusy]=React.useState(false);
     const [message,setMessage]=React.useState(externalMessage||'');
+    const [forgot,setForgot]=React.useState(false);
+    const [recoveryLogin,setRecoveryLogin]=React.useState('');
+    const [recoveryBusy,setRecoveryBusy]=React.useState(false);
+    const [recoveryMessage,setRecoveryMessage]=React.useState('');
     React.useEffect(()=>{if(externalMessage)setMessage(externalMessage)},[externalMessage]);
+    async function securityRequest(payload){
+      const response=await fetch(`${cfg.supabaseUrl}/functions/v1/admin-users`,{method:'POST',headers:{'Content-Type':'application/json','apikey':cfg.supabasePublishableKey},body:JSON.stringify(payload)});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok||result.error)throw new Error(result.error||'Unable to complete the security request');
+      return result;
+    }
     async function submit(e){
       e.preventDefault();setBusy(true);setMessage('');if(onClearMessage)onClearMessage();
+      const normalized=normalizeLogin(login);
+      try{
+        const check=await securityRequest({action:'login_precheck',login_id:normalized});
+        if(check.locked){setMessage('This account is temporarily locked after repeated unsuccessful attempts. Please try again later or contact the Administrator.');setBusy(false);return}
+      }catch(_error){/* Sign-in remains available if the optional security check is temporarily unavailable. */}
       let email='';
       if(login.includes('@')){
         email=login.trim().toLowerCase();
       }else{
-        const normalized=normalizeLogin(login);
         const {data:resolved,error:resolveError}=await client.rpc('resolve_employee_login',{p_login_id:normalized});
-        if(resolveError){
-          setMessage('Unable to verify the Login ID. Please contact the Administrator.');
-          setBusy(false);
-          return;
-        }
+        if(resolveError){setMessage('Unable to verify the Login ID. Please contact the Administrator.');setBusy(false);return}
         email=String(resolved||'').trim().toLowerCase();
-        if(!email){
-          setMessage('Incorrect Login ID or password.');
-          setBusy(false);
-          return;
-        }
+        if(!email){setMessage('Incorrect Login ID or password.');setBusy(false);return}
       }
       const {error}=await client.auth.signInWithPassword({email,password});
-      if(error)setMessage(error.message==='Invalid login credentials'?'Incorrect Login ID or password.':error.message);
+      if(error){
+        try{await securityRequest({action:'login_failure',login_id:normalized})}catch(_error){}
+        setMessage(error.message==='Invalid login credentials'?'Incorrect Login ID or password.':error.message);
+      }else{
+        try{await securityRequest({action:'login_success',login_id:normalized})}catch(_error){}
+      }
       setBusy(false);
+    }
+    async function requestRecovery(e){
+      e.preventDefault();setRecoveryBusy(true);setRecoveryMessage('');
+      try{
+        const redirectTo=new URL(window.location.href);redirectTo.hash='';redirectTo.search='';
+        await securityRequest({action:'request_password_recovery',login_id:recoveryLogin.trim(),redirect_to:redirectTo.toString()});
+        setRecoveryMessage('If a registered employee email is available, a secure password-reset link has been sent. Please check Inbox and Spam.');
+      }catch(error){
+        setRecoveryMessage(error.message||'Unable to request a password reset. Please contact the Administrator.');
+      }
+      setRecoveryBusy(false);
     }
     return h('div',{className:'login-shell login-v3-shell'},
       h('div',{className:'login-v3-frame'},
@@ -366,18 +402,52 @@ Caring with Compassion. Living with Dignity.`;
             h('div',null,h('span',null,'✓'),'Secure Supabase cloud data')
           )
         ),
-        h('form',{className:'login-v3-form',onSubmit:submit},
+        forgot?h('form',{className:'login-v3-form',onSubmit:requestRecovery},
+          h('div',{className:'login-v3-kicker login-v3-kicker-dark'},'PASSWORD RECOVERY'),
+          h('h2',null,'Forgot your password?'),
+          h('p',{className:'login-v3-subtitle'},'Enter your employee Login ID or registered employee email.'),
+          recoveryMessage&&h('div',{className:`message ${recoveryMessage.startsWith('If a registered')?'success':'error'}`},recoveryMessage),
+          h('div',{className:'field'},h('label',null,'Login ID or Email'),h('input',{value:recoveryLogin,onChange:e=>setRecoveryLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter Login ID or email'})),
+          h('button',{className:'btn btn-primary full login-v3-button',disabled:recoveryBusy},recoveryBusy?'Sending secure link…':'Send Password Reset Link'),
+          h('button',{type:'button',className:'login-link-button',onClick:()=>{setForgot(false);setRecoveryMessage('')}},'← Back to Sign in'),
+          h('p',{className:'small-note'},'No email access? Ask the Administrator to use Reset Password in Employee Master.'),
+          h('div',{className:'login-v3-version'},`Samara Care ERP ${APP_VERSION}`)
+        ):h('form',{className:'login-v3-form',onSubmit:submit},
           h('div',{className:'login-v3-kicker login-v3-kicker-dark'},'SECURE STAFF ACCESS'),
           h('h2',null,'Welcome back'),
           h('p',{className:'login-v3-subtitle'},'Sign in with your employee Login ID.'),
           message&&h('div',{className:'message error'},message),
           h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter login ID'})),
           h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true,placeholder:'Enter password'})),
+          h('button',{type:'button',className:'login-link-button forgot-password-link',onClick:()=>{setForgot(true);setRecoveryLogin(login);setMessage('')}},'Forgot Password?'),
           h('button',{className:'btn btn-primary full login-v3-button',disabled:busy},busy?'Signing in…':'Sign in'),
           h('div',{className:'login-v3-version'},`Samara Care ERP ${APP_VERSION}`)
         )
       )
     );
+  }
+
+  function RecoveryPasswordChange({onComplete}){
+    const [password,setPassword]=React.useState(''),[confirm,setConfirm]=React.useState(''),[busy,setBusy]=React.useState(false),[message,setMessage]=React.useState('');
+    async function submit(e){
+      e.preventDefault();setMessage('');
+      if(password.length<8){setMessage('Please choose a password containing at least 8 characters.');return}
+      if(password!==confirm){setMessage('The two passwords do not match.');return}
+      setBusy(true);
+      const {error}=await client.auth.updateUser({password,data:{must_change_password:false,password_changed_at:new Date().toISOString(),password_recovered_at:new Date().toISOString()}});
+      if(error){setMessage(error.message||'Unable to change password.');setBusy(false);return}
+      try{await client.rpc('complete_my_first_login')}catch(_error){}
+      setBusy(false);await onComplete();
+    }
+    return h('div',{className:'login-shell'},h('form',{className:'card login-card first-login-card',onSubmit:submit},
+      h('div',{className:'brand'},h('div',{className:'logo'},'SC'),h('div',null,h('h1',null,'Create a New Password'),h('p',null,'Your secure recovery link has been verified.'))),
+      h('p',null,'Enter a new password for your Samara Care ERP account.'),
+      message&&h('div',{className:'message error'},message),
+      h('div',{className:'field'},h('label',null,'New Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),
+      h('div',{className:'field'},h('label',null,'Confirm New Password'),h('input',{type:'password',value:confirm,onChange:e=>setConfirm(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),
+      h('button',{className:'btn btn-primary full',disabled:busy},busy?'Saving new password…':'Save New Password'),
+      h('p',{className:'small-note'},'After saving, sign in with your new password.')
+    ));
   }
 
   function Sidebar({profile,page,setPage,allowed}){
@@ -678,6 +748,12 @@ Caring with Compassion. Living with Dignity.`;
 
     async function toggle(row){try{await adminRequest({action:'toggle',user_id:row.id,is_active:!(row.is_active??row.active)});await load()}catch(error){alert(error.message||'Unable to update employee')}}
     function openReset(row){setResetTarget(row);setNewPassword('');setConfirmPassword('');setResetMsg('')}
+    function generateTemporaryPassword(){
+      const upper='ABCDEFGHJKLMNPQRSTUVWXYZ',lower='abcdefghijkmnopqrstuvwxyz',digits='23456789',symbols='@#$%';
+      const pick=set=>set[Math.floor(Math.random()*set.length)];
+      let value=pick(upper)+pick(lower)+pick(lower)+pick(digits)+pick(digits)+pick(symbols)+pick(upper)+pick(lower)+pick(digits)+pick(lower);
+      value=value.split('').sort(()=>Math.random()-.5).join('');setNewPassword(value);setConfirmPassword(value);setResetMsg('Temporary password generated. Copy it safely before completing the reset.');
+    }
     async function resetPassword(e){
       e.preventDefault();setResetMsg('');
       if(newPassword.length<8){setResetMsg('Password must contain at least 8 characters.');return}
@@ -807,7 +883,7 @@ Caring with Compassion. Living with Dignity.`;
       h('button',{className:'btn btn-primary full',disabled:detailsBusy},detailsBusy?'Saving…':'Save Employee Information')
     )):null;
 
-    const resetModal=resetTarget?h('div',{className:'modal-backdrop'},h('form',{className:'card modal reset-password-modal',onSubmit:resetPassword},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Reset Employee Password'),h('small',null,`${resetTarget.full_name} · ${resetTarget.login_id}`)),h('button',{type:'button',className:'close',onClick:()=>setResetTarget(null)},'×')),resetMsg&&h('div',{className:`message ${resetMsg.startsWith('Password reset')?'success':'error'}`},resetMsg),h('div',{className:'field'},h('label',null,'New password'),h('input',{type:'password',value:newPassword,onChange:e=>setNewPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('div',{className:'field'},h('label',null,'Confirm new password'),h('input',{type:'password',value:confirmPassword,onChange:e=>setConfirmPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('p',{className:'small-note'},'Resetting the password also enables and unblocks the employee account.'),h('button',{className:'btn btn-primary full',disabled:resetBusy},resetBusy?'Resetting…':'Reset Password & Enable Account'))):null;
+    const resetModal=resetTarget?h('div',{className:'modal-backdrop'},h('form',{className:'card modal reset-password-modal',onSubmit:resetPassword},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Reset Employee Password'),h('small',null,`${resetTarget.full_name} · ${resetTarget.login_id}`)),h('button',{type:'button',className:'close',onClick:()=>setResetTarget(null)},'×')),resetMsg&&h('div',{className:`message ${resetMsg.startsWith('Password reset')?'success':'error'}`},resetMsg),h('div',{className:'field'},h('label',null,'New password'),h('input',{type:'password',value:newPassword,onChange:e=>setNewPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('div',{className:'field'},h('label',null,'Confirm new password'),h('input',{type:'password',value:confirmPassword,onChange:e=>setConfirmPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('button',{type:'button',className:'btn btn-secondary full',onClick:generateTemporaryPassword},'Generate Temporary Password'),h('p',{className:'small-note'},'Resetting the password also enables and unblocks the employee account. The employee must create a private password at first login.'),h('button',{className:'btn btn-primary full',disabled:resetBusy},resetBusy?'Resetting…':'Reset Password & Enable Account'))):null;
     const repairModal=repairTarget?h('div',{className:'modal-backdrop'},h('form',{className:'card modal reset-password-modal',onSubmit:repairAccount},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Repair Employee Account'),h('small',null,`${repairTarget.full_name} · ${repairTarget.login_id}`)),h('button',{type:'button',className:'close',onClick:()=>setRepairTarget(null)},'×')),repairMsg&&h('div',{className:`message ${repairMsg.startsWith('Authentication account repaired')?'success':'error'}`},repairMsg),h('p',null,'This employee has a profile but no matching Supabase Authentication account. Enter a temporary password to rebuild the login account.'),h('div',{className:'field'},h('label',null,'Temporary password'),h('input',{type:'password',value:repairPassword,onChange:e=>setRepairPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('button',{className:'btn btn-warning full',disabled:repairBusy},repairBusy?'Repairing…':'Repair Account & Enable Login'))):null;
 
     return h(React.Fragment,null,h('div',{className:'card panel'},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Employees'),h('small',null,'Personnel records, documents, central login accounts and Authentication status')),h('button',{className:'btn btn-primary',onClick:()=>{setShow(true);setMsg('')}},'Create Employee')),msg&&!show?h('div',{className:'message error'},msg):null,table),createModal,detailsModal,resetModal,repairModal,cameraConfig?h(CameraCaptureModal,{config:cameraConfig,onClose:()=>setCameraConfig(null)}):null);

@@ -27,6 +27,49 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') || ''
     const caller = createClient(url, anon, { global: { headers: { Authorization: authHeader } } })
     const admin = createClient(url, service, { auth: { autoRefreshToken: false, persistSession: false } })
+    const body = await req.json()
+
+    const normalizeLoginId = (value: unknown) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9._@-]/g, '')
+    const getIp = () => (req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || '').split(',')[0].trim() || null
+    async function securityEvent(loginId: string, eventType: string, details: Record<string, unknown> = {}) {
+      await admin.from('password_security_events').insert({ login_id: loginId || null, event_type: eventType, ip_address: getIp(), details })
+    }
+
+    if (body.action === 'login_precheck' || body.action === 'login_failure' || body.action === 'login_success') {
+      const loginId = normalizeLoginId(body.login_id)
+      if (!loginId) return json({ ok: true, locked: false })
+      const since = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+      if (body.action === 'login_success') {
+        await securityEvent(loginId, 'LOGIN_SUCCESS')
+        return json({ ok: true, locked: false })
+      }
+      if (body.action === 'login_failure') await securityEvent(loginId, 'LOGIN_FAILURE')
+      const { count } = await admin.from('password_security_events').select('*', { count: 'exact', head: true }).eq('login_id', loginId).eq('event_type', 'LOGIN_FAILURE').gte('created_at', since)
+      const locked = Number(count || 0) >= 5
+      if (locked && body.action === 'login_failure') await securityEvent(loginId, 'ACCOUNT_TEMPORARILY_LOCKED', { minutes: 15 })
+      return json({ ok: true, locked, retry_after_minutes: locked ? 15 : 0 })
+    }
+
+    if (body.action === 'request_password_recovery') {
+      const requested = String(body.login_id || '').trim().toLowerCase()
+      const normalized = normalizeLoginId(requested)
+      const redirectTo = String(body.redirect_to || '').trim()
+      const { data: profile } = await admin.from('profiles').select('id,auth_user_id,login_id,employee_email,auth_email,is_active,active').or(`login_id.eq.${normalized},employee_email.eq.${requested}`).maybeSingle()
+      // Always return a generic response to prevent account enumeration.
+      if (!profile || (profile.is_active === false || profile.active === false) || !profile.employee_email) {
+        await securityEvent(normalized, 'PASSWORD_RECOVERY_REQUEST_UNDELIVERABLE')
+        return json({ ok: true })
+      }
+      const authUserId = profile.auth_user_id || profile.id
+      const email = String(profile.employee_email).trim().toLowerCase()
+      const { error: updateError } = await admin.auth.admin.updateUserById(authUserId, { email, email_confirm: true, ban_duration: 'none' })
+      if (!updateError) {
+        await admin.from('profiles').update({ auth_email: email, auth_user_id: authUserId }).eq('id', profile.id)
+        const { error: resetError } = await admin.auth.resetPasswordForEmail(email, { redirectTo })
+        await securityEvent(String(profile.login_id || normalized), resetError ? 'PASSWORD_RECOVERY_EMAIL_FAILED' : 'PASSWORD_RECOVERY_EMAIL_SENT', resetError ? { error: resetError.message } : {})
+      }
+      return json({ ok: true })
+    }
 
     const { data: { user }, error: userError } = await caller.auth.getUser()
     if (userError || !user) throw new Error('Not authenticated')
@@ -37,8 +80,6 @@ serve(async (req) => {
     const callerActive = callerProfile.is_active ?? callerProfile.active ?? false
     const callerRole = String(callerProfile.role || '').toLowerCase()
     if (!callerActive || !['admin', 'manager'].includes(callerRole)) throw new Error('Administrator or Manager access required')
-
-    const body = await req.json()
 
     async function listAllUsers() {
       const users: any[] = []
