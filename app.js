@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.0.14';
+  const APP_VERSION = '1.0.15';
   const APP_BUILD_DATE = '03-Aug-2026 10:45 IST';
   const APP_SCHEMA_VERSION = '18';
   window.APP_VERSION = APP_VERSION;
