@@ -1,6 +1,6 @@
-const CACHE = 'samara-erp-1.1.4-consolidated-compatibility';
+const CACHE = 'samara-erp-1.1.4-patient-photo-fix';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.1.4', './app.js?v=1.1.4',
+  './', './index.html', './styles.css?v=1.1.4-photo-fix', './app.js?v=1.1.4',
   './bootstrap-error.js?v=1.1.4', './health-check.js?v=1.1.4',
   './config.js?v=1.1.4', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png'

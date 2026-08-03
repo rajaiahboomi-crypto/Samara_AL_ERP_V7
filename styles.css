@@ -685,3 +685,67 @@ body{font-size:17px;line-height:1.42}
 .time-picker-option:hover{border-color:#0f8f7b;background:#f3fbf9}.time-picker-option.selected{background:#0f7b69;color:#fff;border-color:#0f7b69;box-shadow:0 4px 12px rgba(15,123,105,.22)}
 .time-picker-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid #e2ece9}
 @media(max-width:560px){.time-picker-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.time-picker-popup{padding:14px}.time-picker-actions{display:grid;grid-template-columns:1fr 1fr 1fr}.time-picker-actions .btn{width:100%}}
+
+/* 1.1.4 patient-file photo containment fix (Nurse/Caregiver and all view-only patient files) */
+.patient-master-modal .patient-master-header{
+  align-items:flex-start;
+  min-height:132px;
+}
+.patient-master-modal .patient-head{
+  display:grid;
+  grid-template-columns:104px minmax(0,1fr);
+  gap:16px;
+  align-items:center;
+  min-width:0;
+  flex:1 1 auto;
+}
+.patient-master-modal .patient-head > div{
+  min-width:0;
+}
+.patient-master-modal .patient-head h3{
+  margin:0 0 5px;
+  font-size:24px;
+  line-height:1.2;
+}
+.patient-master-modal .patient-head small{
+  display:block;
+  line-height:1.45;
+}
+.patient-master-modal .patient-master-header .patient-photo{
+  width:96px!important;
+  height:112px!important;
+  max-width:96px!important;
+  max-height:112px!important;
+  min-width:96px;
+  min-height:112px;
+  display:block;
+  object-fit:cover!important;
+  object-position:center;
+  border-radius:14px;
+  border:2px solid #d2e3de;
+  background:#eef6f3;
+  box-shadow:0 4px 14px rgba(8,72,59,.12);
+}
+.patient-master-modal .patient-tab-bar{
+  top:148px;
+}
+@media(max-width:760px){
+  .patient-master-modal .patient-master-header{
+    min-height:auto;
+    position:relative;
+  }
+  .patient-master-modal .patient-head{
+    grid-template-columns:82px minmax(0,1fr);
+    gap:12px;
+  }
+  .patient-master-modal .patient-master-header .patient-photo{
+    width:76px!important;
+    height:90px!important;
+    max-width:76px!important;
+    max-height:90px!important;
+    min-width:76px;
+    min-height:90px;
+  }
+  .patient-master-modal .patient-head h3{font-size:20px}
+  .patient-master-modal .patient-tab-bar{top:0;position:sticky}
+}

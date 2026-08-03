@@ -1,0 +1,9 @@
+Upload only these three files to the ROOT of the existing GitHub repository and choose Replace:
+
+1. styles.css
+2. index.html
+3. service-worker.js
+
+No SQL is required.
+After GitHub finishes, close all Samara Care ERP windows and reopen the app.
+The patient photograph in View Patient File will be contained to a compact profile size.
