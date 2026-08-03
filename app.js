@@ -12,9 +12,10 @@
   });
 
   const ROLES = ['Admin','Manager','Nurse','Caregiver','Accounts','Kitchen'];
-  const PERSON_TITLES = ['Dr.','Prof.','Mr.','Mrs.','Ms.','Miss','Shri','Smt.','Selvi','Master','Baby','Kumari','Rev.','Fr.','Sr.','Other'];
+  const EMPLOYEE_TITLES = ['Dr.','Prof.','Mr.','Mrs.','Ms.','Miss','Shri','Smt.','Rev.','Fr.','Br.','Sr.','Other'];
+  const PATIENT_TITLES = ['Dr.','Mr.','Mrs.','Ms.','Miss','Shri','Smt.','Master','Baby','Kumari','Late','Other'];
   const formalName = row => [String(row?.title||'').trim(),String(row?.full_name||'').trim()].filter(Boolean).join(' ');
-  const displayName = row => String(row?.preferred_name||'').trim() || formalName(row);
+  const displayName = row => formalName(row);
   const ROOM_NUMBER_OPTIONS = Array.from({length:26},(_,i)=>String(100+i));
   const BED_CODE_OPTIONS = ['A','B','C','D'];
   const NAV_SECTIONS = [
@@ -132,6 +133,40 @@ Caring with Compassion. Living with Dignity.`;
     ));
   }
 
+  function GlobalSearch({onNavigate}){
+    const [query,setQuery]=React.useState('');
+    const [results,setResults]=React.useState([]);
+    const [busy,setBusy]=React.useState(false);
+    const [open,setOpen]=React.useState(false);
+    const timerRef=React.useRef(null);
+    React.useEffect(()=>()=>clearTimeout(timerRef.current),[]);
+    function searchable(value){return String(value||'').toLowerCase()}
+    function matches(row,q,fields){return fields.some(key=>searchable(row[key]).includes(q))}
+    function change(value){
+      setQuery(value);clearTimeout(timerRef.current);
+      const trimmed=value.trim().toLowerCase();
+      if(trimmed.length<2){setResults([]);setOpen(false);return}
+      timerRef.current=setTimeout(async()=>{
+        setBusy(true);
+        const [employees,patients]=await Promise.all([
+          client.from('profiles').select('id,title,full_name,employee_id,login_id,mobile,role,is_active').limit(300),
+          client.from('patients').select('id,title,full_name,patient_id,mobile,attendant_phone,room_no,bed_no,diagnosis,treating_doctor,referring_doctor,hospital_name,is_active').limit(500)
+        ]);
+        const employeeRows=(employees.data||[]).filter(row=>matches(row,trimmed,['title','full_name','employee_id','login_id','mobile','role'])).map(row=>({type:'Employee',row,label:formalName(row),sub:[row.employee_id,row.login_id,row.role,row.mobile].filter(Boolean).join(' · ')}));
+        const patientRows=(patients.data||[]).filter(row=>matches(row,trimmed,['title','full_name','patient_id','mobile','attendant_phone','room_no','bed_no','diagnosis','treating_doctor','referring_doctor','hospital_name'])).map(row=>({type:'Patient',row,label:formalName(row),sub:[row.patient_id,row.room_no&&`Room ${row.room_no}${row.bed_no?`-${row.bed_no}`:''}`,row.diagnosis,row.mobile||row.attendant_phone].filter(Boolean).join(' · ')}));
+        setResults([...patientRows,...employeeRows].slice(0,20));setOpen(true);setBusy(false);
+      },250);
+    }
+    function choose(result){
+      setOpen(false);setQuery('');
+      onNavigate(result.type==='Patient'?'Patients':'Employees');
+    }
+    return h('div',{className:'global-search'},
+      h('div',{className:'global-search-box'},h('span',{className:'global-search-icon','aria-hidden':'true'},'⌕'),h('input',{value:query,onChange:e=>change(e.target.value),onFocus:()=>query.trim().length>=2&&setOpen(true),placeholder:'Search patient or employee…','aria-label':'Global search'}),query&&h('button',{type:'button',className:'global-search-clear',onClick:()=>{setQuery('');setResults([]);setOpen(false)}},'×')),
+      open&&h('div',{className:'global-search-results'},busy?h('div',{className:'global-search-empty'},'Searching…'):results.length?results.map((result,index)=>h('button',{type:'button',className:'global-search-result',key:`${result.type}-${result.row.id}-${index}`,onClick:()=>choose(result)},h('span',{className:`search-type ${result.type.toLowerCase()}`},result.type),h('span',{className:'search-result-main'},h('strong',null,result.label||'Unnamed'),h('small',null,result.sub||'No additional details')))):h('div',{className:'global-search-empty'},'No matching patients or employees found.'))
+    );
+  }
+
   function App(){
     const [session,setSession]=React.useState(null);
     const [profile,setProfile]=React.useState(null);
@@ -176,7 +211,7 @@ Caring with Compassion. Living with Dignity.`;
     return h('div',{className:'app'},
       h(Sidebar,{profile,page,setPage,allowed}),
       h('main',{className:'main'},
-        h('header',{className:'topbar'},h('h2',null,page),h('span',{className:'badge'},profile.role)),
+        h('header',{className:'topbar'},h('h2',null,page),h(GlobalSearch,{onNavigate:setPage}),h('span',{className:'badge'},profile.role)),
         h(MobileMenu,{page,setPage,allowed}),
         h('section',{className:'content'},
           page==='Dashboard'&&h(Dashboard,{profile,onNavigate:setPage}),
@@ -280,7 +315,7 @@ Caring with Compassion. Living with Dignity.`;
           h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter login ID'})),
           h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true,placeholder:'Enter password'})),
           h('button',{className:'btn btn-primary full login-v3-button',disabled:busy},busy?'Signing in…':'Sign in'),
-          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.1')
+          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.2')
         )
       )
     );
@@ -296,7 +331,7 @@ Caring with Compassion. Living with Dignity.`;
     },[page,allowed.join('|')]);
     function toggle(title){setOpenSection(current=>current===title?'':title)}
     return h('aside',{className:'sidebar'},
-      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.1'))),
+      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.2'))),
       h('nav',{className:'nav-scroll'},sections.map(section=>{
         const expanded=openSection===section.title;
         return h('div',{className:`nav-section ${expanded?'expanded':''}`,key:section.title},
@@ -384,7 +419,7 @@ Caring with Compassion. Living with Dignity.`;
     React.useEffect(()=>()=>{
       if(photoPreview&&photoPreview.startsWith('blob:')) URL.revokeObjectURL(photoPreview);
     },[photoPreview]);
-    const empty={title:'',preferred_name:'',full_name:'',employee_id:'',designation:'',mobile:'',emergency_contact:'',role:'Caregiver',login_id:'',employee_email:'',password:'',father_guardian_name:'',address:'',date_of_birth:'',date_of_joining:'',blood_group:'',id_card_type:'Aadhaar',id_card_number:'',qualification:'',previous_workplace:'',reference_type:'Direct',reference_name:'',reference_contact:''};
+    const empty={title:'',full_name:'',employee_id:'',designation:'',mobile:'',emergency_contact:'',role:'Caregiver',login_id:'',employee_email:'',password:'',father_guardian_name:'',address:'',date_of_birth:'',date_of_joining:'',blood_group:'',id_card_type:'Aadhaar',id_card_number:'',qualification:'',previous_workplace:'',reference_type:'Direct',reference_name:'',reference_contact:''};
     const [form,setForm]=React.useState(empty);
 
     async function adminRequest(payload){
@@ -684,7 +719,7 @@ Caring with Compassion. Living with Dignity.`;
     );
 
     const personnelFields=(state,setter,includeLogin=true)=>h(React.Fragment,null,
-      selectField('Title / Salutation','title',state,setter,PERSON_TITLES),field('Employee Name','full_name',state,setter,true),field('Called As / Preferred Name','preferred_name',state,setter,false),field('Employee ID (auto-generated if blank)','employee_id',state,setter,false),field('Designation','designation',state,setter,false),selectField('Role','role',state,setter,ROLES),
+      selectField('Title / Salutation','title',state,setter,EMPLOYEE_TITLES),field('Employee Name','full_name',state,setter,true),field('Employee ID (auto-generated if blank)','employee_id',state,setter,false),field('Designation','designation',state,setter,false),selectField('Role','role',state,setter,ROLES),
       field('Father / Guardian Name','father_guardian_name',state,setter,false),field('Date of Birth','date_of_birth',state,setter,false,'date'),field('Date of Joining','date_of_joining',state,setter,false,'date'),field('Blood Group','blood_group',state,setter,false),
       field('Mobile Number','mobile',state,setter,false),field('Emergency Contact','emergency_contact',state,setter,false),field('Employee Email','employee_email',state,setter,false,'email'),
       field('ID Card Type','id_card_type',state,setter,false),field('ID Card Number','id_card_number',state,setter,false),field('Qualification','qualification',state,setter,false),field('Previous Working Place','previous_workplace',state,setter,false),
@@ -751,7 +786,7 @@ Caring with Compassion. Living with Dignity.`;
 
   function Admissions({profile}){
     const today=new Date().toISOString().slice(0,10);
-    const initial={admission_type:'Hospital Discharge',patient_category:'Short Stay',title:'',preferred_name:'',full_name:'',age:'',gender:'Male',mobile:'',address:'',room_no:'',bed_no:'',admission_date:today,hospital_name:'',discharge_date:today,diagnosis:'',treating_doctor:'',doctor_phone:'',referring_doctor:'',referring_source:'',family_doctor:'',attendant_name:'',attendant_phone:'',allergies:'',special_instructions:'',diet_plan:'Normal diet',feeding_instruction:'',billing_package:'Standard Assisted Care',fall_risk:false,pressure_sore_risk:false,aspiration_risk:false,wandering_risk:false,infection_risk:false,seizure_history:false,oxygen_required:false,oxygen_instruction:'',dressing_required:false,dressing_instruction:'',special_nurse_required:false,special_nurse_name:'',special_nurse_shift:'Both shifts / 24-hour coverage',special_nurse_instructions:'',physio_required:false,therapy_type:'',physio_frequency:'Daily',physio_time:'10:00',physio_precautions:''};
+    const initial={admission_type:'Hospital Discharge',patient_category:'Short Stay',title:'',full_name:'',age:'',gender:'Male',mobile:'',address:'',room_no:'',bed_no:'',admission_date:today,hospital_name:'',discharge_date:today,diagnosis:'',treating_doctor:'',doctor_phone:'',referring_doctor:'',referring_source:'',family_doctor:'',attendant_name:'',attendant_phone:'',allergies:'',special_instructions:'',diet_plan:'Normal diet',feeding_instruction:'',billing_package:'Standard Assisted Care',fall_risk:false,pressure_sore_risk:false,aspiration_risk:false,wandering_risk:false,infection_risk:false,seizure_history:false,oxygen_required:false,oxygen_instruction:'',dressing_required:false,dressing_instruction:'',special_nurse_required:false,special_nurse_name:'',special_nurse_shift:'Both shifts / 24-hour coverage',special_nurse_instructions:'',physio_required:false,therapy_type:'',physio_frequency:'Daily',physio_time:'10:00',physio_precautions:''};
     const [form,setForm]=React.useState(initial),[meds,setMeds]=React.useState([blankMedicine()]),[care,setCare]=React.useState([blankCare()]),[busy,setBusy]=React.useState(false),[msg,setMsg]=React.useState('');
     const [photoFiles,setPhotoFiles]=React.useState([]),[idFiles,setIdFiles]=React.useState([]),[dischargeFiles,setDischargeFiles]=React.useState([]),[prescriptionFiles,setPrescriptionFiles]=React.useState([]),[reportFiles,setReportFiles]=React.useState([]),[cameraConfig,setCameraConfig]=React.useState(null),[patientPhotoPreview,setPatientPhotoPreview]=React.useState('');
     const [roomBeds,setRoomBeds]=React.useState([]);
@@ -840,7 +875,7 @@ Caring with Compassion. Living with Dignity.`;
       h('div',{className:'section-card'},h('h4',null,'1. Admission route and patient identity'),h('div',{className:'form-grid'},
         selectField('Admission type','admission_type',form,setForm,['Hospital Discharge','Direct Admission','Doctor Referral','Hospital Transfer']),
         selectField('Patient category','patient_category',form,setForm,['Short Stay','Respite Care','Post-Surgery','Rehabilitation','Stroke Recovery','Dementia Care','Parkinsonism','Palliative Care','Long-Term Assisted Living','Observation','Elderly Care']),
-        selectField('Title / Salutation','title',form,setForm,PERSON_TITLES),field('Patient name','full_name',form,setForm,true),field('Called As / Preferred Name','preferred_name',form,setForm,false),field('Age','age',form,setForm,false,'number'),selectField('Gender','gender',form,setForm,['Male','Female','Other']),field('Mobile','mobile',form,setForm,false,'tel'),textareaField('Address','address',form,setForm,'span-2'),field('Family / attendant name','attendant_name',form,setForm,true),field('Attendant phone','attendant_phone',form,setForm,true,'tel')
+        selectField('Title / Salutation','title',form,setForm,PATIENT_TITLES),field('Patient name','full_name',form,setForm,true),field('Age','age',form,setForm,false,'number'),selectField('Gender','gender',form,setForm,['Male','Female','Other']),field('Mobile','mobile',form,setForm,false,'tel'),textareaField('Address','address',form,setForm,'span-2'),field('Family / attendant name','attendant_name',form,setForm,true),field('Attendant phone','attendant_phone',form,setForm,true,'tel')
       ),h('div',{className:'upload-grid'},patientCaptureInput('Patient Photo',photoFiles,setPhotoFiles,'image/*',true),patientCaptureInput('Identity Proof',idFiles,setIdFiles,'image/*,.pdf',false))),
       h('div',{className:'section-card'},h('h4',null,'2. Medical source and records'),h('div',{className:'form-grid'},
         needsHospital&&field('Hospital / previous centre','hospital_name',form,setForm,true),needsHospital&&field('Discharge / transfer date','discharge_date',form,setForm,true,'date'),
@@ -933,7 +968,7 @@ Caring with Compassion. Living with Dignity.`;
     function openEditPatient(row){
       setEditTarget(row);setEditMsg('');
       setEditForm({...row,
-        title:row.title||'',preferred_name:row.preferred_name||'',full_name:row.full_name||'',age:row.age||'',gender:row.gender||'Male',mobile:row.mobile||'',address:row.address||'',
+        title:row.title||'',full_name:row.full_name||'',age:row.age||'',gender:row.gender||'Male',mobile:row.mobile||'',address:row.address||'',
         attendant_name:row.attendant_name||'',attendant_phone:row.attendant_phone||'',diagnosis:row.diagnosis||'',
         referring_doctor:row.referring_doctor||'',treating_doctor:row.treating_doctor||'',doctor_phone:row.doctor_phone||'',
         hospital_name:row.hospital_name||'',admission_type:row.admission_type||'Direct Admission',patient_category:row.patient_category||'Short Stay',
@@ -943,7 +978,7 @@ Caring with Compassion. Living with Dignity.`;
     }
     async function savePatientEdit(e){
       e.preventDefault();setEditBusy(true);setEditMsg('');
-      const allowed=['title','preferred_name','full_name','age','gender','mobile','address','attendant_name','attendant_phone','diagnosis','referring_doctor','treating_doctor','doctor_phone','hospital_name','admission_type','patient_category','room_no','bed_no','allergies','special_instructions','admission_date','is_active'];
+      const allowed=['title','full_name','age','gender','mobile','address','attendant_name','attendant_phone','diagnosis','referring_doctor','treating_doctor','doctor_phone','hospital_name','admission_type','patient_category','room_no','bed_no','allergies','special_instructions','admission_date','is_active'];
       const payload={};allowed.forEach(k=>payload[k]=editForm[k]===''?null:editForm[k]);payload.age=editForm.age===''?null:Number(editForm.age);
       const {data,error}=await client.from('patients').update(payload).eq('id',editTarget.id).select().single();
       if(error){setEditMsg(error.message||'Unable to update patient');setEditBusy(false);return}
@@ -1000,7 +1035,7 @@ Caring with Compassion. Living with Dignity.`;
         h('div',{className:'panel-head'},h('div',null,h('h3',null,'Edit Patient Information'),h('small',null,`${editTarget.patient_id||'—'} · Correct duplicate or wrongly entered details`)),h('button',{type:'button',className:'close',onClick:()=>{setEditTarget(null);setEditForm(null)}},'×')),
         editMsg&&h('div',{className:`message ${editMsg.startsWith('Patient information')?'success':'error'}`},editMsg),
         h('div',{className:'modal-grid'},
-          selectField('Title / Salutation','title',editForm,setEditForm,PERSON_TITLES),field('Patient Name','full_name',editForm,setEditForm,true),field('Called As / Preferred Name','preferred_name',editForm,setEditForm,false),field('Age','age',editForm,setEditForm,false,'number'),selectField('Gender','gender',editForm,setEditForm,['Male','Female','Other']),field('Patient Mobile','mobile',editForm,setEditForm,false,'tel'),
+          selectField('Title / Salutation','title',editForm,setEditForm,PATIENT_TITLES),field('Patient Name','full_name',editForm,setEditForm,true),field('Age','age',editForm,setEditForm,false,'number'),selectField('Gender','gender',editForm,setEditForm,['Male','Female','Other']),field('Patient Mobile','mobile',editForm,setEditForm,false,'tel'),
           field('Emergency Contact Name','attendant_name',editForm,setEditForm,false),field('Emergency Contact Number','attendant_phone',editForm,setEditForm,false,'tel'),
           field('Main Diagnosis','diagnosis',editForm,setEditForm,false),field('Referred By Doctor','referring_doctor',editForm,setEditForm,false),field('Treating Doctor','treating_doctor',editForm,setEditForm,false),field('Doctor Mobile','doctor_phone',editForm,setEditForm,false,'tel'),
           field('Hospital / Previous Centre','hospital_name',editForm,setEditForm,false),selectField('Admission Type','admission_type',editForm,setEditForm,['Hospital Discharge','Direct Admission','Doctor Referral','Hospital Transfer']),

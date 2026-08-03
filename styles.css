@@ -302,3 +302,20 @@ body{font-size:17px;line-height:1.42}
 }
 
 .first-login-card{max-width:620px}.first-login-card h1{font-size:30px;line-height:1.2}.first-login-card p{font-size:17px;line-height:1.55}
+
+/* ERP 1.0.2 global search */
+.topbar{gap:16px}.topbar h2{flex:0 0 auto}.topbar>.badge{flex:0 0 auto}
+.global-search{position:relative;flex:1;max-width:720px;margin-left:auto}
+.global-search-box{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #cddfd9;border-radius:13px;padding:0 10px;min-height:44px;box-shadow:0 3px 10px rgba(7,83,70,.05)}
+.global-search-box:focus-within{border-color:#0a8875;box-shadow:0 0 0 3px rgba(10,136,117,.12)}
+.global-search-icon{font-size:24px;color:#0a7565;line-height:1}
+.global-search-box input{width:100%;border:0;outline:0;background:transparent;font-size:16px;min-height:40px;padding:7px 2px;color:#102d27}
+.global-search-clear{border:0;background:transparent;font-size:24px;color:#60746f;cursor:pointer;padding:0 4px}
+.global-search-results{position:absolute;z-index:300;top:calc(100% + 8px);left:0;right:0;background:#fff;border:1px solid #cddfd9;border-radius:14px;box-shadow:0 18px 45px rgba(8,60,51,.18);max-height:430px;overflow:auto;padding:7px}
+.global-search-result{width:100%;display:grid;grid-template-columns:82px 1fr;align-items:center;gap:10px;text-align:left;border:0;border-bottom:1px solid #e7efec;background:#fff;padding:11px 12px;cursor:pointer;border-radius:9px}
+.global-search-result:last-child{border-bottom:0}.global-search-result:hover{background:#edf8f5}
+.search-type{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;border-radius:999px;padding:5px 8px;text-align:center}
+.search-type.patient{background:#dff5ed;color:#076b59}.search-type.employee{background:#e7efff;color:#315c9f}
+.search-result-main{display:flex;flex-direction:column;gap:3px;min-width:0}.search-result-main strong{font-size:16px;color:#102d27}.search-result-main small{font-size:13px;color:#60746f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.global-search-empty{padding:18px;text-align:center;color:#60746f;font-size:15px}
+@media(max-width:900px){.topbar{height:auto;min-height:68px;flex-wrap:wrap;padding:10px 16px}.global-search{order:3;flex-basis:100%;max-width:none;margin:0}.global-search-results{position:fixed;top:130px;left:12px;right:12px}}
