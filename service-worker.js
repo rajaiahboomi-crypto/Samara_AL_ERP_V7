@@ -1,9 +1,9 @@
-const CACHE = 'samara-erp-1.1.7-branded-menu-signout';
+const CACHE = 'samara-erp-1.1.8-pwa-app-experience';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.1.7', './app.js?v=1.1.7',
-  './bootstrap-error.js?v=1.1.7', './health-check.js?v=1.1.7',
-  './config.js?v=1.1.7', './manifest.webmanifest',
-  './icons/icon-192.png', './icons/icon-512.png'
+  './', './index.html', './styles.css?v=1.1.8', './app.js?v=1.1.8',
+  './bootstrap-error.js?v=1.1.8', './health-check.js?v=1.1.8',
+  './config.js?v=1.1.8', './manifest.webmanifest',
+  './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
