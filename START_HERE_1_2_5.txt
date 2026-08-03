@@ -1,0 +1,24 @@
+SAMARA CARE ERP 1.2.5 – MEDICATION SAFETY CENTRE
+
+1. In Supabase SQL Editor, run:
+   30_medication_safety_centre_workflow.sql
+
+2. In the GitHub repository root, replace only:
+   app.js
+   index.html
+   service-worker.js
+
+3. Close all open ERP tabs/apps and reopen.
+   Tap “App update available” if shown.
+
+New:
+- Medication Safety Centre
+- In-ERP management report with Back, Dashboard and Close controls
+- Print / Save PDF
+- CSV export (opens in Excel)
+- Investigation, Root Cause, Corrective Action and Preventive Action (CAPA)
+- Workflow: Open → Under Review → Corrective Action → Closed
+- Admin/Manager sign-off timestamps
+- AI-assisted safety score and management summary
+
+No existing records are deleted.

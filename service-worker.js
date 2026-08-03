@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.2.4-medication-error-analysis';
+const CACHE = 'samara-erp-1.2.5-medication-safety-centre';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.2.4', './app.js?v=1.2.4',
-  './bootstrap-error.js?v=1.2.4', './health-check.js?v=1.2.4',
-  './config.js?v=1.2.4', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.2.5', './app.js?v=1.2.5',
+  './bootstrap-error.js?v=1.2.5', './health-check.js?v=1.2.5',
+  './config.js?v=1.2.5', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {
