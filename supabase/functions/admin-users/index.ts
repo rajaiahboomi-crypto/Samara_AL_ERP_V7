@@ -10,6 +10,14 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 }
 
+const allowedRoles = ['Admin', 'Manager', 'Nurse', 'Caregiver', 'Accounts', 'Kitchen'] as const
+function normalizeRole(value: unknown) {
+  const raw = String(value || '').trim().toLowerCase()
+  const role = allowedRoles.find((item) => item.toLowerCase() === raw)
+  if (!role) throw new Error('Invalid employee role selected')
+  return role
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   try {
@@ -76,7 +84,7 @@ serve(async (req) => {
       const loginId = String(body.login_id || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '')
       const employeeId = String(body.employee_id || '').trim()
       const password = String(body.password || '')
-      const role = String(body.role || 'Caregiver').trim()
+      const role = normalizeRole(body.role || 'Caregiver')
       if (!loginId || !password || !body.full_name || !role) throw new Error('Name, role, Login ID and password are required')
       if (password.length < 8) throw new Error('Password must contain at least 8 characters')
       if (callerRole === 'manager' && role.toLowerCase() === 'admin') throw new Error('Managers cannot create Administrator accounts')
@@ -96,7 +104,7 @@ serve(async (req) => {
       }
 
       if (existingAuth && !existingProfileByLogin) {
-        const { error: profileError } = await admin.from('profiles').insert({
+        const { error: profileError } = await admin.from('profiles').upsert({
           id: existingAuth.id,
           auth_user_id: existingAuth.id,
           full_name: body.full_name,
@@ -122,9 +130,9 @@ serve(async (req) => {
           role,
           active: true,
           is_active: true,
-        })
+        }, { onConflict: 'id' })
         if (profileError) throw profileError
-        const { error: authError } = await admin.auth.admin.updateUserById(existingAuth.id, { password, email_confirm: true, ban_duration: 'none', user_metadata: { full_name: body.full_name, login_id: loginId } })
+        const { error: authError } = await admin.auth.admin.updateUserById(existingAuth.id, { password, email_confirm: true, ban_duration: 'none', user_metadata: { full_name: body.full_name, login_id: loginId, role } })
         if (authError) throw authError
         await audit('REPAIR_EMPLOYEE_PROFILE', existingAuth.id, { login_id: loginId, role })
         return json({ ok: true, repaired: true, user_id: existingAuth.id })
@@ -138,11 +146,11 @@ serve(async (req) => {
         email: internalEmail,
         password,
         email_confirm: true,
-        user_metadata: { full_name: body.full_name, login_id: loginId },
+        user_metadata: { full_name: body.full_name, login_id: loginId, role },
       })
       if (createError || !created.user) throw createError || new Error('Authentication user was not created')
 
-      const { error: profileError } = await admin.from('profiles').insert({
+      const { error: profileError } = await admin.from('profiles').upsert({
         id: created.user.id,
         auth_user_id: created.user.id,
         full_name: body.full_name,
@@ -168,15 +176,27 @@ serve(async (req) => {
         role,
         active: true,
         is_active: true,
-      })
+      }, { onConflict: 'id' })
       if (profileError) {
         await admin.auth.admin.deleteUser(created.user.id)
         throw new Error(`Employee profile creation failed and the partial login was rolled back: ${profileError.message}`)
       }
 
-      const { data: verifyProfile } = await admin.from('profiles').select('id').eq('id', created.user.id).maybeSingle()
+      const { data: savedRole, error: roleSaveError } = await admin
+        .from('profiles')
+        .update({ role })
+        .eq('id', created.user.id)
+        .select('id,role')
+        .single()
+      if (roleSaveError || savedRole?.role !== role) {
+        await admin.from('profiles').delete().eq('id', created.user.id)
+        await admin.auth.admin.deleteUser(created.user.id)
+        throw new Error('Employee role could not be saved correctly. No incomplete account was retained.')
+      }
+
+      const { data: verifyProfile } = await admin.from('profiles').select('id,role').eq('id', created.user.id).maybeSingle()
       const { data: verifyAuth } = await admin.auth.admin.getUserById(created.user.id)
-      if (!verifyProfile || !verifyAuth.user) {
+      if (!verifyProfile || verifyProfile.role !== role || !verifyAuth.user) {
         await admin.from('profiles').delete().eq('id', created.user.id)
         await admin.auth.admin.deleteUser(created.user.id)
         throw new Error('Employee verification failed. No incomplete account was retained.')
