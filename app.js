@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.1.5';
-  const APP_BUILD_DATE = '03-Aug-2026 17:20 IST';
+  const APP_VERSION = '1.1.6';
+  const APP_BUILD_DATE = '03-Aug-2026 21:10 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -268,7 +268,12 @@ Caring with Compassion. Living with Dignity.`;
     return h('div',{className:'app'},
       h(Sidebar,{profile,page,setPage,allowed}),
       h('main',{className:'main'},
-        h('header',{className:'topbar'},h('h2',null,displayNavLabel(page,profile.role)),h(GlobalSearch,{onNavigate:setPage,profile}),h('span',{className:'badge'},profile.role)),
+        h('header',{className:'topbar'},
+          h('button',{type:'button',className:'mobile-home-button','aria-label':'Go to dashboard',title:'Dashboard',onClick:()=>setPage(ROLE_HOME[profile.role]||allowed[0])},'⌂'),
+          h('h2',null,displayNavLabel(page,profile.role)),
+          h(GlobalSearch,{onNavigate:setPage,profile}),
+          h('span',{className:'badge'},profile.role)
+        ),
         h(MobileMenu,{page,setPage,allowed,profile}),
         h('section',{className:'content'},
           page==='Dashboard'&&h(Dashboard,{profile,onNavigate:setPage}),
@@ -292,7 +297,8 @@ Caring with Compassion. Living with Dignity.`;
           page==='Intelligent Reports'&&h(IntelligentReports,{profile}),
           page==='Notifications'&&h(Notifications,{profile}),
           page==='Audit Trail'&&h(AuditTrail)
-        )
+        ),
+        h(MobileBottomNav,{page,setPage,allowed,profile})
       )
     );
   }
@@ -488,6 +494,32 @@ Caring with Compassion. Living with Dignity.`;
       h('select',{value:page,onChange:e=>setPage(e.target.value)},
         sections.map(section=>h('optgroup',{label:section.title,key:section.title},section.items.map(item=>h('option',{value:item,key:item},displayNavLabel(item,profile.role)))))
       )
+    );
+  }
+
+
+  function MobileBottomNav({page,setPage,allowed,profile}){
+    const home=ROLE_HOME[profile.role]||allowed[0]||'Dashboard';
+    const choose=(preferred,fallbacks=[])=>[preferred,...fallbacks].find(item=>allowed.includes(item));
+    const patients=choose('Patients');
+    const work=CLINICAL_ROLES.includes(profile.role)
+      ? choose('Shift Tasks',['Clinical Dashboard','Daily Care','Vital Signs'])
+      : choose('Clinical Dashboard',['Admissions','Employees','Billing & Payments']);
+    const reports=choose('Reports',['Intelligent Reports','Billing & Payments','Notifications']);
+    const items=[
+      {page:home,icon:'⌂',label:'Home'},
+      patients&&{page:patients,icon:'♙',label:'Patients'},
+      work&&{page:work,icon:'✚',label:CLINICAL_ROLES.includes(profile.role)?'Tasks':'Work'},
+      reports&&{page:reports,icon:'▥',label:'Reports'}
+    ].filter(Boolean);
+    function openMenu(){
+      const select=document.querySelector('.mobile-menu select');
+      document.querySelector('.mobile-menu')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+      if(select){setTimeout(()=>{select.focus();select.click();},180)}
+    }
+    return h('nav',{className:'mobile-bottom-nav','aria-label':'Mobile navigation'},
+      items.map(item=>h('button',{type:'button',key:item.label,className:page===item.page?'active':'',onClick:()=>setPage(item.page),'aria-label':item.label},h('span',{className:'mobile-nav-icon'},item.icon),h('span',null,item.label))),
+      h('button',{type:'button',onClick:openMenu,'aria-label':'Open all modules'},h('span',{className:'mobile-nav-icon'},'☰'),h('span',null,'Menu'))
     );
   }
 

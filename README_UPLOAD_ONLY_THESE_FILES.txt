@@ -1,6 +1,6 @@
-SAMARA CARE ERP 1.1.5 — MOBILE UI PACK
+SAMARA CARE ERP 1.1.6 - MOBILE NAVIGATION
 
-Upload/replace only these five files in the ROOT of your existing GitHub repository:
+Upload and replace only these five files in the repository root:
 1. app.js
 2. styles.css
 3. index.html
@@ -8,5 +8,10 @@ Upload/replace only these five files in the ROOT of your existing GitHub reposit
 5. manifest.webmanifest
 
 No Supabase SQL is required.
-Desktop layout and ERP functionality are unchanged. This patch applies only to small mobile screens.
-After committing, close every open ERP tab/PWA window and reopen. If "App update available" appears, tap it once.
+
+Mobile improvements:
+- Persistent bottom navigation
+- Home button beside every page title
+- One-tap return to each role's dashboard
+- Patients, Work/Tasks, Reports and Menu shortcuts
+- Desktop layout and ERP functions remain unchanged

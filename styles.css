@@ -808,3 +808,22 @@ body{font-size:17px;line-height:1.42}
   .dashboard-card strong{font-size:34px}
   .dashboard-card>span:not(.dashboard-icon){font-size:13px}
 }
+
+
+/* Samara Care ERP 1.1.6 - persistent mobile navigation */
+.mobile-home-button,.mobile-bottom-nav{display:none}
+@media (max-width:600px){
+  .topbar{grid-template-columns:auto 1fr auto;align-items:center}
+  .mobile-home-button{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border:0;border-radius:14px;background:#e7f3ef;color:#075f4e;font-size:28px;font-weight:900;box-shadow:0 4px 12px rgba(8,73,60,.08);cursor:pointer}
+  .topbar h2{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar>.badge{grid-column:3;grid-row:1}
+  .global-search{grid-column:1/-1}
+  .main{padding-bottom:82px}
+  .content{padding-bottom:96px}
+  .mobile-bottom-nav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:40;padding:7px 7px calc(7px + env(safe-area-inset-bottom));background:rgba(255,255,255,.98);backdrop-filter:blur(16px);border-top:1px solid #d7e5e1;box-shadow:0 -7px 22px rgba(6,58,49,.12)}
+  .mobile-bottom-nav button{min-width:0;min-height:54px;border:0;background:transparent;color:#61756f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;font-weight:800;border-radius:14px;padding:4px 2px;cursor:pointer}
+  .mobile-bottom-nav button.active{background:#e4f3ee;color:#075f4e}
+  .mobile-nav-icon{font-size:22px;line-height:1}
+  .mobile-menu{top:122px}
+}
+@media (max-width:390px){.mobile-bottom-nav button{font-size:10px}.mobile-nav-icon{font-size:21px}.mobile-home-button{width:39px;height:39px;font-size:25px}}
