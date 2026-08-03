@@ -315,7 +315,7 @@ Caring with Compassion. Living with Dignity.`;
           h('div',{className:'field'},h('label',null,'Login ID'),h('input',{value:login,onChange:e=>setLogin(e.target.value),required:true,autoCapitalize:'none',placeholder:'Enter login ID'})),
           h('div',{className:'field'},h('label',null,'Password'),h('input',{type:'password',value:password,onChange:e=>setPassword(e.target.value),required:true,placeholder:'Enter password'})),
           h('button',{className:'btn btn-primary full login-v3-button',disabled:busy},busy?'Signing in…':'Sign in'),
-          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.4')
+          h('div',{className:'login-v3-version'},'Samara Care ERP 1.0.5')
         )
       )
     );
@@ -331,7 +331,7 @@ Caring with Compassion. Living with Dignity.`;
     },[page,allowed.join('|')]);
     function toggle(title){setOpenSection(current=>current===title?'':title)}
     return h('aside',{className:'sidebar'},
-      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.4'))),
+      h('div',{className:'side-brand'},h('div',{className:'side-logo'},'SC'),h('div',null,h('strong',null,'Samara Care'),h('small',null,'Assisted Living ERP 1.0.5'))),
       h('nav',{className:'nav-scroll'},sections.map(section=>{
         const expanded=openSection===section.title;
         return h('div',{className:`nav-section ${expanded?'expanded':''}`,key:section.title},
@@ -1355,6 +1355,10 @@ Caring with Compassion. Living with Dignity.`;
     const latest=(rows,fields)=>[...rows].sort((a,b)=>new Date(eventDate(b,fields)||0)-new Date(eventDate(a,fields)||0))[0]||null;
     const text=value=>String(value||'').trim();
     const sentence=value=>{const v=text(value);return v?v.replace(/[.\s]+$/,'')+'.':'';};
+    const vitalFields=['systolic','diastolic','pulse','temperature','respiration','spo2','blood_sugar','weight','pain_score'];
+    const hasVitalValues=row=>vitalFields.some(key=>row&&row[key]!==null&&row[key]!==undefined&&String(row[key]).trim()!=='');
+    const validVitals=rows=>(rows||[]).filter(hasVitalValues);
+    const vitalAlert=row=>hasVitalValues(row)?String(row.alert_level||'').toLowerCase():'';
     const roleName=id=>{const row=report?.staffMap?.[id];return row?formalName(row):(id||'Staff member');};
     async function resolveReportPatientPhoto(patient,documents){
       if(!patient)return '';
@@ -1369,39 +1373,52 @@ Caring with Compassion. Living with Dignity.`;
     }
 
     function conditionAssessment(patient,vitals,incidents,mar){
-      const critical=vitals.filter(v=>String(v.alert_level||'').toLowerCase()==='critical');
-      const warning=vitals.filter(v=>['warning','abnormal'].includes(String(v.alert_level||'').toLowerCase()));
-      const severeIncidents=incidents.filter(i=>['high','critical','severe'].includes(String(i.severity||'').toLowerCase())||String(i.status||'').toLowerCase()==='open');
-      const exceptions=mar.filter(m=>String(m.status||'').toLowerCase()!=='given');
-      if(critical.length||severeIncidents.length)return {label:'Requires urgent clinical review',tone:'critical',reason:`${critical.length} critical vital alert(s) and ${severeIncidents.length} significant/open incident(s) were recorded.`};
-      if(warning.length||exceptions.length>=2||patient?.oxygen_required)return {label:'Under observation / not fully stable',tone:'warning',reason:`Abnormal observations, medicine exceptions or enhanced monitoring requirements are present.`};
-      return {label:'Clinically stable on available records',tone:'stable',reason:'No critical vital alert or major open incident is recorded in the available data.'};
+      const measured=validVitals(vitals);
+      const critical=measured.filter(v=>vitalAlert(v)==='critical');
+      const warning=measured.filter(v=>['warning','abnormal'].includes(vitalAlert(v)));
+      const severeIncidents=(incidents||[]).filter(i=>['high','critical','severe'].includes(String(i.severity||'').toLowerCase())||String(i.status||'').toLowerCase()==='open');
+      const exceptions=(mar||[]).filter(m=>String(m.status||'').toLowerCase()!=='given');
+      if(critical.length||severeIncidents.length)return {label:'Requires urgent clinical review',tone:'critical',reason:`${critical.length} critical measured vital alert(s) and ${severeIncidents.length} significant/open incident(s) were recorded.`};
+      if(warning.length||exceptions.length>=2||patient?.oxygen_required)return {label:'Under observation',tone:'warning',reason:'A measured abnormal observation, repeated medicine exception or enhanced monitoring requirement is present.'};
+      if(!measured.length)return {label:'Clinically stable',tone:'stable',reason:'No abnormal incident or clinical deterioration is recorded. Vital signs were not entered for the selected period, so stability is stated from the available care records.'};
+      return {label:'Clinically stable',tone:'stable',reason:'The available measured vital signs do not show a critical alert, and no major open incident is recorded.'};
     }
 
     function referralAssessment(patient,vitals,incidents){
-      const critical=vitals.some(v=>String(v.alert_level||'').toLowerCase()==='critical');
-      const severe=incidents.some(i=>['high','critical','severe'].includes(String(i.severity||'').toLowerCase())&&String(i.status||'Open').toLowerCase()!=='closed');
-      if(critical||severe)return 'Immediate doctor review is advisable. Referral or transfer to a higher centre should be decided by the treating doctor based on reassessment and the patient’s response.';
-      if(patient?.oxygen_required||patient?.dressing_required||patient?.aspiration_risk)return 'Continued close monitoring and scheduled medical review are advisable. Escalation should be considered if the patient deteriorates or fails to progress.';
-      return 'No immediate higher-centre referral is indicated from the available records. Continue the current care plan and routine medical follow-up.';
+      const measured=validVitals(vitals);
+      const critical=measured.some(v=>vitalAlert(v)==='critical');
+      const severe=(incidents||[]).some(i=>['high','critical','severe'].includes(String(i.severity||'').toLowerCase())&&String(i.status||'Open').toLowerCase()!=='closed');
+      if(critical||severe)return 'Prompt review by the treating doctor is advisable. Referral or transfer to a higher centre should be considered only after clinical reassessment and according to the doctor’s advice.';
+      if(patient?.oxygen_required||patient?.dressing_required||patient?.aspiration_risk)return 'Continue close observation and scheduled medical review. Escalation may be considered if there is any deterioration or inadequate response to the present care plan.';
+      return 'The patient is stable on the available records, and no immediate higher-centre referral is indicated. Continue the prescribed treatment and routine medical follow-up.';
     }
 
     function patientHumanNarrative(p,d){
       const status=conditionAssessment(p,d.vitals,d.incidents,d.mar);
-      const admissionSource=p.admission_type==='Hospital Discharge'?`following discharge from ${p.hospital_name||'a hospital'}`:p.admission_type==='Doctor Referral'?`on referral by Dr. ${p.referring_doctor||p.treating_doctor||'the referring doctor'}`:p.admission_type==='Hospital Transfer'?`as a transfer from ${p.hospital_name||'another care centre'}`:'as a direct admission to Samara';
-      const intro='Admission Summary: '+`${formalName(p)||'The patient'} (${p.patient_id||'patient ID not assigned'}) was admitted ${admissionSource} on ${p.admission_date||'the recorded admission date'} for ${p.diagnosis||p.patient_category||'assisted-living care'}. ${p.allergies?`Known allergies: ${p.allergies}.`:'No allergy information is recorded.'}`;
-      const careParts=[];
-      if(d.medicationOrders.length)careParts.push(`prescribed medicines were scheduled and ${d.mar.filter(x=>String(x.status||'').toLowerCase()==='given').length} dose(s) were documented as administered`);
-      if(d.care.length)careParts.push(`${d.care.length} basic-care activity/activities were recorded, including hygiene, mobility, feeding or toileting support as applicable`);
-      if(d.physioSessions.length)careParts.push(`${d.physioSessions.length} physiotherapy session(s) were completed or reviewed`);
-      if(d.meals.length)careParts.push(`${d.meals.length} meal/intake record(s) were documented`);
-      const careText=careParts.length?'Care and Treatment Provided: '+`During the reported period, ${careParts.join('; ')}.`:'Care and Treatment Provided: No detailed treatment or care activity is recorded for the selected period.';
-      const latestVital=latest(d.vitals,['recorded_at','created_at']);
-      const latestText=latestVital?`The latest recorded observations were BP ${latestVital.systolic||'—'}/${latestVital.diastolic||'—'} mmHg, pulse ${latestVital.pulse||'—'}/min, SpO₂ ${latestVital.spo2||'—'}% and blood sugar ${latestVital.blood_sugar||'—'}.`:'No recent vital-sign entry is available.';
-      const current=`Current Clinical Status: ${status.label}. ${status.reason} ${latestText}`;
+      const admissionSource=p.admission_type==='Hospital Discharge'?`following discharge from ${p.hospital_name||'a hospital'}`:p.admission_type==='Doctor Referral'?`on referral by ${p.referring_doctor||p.treating_doctor||'the referring doctor'}`:p.admission_type==='Hospital Transfer'?`as a transfer from ${p.hospital_name||'another care centre'}`:'as a direct admission to Samara';
+      const pronoun=String(p.gender||'').toLowerCase()==='female'?'She':String(p.gender||'').toLowerCase()==='male'?'He':'The patient';
+      const intro='Admission Summary: '+`${formalName(p)||'The patient'} (${p.patient_id||'patient ID not assigned'}) was admitted ${admissionSource} on ${p.admission_date||'the recorded admission date'} with ${p.diagnosis?`a diagnosis of ${p.diagnosis}`:`a requirement for ${p.patient_category||'assisted-living care'}`}. ${p.allergies?`Known allergies: ${p.allergies}.`:'No allergy is documented in the available record.'}`;
+      const medPlan=(d.medicationOrders||[]).filter(x=>x.is_active!==false);
+      const carePlan=(d.careOrders||[]).filter(x=>x.is_active!==false);
+      const medDetails=medPlan.slice(0,6).map(x=>`${x.medicine_name||'Medicine'}${x.strength?` ${x.strength}`:''}${x.dose?` - ${x.dose}`:''}${x.route?` (${x.route})`:''}${Array.isArray(x.scheduled_times)&&x.scheduled_times.length?` at ${x.scheduled_times.join(', ')}`:''}`).join('; ');
+      const careDetails=carePlan.slice(0,8).map(x=>`${x.care_type||'Care task'}${x.shift?` - ${x.shift}`:''}${x.frequency?` - ${x.frequency}`:''}${x.instruction?` (${x.instruction})`:''}`).join('; ');
+      const completedMeds=(d.mar||[]).filter(x=>String(x.status||'').toLowerCase()==='given').length;
+      const careSentences=[];
+      if(medPlan.length)careSentences.push(`Treatment is continuing according to the active prescription${medDetails?`: ${medDetails}`:''}. ${completedMeds} administered dose record(s) are available for the selected period`);
+      else careSentences.push('No active medicine prescription is available in the selected record');
+      if(carePlan.length)careSentences.push(`The active care plan includes ${careDetails}`);
+      else if(d.care.length)careSentences.push(`${d.care.length} nursing/personal-care activity record(s) were entered during the period`);
+      else careSentences.push('Routine assisted-living support is continuing; no separate detailed care-plan order is recorded');
+      if(d.physioOrders?.length||d.physioSessions.length)careSentences.push(`Physiotherapy is ${d.physioSessions.length?'documented during the period':'included in the active plan'}${d.physioOrders?.length?`: ${d.physioOrders.slice(0,4).map(x=>`${x.therapy_type||'Therapy'}${x.frequency?` - ${x.frequency}`:''}`).join('; ')}`:''}`);
+      if(p.diet_plan||p.feeding_instruction||d.meals.length)careSentences.push(`Dietary care is being provided${p.diet_plan?` as ${p.diet_plan}`:''}${p.feeding_instruction?` with instructions: ${p.feeding_instruction}`:''}${d.meals.length?`; ${d.meals.length} meal/intake record(s) are available`:''}`);
+      const careText='Care and Treatment Provided: '+careSentences.join('. ')+'.';
+      const measured=validVitals(d.vitals);
+      const latestVital=latest(measured,['recorded_at','created_at']);
+      const latestText=latestVital?`The latest measured observations were BP ${latestVital.systolic||'—'}/${latestVital.diastolic||'—'} mmHg, pulse ${latestVital.pulse||'—'}/min, SpO₂ ${latestVital.spo2||'—'}% and blood sugar ${latestVital.blood_sugar||'—'}.`:'No measured vital-sign values were entered for this reporting period.';
+      const current=`Current Clinical Status: ${pronoun} is ${status.label.toLowerCase()} on the available records. ${status.reason} ${latestText}`;
       const familyNoted=d.incidents.some(i=>i.family_informed===true||/family|relative|attendant/i.test(String(i.immediate_action||i.remarks||i.description||'')));
-      const family=`Family Communication: ${familyNoted?'The available records indicate that the family/attendant was informed regarding the patient’s condition or a significant event.':'No documented family communication is available for the selected reporting period.'}`;
-      const next=`Plan and Recommendation: ${referralAssessment(p,d.vitals,d.incidents)} Continue medicine administration, nursing assistance, diet, physiotherapy and risk precautions according to the active care plan.`;
+      const family=`Family Communication: ${familyNoted?'The available records indicate that the family/attendant was informed regarding the patient’s condition or a significant event.':'No specific family communication entry is available for the selected reporting period.'}`;
+      const next=`Plan and Recommendation: ${referralAssessment(p,d.vitals,d.incidents)} Continue care strictly according to the active prescription and care plan, including nursing assistance, diet, physiotherapy and documented risk precautions.`;
       return [intro,careText,current,family,next];
     }
 
@@ -1428,20 +1445,20 @@ Caring with Compassion. Living with Dignity.`;
       setBusy(true);
       try{
         const results=await Promise.all([
-          client.from('patients').select('*'),client.from('vital_signs').select('*'),client.from('care_logs').select('*'),client.from('medication_orders').select('*'),client.from('medication_administrations').select('*'),client.from('meal_records').select('*'),client.from('physiotherapy_orders').select('*'),client.from('physiotherapy_sessions').select('*'),client.from('incidents').select('*'),client.from('billing_transactions').select('*'),client.from('recovery_events').select('*'),client.from('shift_handovers').select('*'),client.from('patient_documents').select('*'),client.from('profiles').select('*'),client.from('audit_log').select('*')
+          client.from('patients').select('*'),client.from('vital_signs').select('*'),client.from('care_logs').select('*'),client.from('care_orders').select('*'),client.from('medication_orders').select('*'),client.from('medication_administrations').select('*'),client.from('meal_records').select('*'),client.from('physiotherapy_orders').select('*'),client.from('physiotherapy_sessions').select('*'),client.from('incidents').select('*'),client.from('billing_transactions').select('*'),client.from('recovery_events').select('*'),client.from('shift_handovers').select('*'),client.from('patient_documents').select('*'),client.from('profiles').select('*'),client.from('audit_log').select('*')
         ]);
-        const [pats,vitals,care,orders,mar,meals,physioOrders,physioSessions,incidents,billing,recovery,handovers,documents,staff,audit]=results.map(safeRows);
+        const [pats,vitals,care,careOrders,orders,mar,meals,physioOrders,physioSessions,incidents,billing,recovery,handovers,documents,staff,audit]=results.map(safeRows);
         const selectedPatient=pats.find(p=>p.id===patientId)||patients.find(p=>p.id===patientId)||null;
         const dayData={
-          vitals:byDay(vitals,reportDate,['recorded_at','created_at']),care:byDay(care,reportDate,['completed_at','created_at','care_date']),mar:byDay(mar,reportDate,['administered_at','created_at','scheduled_date']),meals:byDay(meals,reportDate,['served_at','created_at','meal_date']),physioSessions:byDay(physioSessions,reportDate,['session_at','created_at','session_date']),incidents:byDay(incidents,reportDate,['incident_at','created_at']),billing:byDay(billing,reportDate,['transaction_date','created_at']),recovery:byDay(recovery,reportDate,['event_at','created_at']),handovers:byDay(handovers,reportDate,['created_at','handover_date']),documents:byDay(documents,reportDate,['created_at','report_date']),audit:byDay(audit,reportDate,['created_at'])
+          vitals:byDay(vitals,reportDate,['recorded_at','created_at']),care:byDay(care,reportDate,['completed_at','created_at','care_date']),careOrders:careOrders.filter(x=>x.is_active!==false),mar:byDay(mar,reportDate,['administered_at','created_at','scheduled_date']),meals:byDay(meals,reportDate,['served_at','created_at','meal_date']),physioSessions:byDay(physioSessions,reportDate,['session_at','created_at','session_date']),incidents:byDay(incidents,reportDate,['incident_at','created_at']),billing:byDay(billing,reportDate,['transaction_date','created_at']),recovery:byDay(recovery,reportDate,['event_at','created_at']),handovers:byDay(handovers,reportDate,['created_at','handover_date']),documents:byDay(documents,reportDate,['created_at','report_date']),audit:byDay(audit,reportDate,['created_at'])
         };
         const data=mode==='Patient-wise'?{
-          patients:selectedPatient?[selectedPatient]:[],vitals:byPatient(vitals,patientId),care:byPatient(care,patientId),medicationOrders:byPatient(orders,patientId),mar:byPatient(mar,patientId),meals:byPatient(meals,patientId),physioOrders:byPatient(physioOrders,patientId),physioSessions:byPatient(physioSessions,patientId),incidents:byPatient(incidents,patientId),billing:byPatient(billing,patientId),recovery:byPatient(recovery,patientId),handovers:handovers.filter(r=>text(r.patient_summary).toLowerCase().includes(text(formalName(selectedPatient)).toLowerCase())),documents:byPatient(documents,patientId)
+          patients:selectedPatient?[selectedPatient]:[],vitals:byPatient(vitals,patientId),care:byPatient(care,patientId),careOrders:byPatient(careOrders,patientId),medicationOrders:byPatient(orders,patientId),mar:byPatient(mar,patientId),meals:byPatient(meals,patientId),physioOrders:byPatient(physioOrders,patientId),physioSessions:byPatient(physioSessions,patientId),incidents:byPatient(incidents,patientId),billing:byPatient(billing,patientId),recovery:byPatient(recovery,patientId),handovers:handovers.filter(r=>text(r.patient_summary).toLowerCase().includes(text(formalName(selectedPatient)).toLowerCase())),documents:byPatient(documents,patientId)
         }:{...dayData,patients:pats.filter(p=>p.is_active!==false&&dateOnly(p.admission_date)<=reportDate),newAdmissions:pats.filter(p=>dateOnly(p.admission_date)===reportDate)};
         const charges=data.billing.filter(x=>x.transaction_type==='Charge').reduce((a,x)=>a+Number(x.amount||0),0);
         const payments=data.billing.filter(x=>x.transaction_type==='Payment').reduce((a,x)=>a+Number(x.amount||0),0);
         const discounts=data.billing.filter(x=>x.transaction_type==='Discount').reduce((a,x)=>a+Number(x.amount||0),0);
-        const criticalVitals=data.vitals.filter(x=>String(x.alert_level||'').toLowerCase()==='critical');
+        const criticalVitals=validVitals(data.vitals).filter(x=>vitalAlert(x)==='critical');
         const medicineExceptions=data.mar.filter(x=>String(x.status||'').toLowerCase()!=='given');
         const activeStaffIds=new Set();
         [...data.care,...data.mar,...data.vitals,...data.physioSessions,...data.incidents,...(data.audit||[])].forEach(r=>[r.completed_by,r.administered_by,r.recorded_by,r.performed_by,r.reported_by,r.user_id].filter(Boolean).forEach(id=>activeStaffIds.add(id)));
@@ -1453,7 +1470,15 @@ Caring with Compassion. Living with Dignity.`;
       setBusy(false);
     }
 
-    function printReport(){window.print();}
+    function printReport(){
+      const previous=document.title;
+      const stamp=new Date().toLocaleString('en-GB',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).replace(/[\/:,]/g,'-').replace(/\s+/g,'_');
+      const base=report?.mode==='Patient-wise'?(formalName(report.patient)||'Patient'):'Samara_Daily_Report';
+      document.title=`${base} - Report as on ${stamp}`;
+      window.addEventListener('afterprint',()=>{document.title=previous},{once:true});
+      window.print();
+      setTimeout(()=>{document.title=previous},1500);
+    }
     function section(title,items,renderer){return h('div',{className:'intelligent-report-section'},h('h3',null,title),items.length?h('div',{className:'intelligent-report-list'},items.map((x,i)=>h('div',{className:'intelligent-report-item',key:i},renderer(x)))):h('p',{className:'small-note'},'No records for this report.'));}
     function narrative(){
       if(!report)return [];
@@ -1489,10 +1514,10 @@ Caring with Compassion. Living with Dignity.`;
           )
         )})(),
         h('div',{className:'intelligent-summary human-report'},h('h3',null,report.mode==='Patient-wise'?'Clinical Care Summary':'Executive Daily Summary'),narrative().map((p,i)=>h('p',{key:i},p))),
-        h('div',{className:'grid stats intelligent-stats'},(report.mode==='Day-wise'?[['Opening patients',report.summary.openingPatients],['New admissions',report.summary.newAdmissions],['Staff active',report.onDuty.length],['Critical alerts',report.summary.criticalVitals],['Incidents',report.data.incidents.length],['Medicine exceptions',report.summary.medicineExceptions],['Collections',money(report.summary.payments)],['Net outstanding',money(report.summary.outstanding)]]:[['Vitals',report.data.vitals.length],['Critical alerts',report.summary.criticalVitals],['Care activities',report.data.care.length],['Medicines given',report.summary.medicinesGiven],['Medicine exceptions',report.summary.medicineExceptions],['Incidents',report.data.incidents.length],['Charges',money(report.summary.charges)],['Outstanding',money(report.summary.outstanding)]]).map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,b)))),
+        h('div',{className:'grid stats intelligent-stats'},(report.mode==='Day-wise'?[['Opening patients',report.summary.openingPatients],['New admissions',report.summary.newAdmissions],['Staff active',report.onDuty.length],['Critical alerts',report.summary.criticalVitals],['Incidents',report.data.incidents.length],['Medicine exceptions',report.summary.medicineExceptions],['Collections',money(report.summary.payments)],['Net outstanding',money(report.summary.outstanding)]]:[['Vitals recorded',validVitals(report.data.vitals).length],['Critical alerts',report.summary.criticalVitals],['Care activities',report.data.care.length],['Medicines given',report.summary.medicinesGiven],['Medicine exceptions',report.summary.medicineExceptions],['Incidents',report.data.incidents.length],['Charges',money(report.summary.charges)],['Outstanding',money(report.summary.outstanding)]]).map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,b)))),
         report.mode==='Day-wise'&&section('Patient-wise Daily Status',report.data.patients,p=>h(React.Fragment,null,h('strong',null,`${p.patient_id||'NO-ID'} · ${formalName(p)}`),h('span',null,dailyPatientNarrative(p,report.data)))),
         report.mode==='Day-wise'&&section('Employees Active / On Duty (derived from recorded activity)',report.onDuty,x=>h(React.Fragment,null,h('strong',null,formalName(x)),h('span',null,`${x.role||'Employee'} · ${x.employee_id||x.login_id||'—'}`))),
-        section('Abnormal and Critical Vital Signs',report.data.vitals.filter(v=>['critical','warning','abnormal'].includes(String(v.alert_level||'').toLowerCase())),r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`BP ${r.systolic||'—'}/${r.diastolic||'—'} · Pulse ${r.pulse||'—'} · SpO₂ ${r.spo2||'—'} · Sugar ${r.blood_sugar||'—'} · ${r.alert_level||'Abnormal'} · ${fmt(r.recorded_at||r.created_at)}`))),
+        section('Abnormal and Critical Vital Signs',validVitals(report.data.vitals).filter(v=>['critical','warning','abnormal'].includes(vitalAlert(v))),r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`BP ${r.systolic||'—'}/${r.diastolic||'—'} · Pulse ${r.pulse||'—'} · SpO₂ ${r.spo2||'—'} · Sugar ${r.blood_sugar||'—'} · ${r.alert_level||'Abnormal'} · ${fmt(r.recorded_at||r.created_at)}`))),
         section('Medication Administration',report.data.mar,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.status||'—'} · Scheduled ${r.scheduled_time||'—'} · ${r.remarks||'No remarks'} · ${fmt(r.administered_at||r.created_at)}${r.administered_by?` · By ${roleName(r.administered_by)}`:''}`))),
         section('Daily Care and Nursing Support',report.data.care,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.shift||'—'} · ${r.status||'—'} · ${r.remarks||'—'} · ${fmt(r.completed_at||r.created_at)}${r.completed_by?` · By ${roleName(r.completed_by)}`:''}`))),
         section('Food, Diet and Intake',report.data.meals,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.meal_type||'Meal'} · ${r.menu||'—'} · ${r.consumption_status||'—'} · ${fmt(r.served_at||r.created_at)}`))),

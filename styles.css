@@ -327,3 +327,34 @@ body{font-size:17px;line-height:1.42}
 
 /* ERP 1.0.4 – Patient Edit Media */
 .patient-edit-media{margin-top:18px}.patient-edit-photo-row{display:grid;grid-template-columns:130px minmax(0,1fr);gap:18px;align-items:start;margin-bottom:18px}.patient-edit-photo-row .patient-photo{width:118px;height:138px}.patient-edit-media .upload-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.uploaded-documents-list .timeline-item{display:flex;align-items:center;justify-content:space-between;gap:14px}.uploaded-documents-list .timeline-item>div:first-child{display:flex;flex-direction:column;gap:3px;min-width:0}.uploaded-documents-list .timeline-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.patient-edit-modal{max-width:1180px}@media(max-width:760px){.patient-edit-photo-row{grid-template-columns:1fr}.patient-edit-media .upload-grid{grid-template-columns:1fr}.uploaded-documents-list .timeline-item{align-items:flex-start;flex-direction:column}}
+
+
+/* ERP 1.0.5 - A4 Intelligent Report print layout */
+@page{size:A4 portrait;margin:11mm 10mm 12mm}
+@media print{
+  html,body{width:210mm!important;min-height:297mm!important;background:#fff!important;color:#172d28!important;font-size:10.5pt!important}
+  body{margin:0!important;padding:0!important}
+  .app{display:block!important;min-height:auto!important}
+  .sidebar,.topbar,.mobile-menu,.no-print,.intelligent-report-controls,.install-note{display:none!important}
+  .main,.content{display:block!important;width:auto!important;max-width:none!important;margin:0!important;padding:0!important;overflow:visible!important}
+  .printable-report{width:100%!important;max-width:none!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:#fff!important}
+  .printable-report>.panel-head{margin:0 0 5mm!important;padding:0 0 3mm!important;border-bottom:1px solid #b8cbc5!important}
+  .printable-report>.panel-head h2{font-size:18pt!important;line-height:1.2!important;margin:0!important}
+  .printable-report>.panel-head small{font-size:9pt!important}
+  .patient-report-v2{display:grid!important;grid-template-columns:24mm 1fr 45mm!important;gap:4mm!important;padding:4mm!important;margin:0 0 4mm!important;border-radius:3mm!important;break-inside:avoid!important}
+  .patient-report-photo{width:22mm!important;height:27mm!important;border-radius:2mm!important}
+  .patient-report-identity strong{font-size:15pt!important}.patient-report-identity span{font-size:9.5pt!important}
+  .patient-report-facts{grid-template-columns:1fr 1fr!important;gap:2mm 6mm!important;padding-top:3mm!important;font-size:9.5pt!important}
+  .report-status-badge{font-size:9pt!important;padding:2.5mm 3mm!important;white-space:normal!important}
+  .intelligent-summary{padding:4mm!important;margin:0 0 4mm!important;border-radius:3mm!important;break-inside:auto!important}
+  .intelligent-summary h3,.intelligent-report-section h3{font-size:13pt!important;margin:0 0 2mm!important}
+  .human-report p{font-size:10.5pt!important;line-height:1.45!important;margin:0 0 2.2mm!important}
+  .intelligent-stats{grid-template-columns:repeat(4,1fr)!important;gap:2.5mm!important;margin:0 0 4mm!important}
+  .intelligent-stats .stat{padding:3mm!important;border-radius:2.5mm!important;break-inside:avoid!important}
+  .intelligent-stats .stat span{font-size:8.5pt!important}.intelligent-stats .stat strong{font-size:14pt!important;margin-top:1mm!important}
+  .intelligent-report-section{margin-top:4mm!important;padding-top:3mm!important;break-inside:auto!important}
+  .intelligent-report-list{gap:2mm!important}.intelligent-report-item{padding:2.5mm 3mm!important;border-radius:2mm!important;break-inside:avoid!important}
+  .intelligent-report-item strong,.intelligent-report-item span,.small-note{font-size:9.5pt!important;line-height:1.35!important}
+  .report-footer{margin-top:5mm!important;padding-top:3mm!important;break-inside:avoid!important}.report-footer strong{font-size:12pt!important}.report-footer span,.report-footer small{font-size:8.5pt!important}
+  a[href]:after{content:none!important}
+}
