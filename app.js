@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.34';
-  const APP_BUILD_DATE = '04-Aug-2026 15:05 IST';
+  const APP_VERSION = '1.3.35';
+  const APP_BUILD_DATE = '04-Aug-2026 16:00 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1465,7 +1465,7 @@ Caring with Compassion. Living with Dignity.`;
   }
 
   function ShiftTasks({profile}){
-    const today=new Date().toISOString().slice(0,10);
+    const today=todayISOIndia();
     const [meds,setMeds]=React.useState([]),[medLogs,setMedLogs]=React.useState([]),[care,setCare]=React.useState([]),[careLogs,setCareLogs]=React.useState([]),[physio,setPhysio]=React.useState([]),[physioLogs,setPhysioLogs]=React.useState([]),[loading,setLoading]=React.useState(true);
     const patientFields='full_name,room_no,bed_no,special_nurse_required,special_nurse_name,special_nurse_shift,fall_risk,pressure_sore_risk,aspiration_risk,wandering_risk,infection_risk,seizure_history,oxygen_required,dressing_required';
     async function load(){setLoading(true);const [m,ml,c,cl,p,pl]=await Promise.all([
@@ -1479,10 +1479,34 @@ Caring with Compassion. Living with Dignity.`;
     React.useEffect(()=>{load();const ch=client.channel('shift-live-v31').on('postgres_changes',{event:'*',schema:'public',table:'medication_administrations'},load).on('postgres_changes',{event:'*',schema:'public',table:'care_logs'},load).on('postgres_changes',{event:'*',schema:'public',table:'physiotherapy_sessions'},load).subscribe();return()=>client.removeChannel(ch)},[]);
     function riskBadges(p){const items=[[p.fall_risk,'Fall'],[p.pressure_sore_risk,'Pressure sore'],[p.aspiration_risk,'Aspiration'],[p.wandering_risk,'Wandering'],[p.infection_risk,'Infection'],[p.seizure_history,'Seizure'],[p.oxygen_required,'Oxygen'],[p.dressing_required,'Dressing']].filter(x=>x[0]);return items.length?h('div',{className:'risk-badges'},items.map(x=>h('span',{className:'risk-badge',key:x[1]},x[1]))):null}
     async function logMedicine(order,time,status){const {data:{user}}=await client.auth.getUser();const remarks=status==='Given'?'':prompt('Enter reason / remarks:')||'';const {error}=await client.from('medication_administrations').insert({order_id:order.id,patient_id:order.patient_id,scheduled_date:today,scheduled_time:time,status,administered_at:new Date().toISOString(),administered_by:user.id,remarks});if(error)alert(error.message);else load()}
-    async function logCare(order,status){const {data:{user}}=await client.auth.getUser();const shift=currentShift();const remarks=status==='Completed'?'':prompt('Enter reason / remarks:')||'';const {error}=await client.from('care_logs').upsert({care_order_id:order.id,patient_id:order.patient_id,care_date:today,shift,status,completed_at:new Date().toISOString(),completed_by:user.id,remarks},{onConflict:'care_order_id,care_date,shift'});if(error)alert(error.message);else load()}
+    async function logCare(order,status,taskShift=currentShift()){
+      if(taskShift!==currentShift()){
+        alert(`${taskShift} has not started. This task can be completed only during that shift.`);
+        return;
+      }
+      const {data:{user}}=await client.auth.getUser();
+      const remarks=status==='Completed'?'':prompt('Enter reason / remarks:')||'';
+      const {error}=await client.from('care_logs').upsert({
+        care_order_id:order.id,patient_id:order.patient_id,care_date:today,shift:taskShift,status,
+        completed_at:new Date().toISOString(),completed_by:user.id,remarks
+      },{onConflict:'care_order_id,care_date,shift'});
+      if(error)alert(error.message);else load()
+    }
     async function logPhysio(order,status){const {data:{user}}=await client.auth.getUser();const notes=status==='Completed'?(prompt('Session notes (optional):')||''):(prompt('Reason / notes:')||'');const {error}=await client.from('physiotherapy_sessions').upsert({plan_id:order.id,order_id:order.id,patient_id:order.patient_id,session_date:today,status,session_at:new Date().toISOString(),performed_by:user.id,notes},{onConflict:'order_id,session_date'});if(error)alert(error.message);else load()}
     const shift=currentShift();const medTasks=[];meds.forEach(o=>(o.scheduled_times||[]).forEach(t=>{const time=String(t).slice(0,5);if(shiftForTime(time)===shift)medTasks.push({order:o,time,log:medLogs.find(x=>x.order_id===o.id&&String(x.scheduled_time).slice(0,5)===time)})}));
-    medTasks.sort((a,b)=>a.time.localeCompare(b.time));const careTasks=care.filter(o=>o.shift==='Both shifts'||o.shift===shift).map(o=>({...o,log:careLogs.find(x=>x.care_order_id===o.id&&x.shift===shift)}));
+    medTasks.sort((a,b)=>a.time.localeCompare(b.time));
+    const careTasks=care.flatMap(order=>{
+      const taskShifts=order.shift==='Both shifts'
+        ?['Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)']
+        :[order.shift];
+      return taskShifts.map(taskShift=>({
+        ...order,
+        taskShift,
+        isCurrentShift:taskShift===shift,
+        isUpcomingShift:taskShift!==shift,
+        log:careLogs.find(x=>x.care_order_id===order.id&&x.shift===taskShift)
+      }));
+    });
     const physioTasks=physio.filter(o=>!o.preferred_time||shiftForTime(String(o.preferred_time).slice(0,5))===shift).map(o=>({...o,log:physioLogs.find(x=>(x.plan_id||x.order_id)===o.id)}));
     if(loading)return h('div',{className:'loading'},'Loading shift tasks…');
     const pending=medTasks.filter(x=>!x.log).length+careTasks.filter(x=>!x.log).length+physioTasks.filter(x=>!x.log).length;
@@ -1491,7 +1515,7 @@ Caring with Compassion. Living with Dignity.`;
       h('div',{className:'card panel task-group'},h('div',{className:'panel-head'},h('div',null,h('h3',null,"Today's Medication Administration"),h('small',null,'Prescription-led MAR')),h('span',{className:'badge'},`${medTasks.filter(x=>!x.log).length} pending`)),
         medTasks.map(x=>h('div',{className:`task-card ${x.log?'done':''}`,key:x.order.id+x.time},h('div',null,h('strong',null,`${x.order.patients.full_name} · Room ${x.order.patients.room_no}-${x.order.patients.bed_no}`),x.order.patients.special_nurse_required&&h('div',{className:'special-alert'},`Special nurse: ${x.order.patients.special_nurse_name||'Required'} · ${x.order.patients.special_nurse_shift||''}`),riskBadges(x.order.patients),h('div',{className:'task-meta'},`${x.order.medicine_name} ${x.order.strength||''} · ${x.order.dose} · ${x.order.route}`),x.order.special_instruction&&h('div',{className:'small-note'},x.order.special_instruction)),h('div',null,h('span',{className:'pill'},x.time),h('div',{className:'small-note'},x.order.food_instruction)),h('div',null,x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending')),h('div',null,!x.log&&h(React.Fragment,null,h('button',{className:'btn btn-primary',onClick:()=>logMedicine(x.order,x.time,'Given')},'Given'),' ',h('button',{className:'btn btn-danger',onClick:()=>logMedicine(x.order,x.time,'Refused')},'Exception'))))),medTasks.length===0&&h('div',{className:'empty'},'No medication tasks in this shift')),
       h('div',{className:'card panel task-group'},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Basic Care Tasks'),h('small',null,'Bath, restroom, hygiene, mobility and assistance')),h('span',{className:'badge'},`${careTasks.filter(x=>!x.log).length} pending`)),
-        careTasks.map(x=>h('div',{className:`task-card ${x.log?'done':''}`,key:x.id},h('div',null,h('strong',null,`${x.patients.full_name} · ${x.care_type}`),x.patients.special_nurse_required&&h('div',{className:'special-alert'},`Special nurse: ${x.patients.special_nurse_name||'Required'} · ${x.patients.special_nurse_shift||''}`),riskBadges(x.patients),h('div',{className:'task-meta'},`Room ${x.patients.room_no}-${x.patients.bed_no} · ${x.frequency}`),x.instruction&&h('div',{className:'small-note'},x.instruction)),h('div',null,h('span',{className:'pill'},x.shift)),h('div',null,x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending')),h('div',null,!x.log&&h(React.Fragment,null,h('button',{className:'btn btn-primary',onClick:()=>logCare(x,'Completed')},'Complete'),' ',h('button',{className:'btn btn-danger',onClick:()=>logCare(x,'Refused')},'Exception'))))),careTasks.length===0&&h('div',{className:'empty'},'No basic-care tasks in this shift')),
+        careTasks.map(x=>h('div',{className:`task-card ${x.log?'done':''} ${x.isUpcomingShift?'upcoming-task':''}`,key:`${x.id}-${x.taskShift}`},h('div',null,h('strong',null,`${x.patients.full_name} · ${x.care_type}`),x.patients.special_nurse_required&&h('div',{className:'special-alert'},`Special nurse: ${x.patients.special_nurse_name||'Required'} · ${x.patients.special_nurse_shift||''}`),riskBadges(x.patients),h('div',{className:'task-meta'},`Room ${x.patients.room_no}-${x.patients.bed_no} · ${x.frequency}`),x.instruction&&h('div',{className:'small-note'},x.instruction)),h('div',null,h('span',{className:`pill ${x.isUpcomingShift?'upcoming-shift-pill':''}`},x.taskShift),x.isUpcomingShift&&h('div',{className:'small-note'},'Upcoming shift')),h('div',null,x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending')),h('div',null,!x.log&&h(React.Fragment,null,h('button',{className:'btn btn-primary',disabled:x.isUpcomingShift,onClick:()=>logCare(x,'Completed',x.taskShift)},x.isUpcomingShift?'Available at shift time':'Complete'),' ',h('button',{className:'btn btn-danger',disabled:x.isUpcomingShift,onClick:()=>logCare(x,'Refused',x.taskShift)},'Exception'))))),careTasks.length===0&&h('div',{className:'empty'},'No basic-care tasks scheduled for today')),
       h('div',{className:'card panel task-group'},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Physiotherapy Tasks'),h('small',null,'Exercises and rehabilitation advised at discharge')),h('span',{className:'badge'},`${physioTasks.filter(x=>!x.log).length} pending`)),
         physioTasks.map(x=>h('div',{className:`task-card ${x.log?'done':''}`,key:x.id},h('div',null,h('strong',null,`${x.patients.full_name} · ${x.therapy_type}`),x.patients.special_nurse_required&&h('div',{className:'special-alert'},`Special nurse: ${x.patients.special_nurse_name||'Required'}`),riskBadges(x.patients),h('div',{className:'task-meta'},`Room ${x.patients.room_no}-${x.patients.bed_no} · ${x.frequency}`),x.precautions&&h('div',{className:'small-note'},x.precautions)),h('div',null,h('span',{className:'pill'},x.preferred_time?String(x.preferred_time).slice(0,5):shift)),h('div',null,x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending')),h('div',null,!x.log&&h(React.Fragment,null,h('button',{className:'btn btn-primary',onClick:()=>logPhysio(x,'Completed')},'Complete'),' ',h('button',{className:'btn btn-danger',onClick:()=>logPhysio(x,'Postponed')},'Postpone'))))),physioTasks.length===0&&h('div',{className:'empty'},'No physiotherapy tasks in this shift'))
     );
@@ -2391,7 +2415,14 @@ function RoomsBeds({profile}){
     React.useEffect(()=>{load();const ch=client.channel('clinical-dashboard-live').on('postgres_changes',{event:'*',schema:'public',table:'vital_signs'},load).on('postgres_changes',{event:'*',schema:'public',table:'medication_administrations'},load).on('postgres_changes',{event:'*',schema:'public',table:'care_logs'},load).on('postgres_changes',{event:'*',schema:'public',table:'incidents'},load).subscribe();return()=>client.removeChannel(ch)},[]);
     const medTasks=[];
     state.medOrders.forEach(order=>(order.scheduled_times||[]).forEach(time=>{const done=state.medLogs.some(log=>log.order_id===order.id&&String(log.scheduled_time||'').slice(0,5)===String(time).slice(0,5));if(!done)medTasks.push({order,time,overdue:timeToMinutes(time)<nowMinutes})}));
-    const carePending=state.careOrders.filter(order=>!state.careLogs.some(log=>log.care_order_id===order.id));
+    const carePending=state.careOrders.flatMap(order=>{
+      const taskShifts=order.shift==='Both shifts'
+        ?['Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)']
+        :[order.shift];
+      return taskShifts
+        .filter(taskShift=>!state.careLogs.some(log=>log.care_order_id===order.id&&log.shift===taskShift))
+        .map(taskShift=>({...order,taskShift,isUpcoming:taskShift!==currentShift()}));
+    });
     const vitalPatientIds=new Set(state.vitals.map(v=>v.patient_id));
     const vitalsPending=state.patients.filter(p=>!vitalPatientIds.has(p.id));
     const physioDoneIds=new Set(state.physioSessions.map(x=>x.order_id));
@@ -2412,7 +2443,8 @@ function RoomsBeds({profile}){
         h('section',{className:'card clinical-panel'},h('div',{className:'clinical-panel-head'},h('div',null,h('h3',null,'Priority Worklist'),h('small',null,'Overdue and pending tasks requiring attention')),h('button',{className:'btn btn-secondary',onClick:load},'Refresh')),
           medTasks.filter(x=>x.overdue).slice(0,5).map((x,i)=>h('div',{className:'clinical-work-row urgent',key:'m'+i},h('span',null,'💊'),h('div',null,h('strong',null,patientName(x.order)),h('small',null,`${x.order.medicine_name} ${x.order.dose||''} · Due ${x.time}`)),h('b',null,'OVERDUE'))),
           vitalsPending.slice(0,4).map(p=>h('div',{className:'clinical-work-row',key:p.id},h('span',null,'🩺'),h('div',null,h('strong',null,formalName(p)),h('small',null,`${p.patient_id||''} · Room ${p.room_no||'—'}-${p.bed_no||'—'} · Vitals not entered today`)),h('button',{className:'mini-link',onClick:()=>onNavigate('Vital Signs')},'Enter'))),
-          !medTasks.some(x=>x.overdue)&&!vitalsPending.length&&h('div',{className:'clinical-empty'},'No urgent clinical tasks are pending at present.')),
+          carePending.slice(0,6).map((x,i)=>h('div',{className:`clinical-work-row ${x.isUpcoming?'upcoming':''}`,key:`care-${x.id}-${x.taskShift}-${i}`},h('span',null,'✅'),h('div',null,h('strong',null,patientName(x)),h('small',null,`${x.care_type||x.activity||'Care task'} · ${x.taskShift}${x.isUpcoming?' · Upcoming shift':''}`)),h('button',{className:'mini-link',onClick:()=>onNavigate('Shift Tasks')},'View'))),
+          !medTasks.some(x=>x.overdue)&&!vitalsPending.length&&!carePending.length&&h('div',{className:'clinical-empty'},'No urgent clinical tasks are pending at present.')),
         h('section',{className:'card clinical-panel'},h('div',{className:'clinical-panel-head'},h('div',null,h('h3',null,'Latest Shift Handover'),h('small',null,'Important information from the previous shift'))),
           state.handovers.length?state.handovers.slice(0,3).map(x=>h('div',{className:`handover-card ${String(x.priority||'').toLowerCase()}`,key:x.id},h('div',null,h('strong',null,`${x.shift} · ${x.priority}`),h('small',null,fmt(x.created_at))),h('p',null,x.patient_summary||'No patient summary.'),x.pending_tasks&&h('p',null,h('b',null,'Pending: '),x.pending_tasks),h('small',null,`Submitted by ${formalName(x.profiles||{})||x.profiles?.full_name||'Staff'}`))):h('div',{className:'clinical-empty'},'No shift handover has been submitted yet.'))
       )
@@ -2420,6 +2452,7 @@ function RoomsBeds({profile}){
   }
 
   function DailyCare({profile}){
+    const activeShift=currentShift();
     const [patients]=usePatients();
     const [rows,setRows]=React.useState([]);
     const [form,setForm]=React.useState({patient_id:'',care_type:'Bathing assistance',shift:currentShift(),status:'Completed',remarks:''});
@@ -2454,6 +2487,10 @@ function RoomsBeds({profile}){
       if(saving)return;
       if(!form.patient_id){
         showToast('error','Please select a patient before saving the care record.');
+        return;
+      }
+      if(form.shift!==activeShift){
+        showToast('error',`${form.shift} has not started. Care can be recorded only for the active ${activeShift}.`);
         return;
       }
       setSaving(true);
@@ -2501,7 +2538,10 @@ function RoomsBeds({profile}){
         h('form',{className:'modal-grid',onSubmit:save},
           patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),
           miniSelect('Care activity',form.care_type,['Bathing assistance','Restroom assistance','Oral hygiene','Feeding assistance','Mobility assistance','Diaper change','Position change','Fluid monitoring','Sleep assistance'],v=>setForm({...form,care_type:v})),
-          miniSelect('Shift',form.shift,['Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)'],v=>setForm({...form,shift:v})),
+          h('div',{className:'field'},h('label',null,'Shift'),h('select',{value:form.shift,onChange:e=>setForm({...form,shift:e.target.value})},
+            h('option',{value:'Day Shift (7 AM–7 PM)',disabled:activeShift!=='Day Shift (7 AM–7 PM)'},`Day Shift (7 AM–7 PM)${activeShift==='Day Shift (7 AM–7 PM)'?' · Active':' · Not active'}`),
+            h('option',{value:'Night Shift (7 PM–7 AM)',disabled:activeShift!=='Night Shift (7 PM–7 AM)'},`Night Shift (7 PM–7 AM)${activeShift==='Night Shift (7 PM–7 AM)'?' · Active':' · Not active'}`)
+          ),h('small',{className:'shift-entry-note'},`Current active shift: ${activeShift}`)),
           miniSelect('Status',form.status,['Completed','Refused','Not required','Pending'],v=>setForm({...form,status:v})),
           miniInput('Remarks',form.remarks,v=>setForm({...form,remarks:v})),
           h('button',{className:'btn btn-primary',disabled:saving},saving?'Saving care record…':'Save care record')

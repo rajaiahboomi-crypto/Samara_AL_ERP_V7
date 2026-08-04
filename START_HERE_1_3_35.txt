@@ -1,0 +1,21 @@
+SAMARA CARE ERP 1.3.35 — SHIFT-WISE DAILY CARE TASK FIX
+
+1. Run once in Supabase SQL Editor:
+   50_shift_wise_daily_care_validation.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Corrected:
+- Night Shift care cannot be completed before 7:00 PM.
+- Day Shift care cannot be completed outside 7:00 AM–7:00 PM.
+- Both-shift care orders now create two separate daily task instances.
+- Completing Day Shift does not complete or hide Night Shift.
+- The upcoming Night Shift task remains visible and pending.
+- Upcoming-shift buttons are disabled until that shift starts.
+- Shift Tasks pending count includes the remaining shift task.
+- Nursing Dashboard care-pending count also counts each shift separately.
+- Priority Worklist identifies the remaining task as Upcoming shift.
+- India-local date and time are used.

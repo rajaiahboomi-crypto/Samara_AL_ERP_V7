@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.34-editable-room-number';
+const CACHE = 'samara-erp-1.3.35-shift-wise-daily-care';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.34', './app.js?v=1.3.34',
-  './bootstrap-error.js?v=1.3.34', './health-check.js?v=1.3.34',
-  './config.js?v=1.3.34', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.35', './app.js?v=1.3.35',
+  './bootstrap-error.js?v=1.3.35', './health-check.js?v=1.3.35',
+  './config.js?v=1.3.35', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {
