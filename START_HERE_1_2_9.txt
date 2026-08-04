@@ -1,0 +1,25 @@
+SAMARA CARE ERP 1.2.9 — MANUAL WHATSAPP INTELLIGENT REPORT SHARING
+
+1. Run once in Supabase SQL Editor:
+   31_patient_report_whatsapp_history.sql
+
+2. Replace only these files in the GitHub repository root:
+   app.js
+   index.html
+   service-worker.js
+
+3. Close and reopen the ERP. Tap “App update available” if displayed.
+
+How to use:
+- Open Intelligent Reports.
+- Select a patient and generate the Patient Report.
+- For a full report, click Print / Save PDF and save it first.
+- Click WhatsApp.
+- Choose Patient, Relative or Both.
+- Choose Quick Health Update or Full Intelligent Report.
+- Choose English or Tamil.
+- Click Open WhatsApp.
+- For Full Intelligent Report, manually attach the saved PDF before sending.
+
+Important:
+The ERP records “WhatsApp Opened” in Communication History. WhatsApp Web/mobile does not confirm that the staff actually pressed Send.

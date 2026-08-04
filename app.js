@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.2.8';
-  const APP_BUILD_DATE = '04-Aug-2026 00:05 IST';
+  const APP_VERSION = '1.2.9';
+  const APP_BUILD_DATE = '04-Aug-2026 09:20 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -2143,12 +2143,24 @@ Caring with Compassion. Living with Dignity.`;
     const [busy,setBusy]=React.useState(false);
     const [message,setMessage]=React.useState('');
     const [report,setReport]=React.useState(null);
+    const [shareOpen,setShareOpen]=React.useState(false);
+    const [shareRecipient,setShareRecipient]=React.useState('Relative');
+    const [shareType,setShareType]=React.useState('Quick Health Update');
+    const [shareLanguage,setShareLanguage]=React.useState('English');
+    const [communicationRows,setCommunicationRows]=React.useState([]);
+    const [shareBusy,setShareBusy]=React.useState(false);
 
     React.useEffect(()=>{
       client.from('patients').select('*').order('full_name').then(({data,error})=>{
         if(error)setMessage(error.message);else setPatients(data||[]);
       });
     },[]);
+
+    async function loadCommunicationHistory(){
+      const {data,error}=await client.from('patient_communications').select('*').order('created_at',{ascending:false}).limit(100);
+      if(!error)setCommunicationRows(data||[]);
+    }
+    React.useEffect(()=>{loadCommunicationHistory()},[]);
 
     const dateOnly=value=>{
       if(!value)return '';
@@ -2390,7 +2402,73 @@ Caring with Compassion. Living with Dignity.`;
         h('div',{className:'clinical-box-rows'},rows.map(([label,value])=>h('div',{className:'clinical-box-row',key:label},h('span',null,label),h('strong',null,value)))),
         note?h('div',{className:'clinical-box-note'},note):null
       );
-      return h(React.Fragment,null,
+      const selectedPatient=()=>report?.mode==='Patient-wise'?(report.patient||patients.find(p=>p.id===patientId)):null;
+    const relativeName=p=>p?.attendant_name||p?.relative_name||p?.emergency_contact_name||p?.family_contact_name||'Authorised Relative';
+    const patientPhone=p=>p?.mobile||p?.patient_mobile||p?.phone||'';
+    const relativePhone=p=>p?.attendant_phone||p?.relative_phone||p?.emergency_contact_phone||p?.family_contact_phone||p?.reference_contact||'';
+    const reportStatusText=()=>{
+      const p=selectedPatient();
+      if(!p)return '';
+      const date=report?.date||reportDate;
+      const base=`${formalName(p)}'s care report dated ${date} has been prepared by Samara Care.`;
+      return base;
+    };
+    function buildWhatsAppMessage(p,recipientType){
+      const recipient=recipientType==='Patient'?(formalName(p)||'Resident'):relativeName(p);
+      const patientLabel=formalName(p)||'the resident';
+      const date=report?.date||reportDate;
+      if(shareLanguage==='Tamil'){
+        if(shareType==='Full Intelligent Report'){
+          return `வணக்கம் ${recipient},\n\n${patientLabel} அவர்களின் ${date} தேதியிட்ட முழுமையான Intelligent Patient Report தயாராக உள்ளது. இந்த அறிக்கை ரகசியமானது; அங்கீகரிக்கப்பட்ட பெறுநருக்காக மட்டுமே பகிரப்படுகிறது.\n\nWhatsApp-இல் இணைக்கப்பட்ட PDF அறிக்கையைப் பார்க்கவும். மருத்துவ அவசர நிலை இருந்தால், Samara Care குழுவை நேரடியாக தொடர்புகொள்ளவும்.\n\nSamara Health Care LLP`;
+        }
+        return `வணக்கம் ${recipient},\n\n${patientLabel} அவர்களின் ${date} தேதியிட்ட தினசரி பராமரிப்பு மற்றும் உடல்நிலை சுருக்கம் Samara Care-ல் தயாராக உள்ளது. தற்போதைய பதிவுகளின் அடிப்படையில் பராமரிப்பு தொடர்ந்து கண்காணிக்கப்படுகிறது.\n\nகூடுதல் விளக்கம் தேவைப்பட்டால் Samara Care குழுவை தொடர்புகொள்ளவும்.\n\nSamara Health Care LLP`;
+      }
+      if(shareType==='Full Intelligent Report'){
+        return `Dear ${recipient},\n\nPlease find the full Intelligent Patient Report for ${patientLabel}, dated ${date}.\n\nThis report is confidential and intended only for the authorised recipient. Please review the attached PDF. For any urgent clinical concern, contact the Samara Care team directly.\n\nRegards,\nSamara Health Care LLP`;
+      }
+      return `Dear ${recipient},\n\nThis is a quick care update for ${patientLabel}, dated ${date}. The latest care and clinical records have been reviewed in Samara Care ERP and the resident continues to be monitored according to the active care plan.\n\nPlease contact the Samara Care team for any clarification.\n\nRegards,\nSamara Health Care LLP`;
+    }
+    async function recordCommunication(p,recipientType,number,messageText){
+      const {data:{user}}=await client.auth.getUser();
+      const payload={
+        patient_id:p.id,
+        communication_type:shareType,
+        method:'WhatsApp',
+        recipient_type:recipientType,
+        recipient_name:recipientType==='Patient'?(formalName(p)||p.full_name):relativeName(p),
+        recipient_number:number,
+        report_date:report?.date||reportDate,
+        status:'WhatsApp Opened',
+        message_preview:messageText.slice(0,500),
+        sent_by:user?.id||profile?.auth_user_id||profile?.id
+      };
+      const {error}=await client.from('patient_communications').insert(payload);
+      if(error)console.warn('Communication history could not be saved:',error);
+    }
+    async function openWhatsAppShare(){
+      const p=selectedPatient();
+      if(!p)return alert('Generate a patient report before sharing.');
+      const targets=shareRecipient==='Both'?['Patient','Relative']:[shareRecipient];
+      const missing=[];
+      const prepared=[];
+      targets.forEach(type=>{
+        const raw=type==='Patient'?patientPhone(p):relativePhone(p);
+        const number=whatsappNumber(raw);
+        if(!number)missing.push(type);
+        else prepared.push({type,number,text:buildWhatsAppMessage(p,type)});
+      });
+      if(missing.length)return alert(`WhatsApp number is not available for: ${missing.join(', ')}. Please update the Patient File first.`);
+      if(shareType==='Full Intelligent Report'){
+        alert('Please first use “Print / Save PDF” to save the report. WhatsApp will now open with the prepared message; attach the saved PDF manually before sending.');
+      }
+      setShareBusy(true);
+      for(const item of prepared){
+        window.open(`https://wa.me/${item.number}?text=${encodeURIComponent(item.text)}`,'_blank','noopener');
+        await recordCommunication(p,item.type,item.number,item.text);
+      }
+      setShareBusy(false);setShareOpen(false);loadCommunicationHistory();
+    }
+    return h(React.Fragment,null,
         h('div',{className:'hospital-report-title'},
           h('strong',null,'SAMARA HEALTH CARE LLP'),
           h('span',null,'Assisted Living Management System'),
@@ -2460,7 +2538,7 @@ Caring with Compassion. Living with Dignity.`;
         ),message&&h('div',{className:'message error'},message)
       ),
       report&&h('div',{className:'card panel intelligent-report printable-report hospital-report'},
-        h('div',{className:'panel-head no-print'},h('div',null,h('h2',null,report.mode==='Patient-wise'?`Patient Care Report – ${formalName(report.patient)||''}`:`Daily Facility Report – ${report.date}`),h('small',null,`Prepared by ${formalName(profile)} on ${new Date().toLocaleString()}`)),h('button',{className:'btn btn-secondary',onClick:printReport},'Print / Save PDF')),
+        h('div',{className:'panel-head no-print'},h('div',null,h('h2',null,report.mode==='Patient-wise'?`Patient Care Report – ${formalName(report.patient)||''}`:`Daily Facility Report – ${report.date}`),h('small',null,`Prepared by ${formalName(profile)} on ${new Date().toLocaleString()}`)),h('div',{className:'actions'},report.mode==='Patient-wise'&&h('button',{type:'button',className:'btn btn-whatsapp',onClick:()=>setShareOpen(true)},'WhatsApp'),h('button',{className:'btn btn-secondary',onClick:printReport},'Print / Save PDF'))),
         report.mode==='Patient-wise'?patientReportBody():h(React.Fragment,null,
           h('div',{className:'intelligent-summary human-report'},h('h3',null,'Executive Daily Summary'),narrative().map((p,i)=>h('p',{key:i},p))),
           section('Patient-wise Daily Status',report.data.patients,p=>h(React.Fragment,null,h('strong',null,`${p.patient_id||'NO-ID'} · ${formalName(p)}`),h('span',null,dailyPatientNarrative(p,report.data)))),
@@ -2468,6 +2546,35 @@ Caring with Compassion. Living with Dignity.`;
           section('Incident Reports',report.data.incidents,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.incident_type||r.type||'Incident'} · ${r.description||r.remarks||'—'} · ${fmt(r.incident_at||r.created_at)}`))),
           section('Financial Statement',report.data.billing,r=>h(React.Fragment,null,h('strong',null,patientName(r.patient_id)),h('span',null,`${r.transaction_type||'—'} · ${money(r.amount)} · ${r.description||'—'}`))),
           h('div',{className:'report-footer'},h('strong',null,'Samara Health Care LLP'),h('span',null,'Assisted Living Management System'),h('span',null,'Caring with Compassion. Living with Dignity.'),h('small',null,`Prepared by ${formalName(profile)} · Generated ${new Date().toLocaleString()}`))
+        )
+      ),
+      communicationRows.length>0&&h(Section,{title:'Report Communication History',subtitle:'Manual WhatsApp sharing activity recorded by the ERP'},
+        h('div',{className:'table-wrap'},h('table',{className:'table'},
+          h('thead',null,h('tr',null,['Patient','Report Date','Recipient','Number','Type','Status','Opened By','Date / Time'].map(x=>h('th',{key:x},x)))),
+          h('tbody',null,communicationRows.filter(r=>!patientId||r.patient_id===patientId).slice(0,50).map(r=>h('tr',{key:r.id},
+            h('td',null,patientName(r.patient_id)),
+            h('td',null,r.report_date||'—'),
+            h('td',null,`${r.recipient_type||'—'} · ${r.recipient_name||'—'}`),
+            h('td',null,r.recipient_number||'—'),
+            h('td',null,r.communication_type||'—'),
+            h('td',null,r.status||'—'),
+            h('td',null,r.sent_by===profile.id||r.sent_by===profile.auth_user_id?formalName(profile):'Staff'),
+            h('td',null,fmt(r.created_at))
+          )))
+        ))
+      ),
+      shareOpen&&h('div',{className:'modal-backdrop',onClick:e=>{if(e.target===e.currentTarget)setShareOpen(false)}},
+        h('div',{className:'card modal'},
+          h('div',{className:'panel-head'},h('div',null,h('h3',null,'Share Intelligent Report through WhatsApp'),h('small',null,reportStatusText())),h('button',{type:'button',className:'close',onClick:()=>setShareOpen(false)},'×')),
+          h('div',{className:'modal-grid'},
+            h('div',{className:'field'},h('label',null,'Send to'),h('select',{value:shareRecipient,onChange:e=>setShareRecipient(e.target.value)},['Patient','Relative','Both'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Sharing option'),h('select',{value:shareType,onChange:e=>setShareType(e.target.value)},['Quick Health Update','Full Intelligent Report'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Language'),h('select',{value:shareLanguage,onChange:e=>setShareLanguage(e.target.value)},['English','Tamil'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field span-2'},h('label',null,'Patient WhatsApp'),h('input',{value:patientPhone(selectedPatient())||'',readOnly:true,placeholder:'Not available'})),
+            h('div',{className:'field span-2'},h('label',null,`${relativeName(selectedPatient())} WhatsApp`),h('input',{value:relativePhone(selectedPatient())||'',readOnly:true,placeholder:'Not available'}))
+          ),
+          h('div',{className:'message'},shareType==='Full Intelligent Report'?'Save the report as PDF first. WhatsApp will open with the prepared message; attach the PDF manually before sending.':'WhatsApp will open with a prepared text update. Please review it before sending.'),
+          h('div',{className:'actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setShareOpen(false)},'Cancel'),h('button',{type:'button',className:'btn btn-whatsapp',disabled:shareBusy,onClick:openWhatsAppShare},shareBusy?'Opening WhatsApp…':'Open WhatsApp'))
         )
       )
     );
