@@ -1,0 +1,18 @@
+SAMARA CARE ERP 1.3.9 — PHYSIOTHERAPIST NAME & ALL-ROLE VIEW ACCESS
+
+1. Run once in Supabase SQL Editor:
+   35_physiotherapist_name_all_roles_view.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Added:
+- Physiotherapist Name field in New Admission.
+- Physiotherapist Name field in Existing Patient Edit.
+- Physiotherapist Name column on the Physiotherapy Plan page.
+- Physiotherapy page view access for Admin, Manager, Nurse, Caregiver, Accounts and Kitchen.
+- Editing remains restricted to Admin and Manager through Patient Admission/Edit.
+
+No other module is changed.

@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.7-physiotherapy-plan';
+const CACHE = 'samara-erp-1.3.9-physiotherapist-name-all-access';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.7', './app.js?v=1.3.7',
-  './bootstrap-error.js?v=1.3.7', './health-check.js?v=1.3.7',
-  './config.js?v=1.3.7', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.9', './app.js?v=1.3.9',
+  './bootstrap-error.js?v=1.3.9', './health-check.js?v=1.3.9',
+  './config.js?v=1.3.9', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {
