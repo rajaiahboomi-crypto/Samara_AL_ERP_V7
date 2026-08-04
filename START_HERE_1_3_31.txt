@@ -1,0 +1,46 @@
+SAMARA CARE ERP 1.3.31 — ROOMS, TARIFF & PATIENT TRANSFER MANAGEMENT
+
+1. Run once in Supabase SQL Editor:
+   49_rooms_tariff_transfer_management.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+MENU
+- Added Admin → Rooms.
+- Removed Rooms & Beds from Operations.
+- Removed room-management access from Accounts.
+- Admin and Manager may manage rooms and tariffs.
+
+ROOM MANAGEMENT
+- Room/bed master.
+- Room type, floor, wing and status.
+- Room Rent per day.
+- Nursing Charge per day.
+- Special Nurse Charge per day.
+- Occupancy and availability summary.
+
+ADMISSION CONTROL
+- Only Admin or Manager can allot the room and complete admission.
+- Admission dropdown displays available room/bed master entries only.
+- Availability is rechecked immediately before saving.
+- Atomic room assignment prevents double allotment.
+
+ROOM SHIFTING
+- Admin/Manager can shift an active patient to another available room.
+- Mandatory reason and effective date/time.
+- Previous room becomes Available.
+- New room becomes Occupied.
+- Complete previous-room and new-room history is preserved.
+- Patient ID remains unchanged.
+- All past bills, payments, advances and charges remain attached to the patient.
+- Today's automatic accommodation charges are recalculated using the new tariff.
+- Future room, nursing and special-nurse charges use the new room tariff.
+
+DEFAULT TARIFFS
+- Private/Single/Deluxe: Room ₹3,000; Nursing ₹1,000.
+- Twin/Sharing: Room ₹2,000; Nursing ₹800.
+- General/Ward: Room ₹1,800; Nursing ₹750.
+- Special Nurse tariff is fixed separately for each room/bed.

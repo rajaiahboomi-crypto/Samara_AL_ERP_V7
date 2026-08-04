@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.30';
-  const APP_BUILD_DATE = '04-Aug-2026 14:20 IST';
+  const APP_VERSION = '1.3.31';
+  const APP_BUILD_DATE = '04-Aug-2026 14:24 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -44,11 +44,11 @@
   const BED_CODE_OPTIONS = ['A','B','C','D'];
   const NAV_SECTIONS = [
     { title:'OVERVIEW', items:['Dashboard','Notifications'] },
-    { title:'ADMIN', items:['Employees','Audit Trail','Alert Settings','System Maintenance'] },
+    { title:'ADMIN', items:['Employees','Rooms','Audit Trail','Alert Settings','System Maintenance'] },
     { title:'ADMISSION', items:['Enquiries','Admissions','Patients','Discharge','Documents'] },
     { title:'MANAGER', items:['Reports','Intelligent Reports','Medication Errors','Recovery Timeline'] },
     { title:'NURSING', items:['Clinical Dashboard','Clinical Alerts','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Special Nurse','Shift Handover'] },
-    { title:'OPERATIONS', items:['Rooms & Beds','Incidents'] },
+    { title:'OPERATIONS', items:['Incidents'] },
     { title:'FOOD & DIET', items:['Food & Diet'] },
     { title:'ACCOUNTS / BILLING', items:['Bills & Charges','Billing & Payments'] }
   ];
@@ -58,7 +58,7 @@
     Manager:ALL_NAV.filter(item=>!['System Maintenance','Alert Settings'].includes(item)),
     Nurse:['Clinical Dashboard','Clinical Alerts','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Billing & Payments','Notifications'],
     Caregiver:['Clinical Dashboard','Clinical Alerts','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Billing & Payments','Notifications'],
-    Accounts:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Rooms & Beds','Bills & Charges','Billing & Payments','Reports','Intelligent Reports'],
+    Accounts:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Bills & Charges','Billing & Payments','Reports','Intelligent Reports'],
     Kitchen:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Food & Diet']
   };
   const ROLE_HOME={Admin:'Dashboard',Manager:'Dashboard',Nurse:'Clinical Dashboard',Caregiver:'Clinical Dashboard',Accounts:'Billing & Payments',Kitchen:'Food & Diet'};
@@ -493,7 +493,7 @@ Caring with Compassion. Living with Dignity.`;
           page==='Shift Tasks'&&h(ShiftTasks,{profile}),
           page==='Patients'&&h(Patients,{profile}),
           page==='Discharge'&&h(DischargeManagement,{profile}),
-          page==='Rooms & Beds'&&h(RoomsBeds,{profile}),
+          page==='Rooms'&&h(RoomsBeds,{profile}),
           page==='Daily Care'&&h(DailyCare,{profile}),
           page==='Vital Signs'&&h(VitalSigns,{profile}),
           page==='Medicines'&&h(Medicines,{profile}),
@@ -1393,6 +1393,9 @@ Caring with Compassion. Living with Dignity.`;
     }
     async function submit(e){
       e.preventDefault();setBusy(true);setMsg('');
+      if(!['Admin','Manager'].includes(profile?.role)){setMsg('Only Admin or Manager can allot a room and complete patient admission.');setBusy(false);return}
+      const selectedBed=roomBeds.find(r=>String(r.room_no)===String(form.room_no)&&String(r.bed_no||r.bed_code||'').toUpperCase()===String(form.bed_no||'').toUpperCase());
+      if(!selectedBed||selectedBed.status!=='Available'||selectedBed.patient_id){setMsg('The selected room/bed is no longer available. Please choose another available bed.');setBusy(false);return}
       if(isFutureDateIndia(form.admission_date)){setMsg(`Admission date cannot be later than today (${formatDateIN(todayISOIndia())}). Please correct the date.`);setBusy(false);return}
       if(!photoFiles.length){setMsg('Capture or upload the patient photograph before admission.');setBusy(false);return}
       if(!idFiles.length){setMsg('Upload at least one patient identity document.');setBusy(false);return}
@@ -1406,6 +1409,8 @@ Caring with Compassion. Living with Dignity.`;
       const payload={...form,patient_id:patientCode,age:Number(form.age)||null,created_by:user.id,is_active:true,admission_status:'Active',prescription_verified:true,prescription_verified_by:user.id,prescription_verified_at:new Date().toISOString()};
       ['physio_required','therapy_type','physiotherapist_name','physio_frequency','physio_time','physio_precautions'].forEach(k=>delete payload[k]);
       const {data:patient,error}=await client.from('patients').insert(payload).select().single();if(error){setMsg(error.message);setBusy(false);return}
+      const {error:roomAssignError}=await client.rpc('assign_patient_room',{p_patient_id:patient.id,p_room_bed_id:selectedBed.id,p_reason:'Initial admission room allotment'});
+      if(roomAssignError){await client.from('patients').delete().eq('id',patient.id);setMsg(roomAssignError.message||'Unable to allot the selected room.');setBusy(false);return}
       try{
         await uploadPatientFile(patient.id,photoFiles[0],'Patient Photo',true);
         for(const f of idFiles)await uploadPatientFile(patient.id,f,'Identity Proof');
@@ -2023,148 +2028,242 @@ Caring with Compassion. Living with Dignity.`;
   }
 
 function RoomsBeds({profile}){
-    const canEdit=['Admin','Manager'].includes(profile?.role);
-    const empty={room_no:'100',bed_no:'A',room_type:'Twin Sharing',daily_rate:'',status:'Available',patient_id:'',floor:'',wing:'',notes:''};
-    const [rows,setRows]=React.useState([]),[patients,setPatients]=React.useState([]),[loading,setLoading]=React.useState(true);
-    const [show,setShow]=React.useState(false),[form,setForm]=React.useState(empty),[editing,setEditing]=React.useState(null),[busy,setBusy]=React.useState(false),[msg,setMsg]=React.useState('');
+    const canManage=['Admin','Manager'].includes(profile?.role);
+    const empty={
+      room_no:'100',bed_no:'A',room_type:'Twin Sharing',status:'Available',
+      room_daily_rate:'2000',nursing_daily_rate:'800',special_nurse_daily_rate:'0',
+      floor:'',wing:'',notes:''
+    };
+    const [rows,setRows]=React.useState([]);
+    const [patients,setPatients]=React.useState([]);
+    const [history,setHistory]=React.useState([]);
+    const [loading,setLoading]=React.useState(true);
+    const [show,setShow]=React.useState(false);
+    const [showTransfer,setShowTransfer]=React.useState(false);
+    const [form,setForm]=React.useState(empty);
+    const [transfer,setTransfer]=React.useState({patient_id:'',to_room_bed_id:'',reason:'',effective_at:new Date().toISOString().slice(0,16)});
+    const [editing,setEditing]=React.useState(null);
+    const [busy,setBusy]=React.useState(false);
+    const [msg,setMsg]=React.useState('');
+    const [toast,setToast]=React.useState(null);
 
     async function load(){
       setLoading(true);setMsg('');
-      const [roomResult,patientResult]=await Promise.all([
+      const [roomResult,patientResult,historyResult]=await Promise.all([
         client.from('room_beds').select('*').order('room_no',{ascending:true}).order('bed_no',{ascending:true}),
-        client.from('patients').select('id,patient_id,full_name,gender,room_no,bed_no,patient_category,special_nurse_required,is_active').eq('is_active',true).order('full_name')
+        client.from('patients').select('id,patient_id,title,full_name,gender,room_no,bed_no,patient_category,special_nurse_required,is_active').eq('is_active',true).order('full_name'),
+        client.from('room_transfer_history').select('*').order('effective_at',{ascending:false}).limit(300)
       ]);
-      if(roomResult.error){setMsg(roomResult.error.message||'Unable to load room and bed master');setRows([])}else setRows(roomResult.data||[]);
+      if(roomResult.error){setMsg(roomResult.error.message||'Unable to load rooms');setRows([])}else setRows(roomResult.data||[]);
       if(patientResult.error){setMsg(patientResult.error.message||'Unable to load active patients');setPatients([])}else setPatients(patientResult.data||[]);
+      if(!historyResult.error)setHistory(historyResult.data||[]);
       setLoading(false);
     }
+
     React.useEffect(()=>{
       load();
-      const ch=client.channel('room-beds-live-v81')
+      const ch=client.channel('rooms-management-live')
         .on('postgres_changes',{event:'*',schema:'public',table:'room_beds'},load)
         .on('postgres_changes',{event:'*',schema:'public',table:'patients'},load)
+        .on('postgres_changes',{event:'*',schema:'public',table:'room_transfer_history'},load)
         .subscribe();
       return()=>client.removeChannel(ch);
     },[]);
 
-    function patientFor(row){
-      return patients.find(p=>p.id===row.patient_id)||patients.find(p=>String(p.room_no||'')===String(row.room_no||'')&&String(p.bed_no||'').toUpperCase()===String(row.bed_no||'').toUpperCase())||null;
+    function showToast(type,text){
+      setToast({type,text});
+      setTimeout(()=>setToast(null),4500);
     }
+    function patientFor(row){
+      return patients.find(p=>p.id===row.patient_id)
+        ||patients.find(p=>String(p.room_no||'')===String(row.room_no||'')&&String(p.bed_no||'').toUpperCase()===String(row.bed_no||'').toUpperCase())
+        ||null;
+    }
+    function patientName(id){
+      const p=patients.find(x=>x.id===id);
+      return p?`${formalName(p)} · ${p.patient_id||'—'}`:'Former / discharged patient';
+    }
+    const availableRows=rows.filter(r=>!patientFor(r)&&r.status==='Available');
     const occupied=rows.filter(r=>patientFor(r)||r.status==='Occupied').length;
-    const available=rows.filter(r=>!patientFor(r)&&r.status==='Available').length;
     const reserved=rows.filter(r=>r.status==='Reserved').length;
     const maintenance=rows.filter(r=>r.status==='Maintenance').length;
-    const unassigned=patients.filter(p=>!p.room_no||!p.bed_no);
 
-    function openNew(patientId=''){
-      setEditing(null);setForm({...empty,patient_id:patientId});setMsg('');setShow(true);
+    function defaultTariff(type){
+      const value=String(type||'').toLowerCase();
+      if(value.includes('private')||value.includes('single')||value.includes('separate')||value.includes('deluxe'))return {room:'3000',nursing:'1000'};
+      if(value.includes('general')||value.includes('ward')||value.includes('dorm'))return {room:'1800',nursing:'750'};
+      return {room:'2000',nursing:'800'};
+    }
+    function openNew(){
+      setEditing(null);setForm(empty);setMsg('');setShow(true);
     }
     function openEdit(row){
-      const p=patientFor(row);
-      setEditing(row);setForm({
-        room_no:row.room_no||'',bed_no:row.bed_no||'',room_type:row.room_type||'Twin Sharing',daily_rate:row.daily_rate??'',status:row.status||'Available',patient_id:p?.id||row.patient_id||'',floor:row.floor||'',wing:row.wing||'',notes:row.notes||''
-      });setMsg('');setShow(true);
+      setEditing(row);
+      setForm({
+        room_no:row.room_no||'',bed_no:row.bed_no||'',room_type:row.room_type||'Twin Sharing',
+        status:patientFor(row)?'Occupied':row.status||'Available',
+        room_daily_rate:String(row.room_daily_rate??row.daily_rate??''),
+        nursing_daily_rate:String(row.nursing_daily_rate??''),
+        special_nurse_daily_rate:String(row.special_nurse_daily_rate??''),
+        floor:row.floor||'',wing:row.wing||'',notes:row.notes||''
+      });
+      setShow(true);
     }
-    async function save(e){
-      e.preventDefault();setBusy(true);setMsg('');
-      try{
-        const roomNo=String(form.room_no||'').trim(),bedNo=String(form.bed_no||'').trim().toUpperCase();
-        if(!roomNo||!bedNo)throw new Error('Room number and bed code are required.');
-        let duplicateQuery=client.from('room_beds').select('id').eq('room_no',roomNo).eq('bed_no',bedNo);
-        if(editing?.id)duplicateQuery=duplicateQuery.neq('id',editing.id);
-        const {data:duplicates,error:dupError}=await duplicateQuery.limit(1);if(dupError)throw dupError;
-        if(duplicates?.length)throw new Error(`Room ${roomNo} / Bed ${bedNo} already exists.`);
+    function changeRoomType(value){
+      const tariff=defaultTariff(value);
+      setForm(current=>({...current,room_type:value,room_daily_rate:tariff.room,nursing_daily_rate:tariff.nursing}));
+    }
 
-        const oldPatient=editing?patientFor(editing):null;
-        if(oldPatient&&oldPatient.id!==form.patient_id){
-          const {error}=await client.from('patients').update({room_no:null,bed_no:null}).eq('id',oldPatient.id);if(error)throw error;
-        }
-        if(form.patient_id){
-          const selected=patients.find(p=>p.id===form.patient_id);
-          if(!selected)throw new Error('Selected patient is no longer active.');
-          const {error:clearOther}=await client.from('room_beds').update({patient_id:null,status:'Available'}).eq('patient_id',selected.id);
-          if(clearOther)throw clearOther;
-          const {error:clearBed}=await client.from('patients').update({room_no:null,bed_no:null}).eq('room_no',roomNo).eq('bed_no',bedNo).neq('id',selected.id);
-          if(clearBed)throw clearBed;
-          const {error:assignPatient}=await client.from('patients').update({room_no:roomNo,bed_no:bedNo}).eq('id',selected.id);
-          if(assignPatient)throw assignPatient;
-        }
-        const payload={room_no:roomNo,bed_no:bedNo,room_type:form.room_type,daily_rate:Number(form.daily_rate||0),status:form.patient_id?'Occupied':form.status,patient_id:form.patient_id||null,floor:form.floor||null,wing:form.wing||null,notes:form.notes||null,updated_at:new Date().toISOString()};
+    async function saveRoom(e){
+      e.preventDefault();
+      if(!canManage)return;
+      setBusy(true);setMsg('');
+      try{
+        const payload={
+          room_no:String(form.room_no||'').trim(),
+          bed_no:String(form.bed_no||'').trim().toUpperCase(),
+          room_type:form.room_type,
+          room_daily_rate:Number(form.room_daily_rate||0),
+          nursing_daily_rate:Number(form.nursing_daily_rate||0),
+          special_nurse_daily_rate:Number(form.special_nurse_daily_rate||0),
+          daily_rate:Number(form.room_daily_rate||0),
+          status:editing&&patientFor(editing)?'Occupied':form.status,
+          floor:form.floor||null,wing:form.wing||null,notes:form.notes||null,
+          updated_at:new Date().toISOString()
+        };
+        if(!payload.room_no||!payload.bed_no)throw new Error('Room number and bed code are required.');
+        if(payload.room_daily_rate<0||payload.nursing_daily_rate<0||payload.special_nurse_daily_rate<0)throw new Error('Tariff amounts cannot be negative.');
         let result;
         if(editing?.id)result=await client.from('room_beds').update(payload).eq('id',editing.id);
         else result=await client.from('room_beds').insert(payload);
         if(result.error)throw result.error;
-        setShow(false);setEditing(null);setForm(empty);await load();
-      }catch(error){setMsg(error.message||'Unable to save room / bed')}
+        setShow(false);showToast('success','Room, bed and tariffs saved successfully.');await load();
+      }catch(error){setMsg(error.message||'Unable to save room')}
       setBusy(false);
     }
-    async function removeRoom(row){
-      if(!canEdit)return;
+
+    function openTransfer(row){
       const p=patientFor(row);
-      if(p){alert('This bed is occupied. Transfer or unassign the patient before deleting it.');return}
-      if(!confirm(`Delete Room ${row.room_no} / Bed ${row.bed_no}?`))return;
-      const {error}=await client.from('room_beds').delete().eq('id',row.id);if(error)alert(error.message);else load();
+      if(!p)return;
+      setTransfer({patient_id:p.id,to_room_bed_id:'',reason:'',effective_at:new Date().toISOString().slice(0,16)});
+      setShowTransfer(true);
     }
 
-    if(loading)return h('div',{className:'loading'},'Loading room and bed master…');
+    async function transferPatient(e){
+      e.preventDefault();
+      if(!canManage||busy)return;
+      if(!transfer.to_room_bed_id){showToast('error','Select the new room and bed.');return}
+      if(!transfer.reason.trim()){showToast('error','Reason for room shifting is mandatory.');return}
+      setBusy(true);
+      const {data,error}=await client.rpc('transfer_patient_room',{
+        p_patient_id:transfer.patient_id,
+        p_to_room_bed_id:transfer.to_room_bed_id,
+        p_reason:transfer.reason.trim(),
+        p_effective_at:new Date(transfer.effective_at).toISOString()
+      });
+      setBusy(false);
+      if(error){showToast('error',error.message||'Unable to shift patient.');return}
+      setShowTransfer(false);
+      showToast('success','Patient shifted successfully. Previous room history is preserved and all patient bills remain linked.');
+      await load();
+      writeAuditEvent('Patient Room Shifted','Rooms',transfer.patient_id,data||{},'Success');
+    }
+
+    async function removeRoom(row){
+      if(!canManage)return;
+      if(patientFor(row)){showToast('error','Occupied room/bed cannot be deleted. Shift or discharge the patient first.');return}
+      if(!confirm(`Delete Room ${row.room_no} / Bed ${row.bed_no}?`))return;
+      const {error}=await client.from('room_beds').delete().eq('id',row.id);
+      if(error)showToast('error',error.message);else{showToast('success','Room/bed deleted.');load()}
+    }
+
+    if(loading)return h('div',{className:'loading'},'Loading Rooms Management…');
+
     return h(React.Fragment,null,
       h('div',{className:'rooms-hero'},
-        h('div',null,h('small',null,'LIVE OCCUPANCY CONTROL'),h('h3',null,'Rooms & Beds'),h('p',null,'One controlled Room & Bed Master. Room allocation elsewhere uses dropdown lists only.')),
-        canEdit?h('button',{className:'btn btn-primary',onClick:()=>openNew()},'+ Add Room / Bed'):null
+        h('div',null,h('small',null,'ADMIN / MANAGER CONTROL'),h('h3',null,'Rooms Management'),h('p',null,'Room master, tariff fixation, admission allotment and patient room-shifting history.')),
+        canManage&&h('button',{className:'btn btn-primary',onClick:openNew},'+ Add Room / Bed')
       ),
       h('div',{className:'grid stats room-summary'},
-        h('div',{className:'card stat'},h('span',null,'Total beds'),h('strong',null,rows.length),h('small',null,'Configured capacity')),
-        h('div',{className:'card stat room-stat-occupied'},h('span',null,'Occupied'),h('strong',null,occupied),h('small',null,`${available} available`)),
-        h('div',{className:'card stat'},h('span',null,'Reserved'),h('strong',null,reserved),h('small',null,'Held for admission')),
-        h('div',{className:'card stat'},h('span',null,'Maintenance'),h('strong',null,maintenance),h('small',null,'Temporarily unavailable'))
+        h('div',{className:'card stat'},h('span',null,'Total Beds'),h('strong',null,rows.length)),
+        h('div',{className:'card stat room-stat-occupied'},h('span',null,'Occupied'),h('strong',null,occupied)),
+        h('div',{className:'card stat'},h('span',null,'Available'),h('strong',null,availableRows.length)),
+        h('div',{className:'card stat'},h('span',null,'Reserved'),h('strong',null,reserved)),
+        h('div',{className:'card stat'},h('span',null,'Maintenance'),h('strong',null,maintenance))
       ),
-      h('div',{className:'card panel rooms-master-panel'},
-        h('div',{className:'panel-head'},h('div',null,h('h3',null,'Room & Bed Master'),h('small',null,'Admin/Manager controlled master — no free room entry elsewhere')),canEdit?h('button',{className:'btn btn-primary',onClick:()=>openNew()},'+ Add Room / Bed'):null),
-        msg&&!show?h('div',{className:'message error'},msg):null,
-        h('div',{className:'table-wrap'},
-          h('table',{className:'table rooms-table'},
-            h('thead',null,
-              h('tr',null,['Room','Bed','Type','Floor / Wing','Daily Rate','Status','Patient','Action'].map(x=>h('th',{key:x},x)))
-            ),
-            h('tbody',null,
-              rows.map(row=>{
-                const p=patientFor(row),status=p?'Occupied':row.status;
-                return h('tr',{key:row.id,className:`room-row room-row-${String(status).toLowerCase()} ${p&&String(p.gender||'').toLowerCase()==='female'?'room-row-female':''}`},
-                  h('td',null,h('strong',null,row.room_no)),
-                  h('td',null,row.bed_no),
-                  h('td',null,row.room_type||'—'),
-                  h('td',null,[row.floor,row.wing].filter(Boolean).join(' / ')||'—'),
-                  h('td',null,`₹${Number(row.daily_rate||0).toLocaleString('en-IN')}`),
-                  h('td',null,h('span',{className:`room-status room-status-${String(status).toLowerCase()}`},status)),
-                  h('td',null,p?h('div',{className:'room-patient'},h('strong',null,p.full_name),h('small',null,`${p.patient_id||'—'}${String(p.gender||'').toLowerCase()==='female'?' · Female':''}`),p.special_nurse_required?h('span',{className:'special-alert'},'Special nurse'):null):'—'),
-                  h('td',null,canEdit?h('div',{className:'employee-actions'},h('button',{className:'btn btn-secondary',onClick:()=>openEdit(row)},'Edit'),h('button',{className:'btn btn-danger',disabled:!!p,onClick:()=>removeRoom(row)},'Delete')):h('span',{className:'small-note'},'View only'))
-                );
-              }),
-              rows.length===0?h('tr',null,h('td',{colSpan:8,className:'empty'},'No rooms or beds configured.')):null
-            )
+
+      h('div',{className:'card panel'},
+        h('div',{className:'panel-head'},h('div',null,h('h3',null,'Room, Bed & Tariff Master'),h('small',null,'Only Admin/Manager may change tariffs, allot rooms or shift patients.'))),
+        msg&&h('div',{className:'message error'},msg),
+        h('div',{className:'table-wrap'},h('table',{className:'table rooms-table'},
+          h('thead',null,h('tr',null,['Room','Bed','Type','Floor / Wing','Room Rent / Day','Nursing / Day','Special Nurse / Day','Status','Patient','Action'].map(x=>h('th',{key:x},x)))),
+          h('tbody',null,
+            rows.map(row=>{
+              const p=patientFor(row),status=p?'Occupied':row.status;
+              return h('tr',{key:row.id},
+                h('td',null,h('strong',null,row.room_no)),h('td',null,row.bed_no),h('td',null,row.room_type||'—'),
+                h('td',null,[row.floor,row.wing].filter(Boolean).join(' / ')||'—'),
+                h('td',null,`₹${Number(row.room_daily_rate??row.daily_rate??0).toLocaleString('en-IN')}`),
+                h('td',null,`₹${Number(row.nursing_daily_rate||0).toLocaleString('en-IN')}`),
+                h('td',null,`₹${Number(row.special_nurse_daily_rate||0).toLocaleString('en-IN')}`),
+                h('td',null,h('span',{className:`room-status room-status-${String(status).toLowerCase()}`},status)),
+                h('td',null,p?h('div',null,h('strong',null,formalName(p)),h('small',null,p.patient_id||'—')):'—'),
+                h('td',null,canManage?h('div',{className:'employee-actions'},
+                  h('button',{className:'btn btn-secondary',onClick:()=>openEdit(row)},'Edit / Tariff'),
+                  p&&h('button',{className:'btn btn-primary',onClick:()=>openTransfer(row)},'Shift Room'),
+                  h('button',{className:'btn btn-danger',disabled:!!p,onClick:()=>removeRoom(row)},'Delete')
+                ):h('span',{className:'small-note'},'View only'))
+              )
+            }),
+            rows.length===0&&h('tr',null,h('td',{colSpan:10,className:'empty'},'No rooms configured.'))
           )
-        )
+        ))
       ),
-      unassigned.length?h('div',{className:'card panel awaiting-room-panel'},
-        h('div',{className:'panel-head'},h('div',null,h('h3',null,'Active Patients Awaiting Room / Bed'),h('small',null,'Assign directly from this list'))),
-        h('div',{className:'unassigned-patient-list'},unassigned.map(p=>h('div',{className:'timeline-item awaiting-room-item',key:p.id},h('div',null,h('strong',null,`${p.patient_id||'—'} · ${p.full_name}`),h('span',null,`${p.patient_category||'Patient'}${p.special_nurse_required?' · Special nurse required':''}`)),canEdit?h('button',{className:'btn btn-secondary',onClick:()=>openNew(p.id)},'Assign Bed'):null)))
-      ):null,
-      show?h('div',{className:'modal-backdrop'},h('form',{className:'card modal room-bed-modal',onSubmit:save},
-        h('div',{className:'panel-head'},h('div',null,h('h3',null,editing?'Edit Room / Bed':'Add Room / Bed'),h('small',null,'Configure capacity, rate, status and patient allocation')),h('button',{type:'button',className:'close',onClick:()=>setShow(false)},'×')),
+
+      h(LogTable,{
+        title:`Room Shift History (${history.length})`,
+        subtitle:'Previous room, new room, reason, approving user and effective date/time',
+        heads:['Patient','Previous Room / Bed','New Room / Bed','Reason','Effective Date & Time','Shifted By'],
+        rows:history.map(x=>[
+          x.patient_name||patientName(x.patient_id),
+          `${x.from_room_no||'—'}${x.from_bed_no?`-${x.from_bed_no}`:''}`,
+          `${x.to_room_no||'—'}${x.to_bed_no?`-${x.to_bed_no}`:''}`,
+          x.reason||'—',fmt(x.effective_at),`${x.shifted_by_name||'Authorised user'}${x.shifted_by_role?` · ${x.shifted_by_role}`:''}`
+        ])
+      }),
+
+      show&&h('div',{className:'modal-backdrop'},h('form',{className:'card modal room-bed-modal',onSubmit:saveRoom},
+        h('div',{className:'panel-head'},h('div',null,h('h3',null,editing?'Edit Room / Bed & Tariff':'Add Room / Bed'),h('small',null,'Tariffs entered here drive automatic patient billing')),h('button',{type:'button',className:'close',onClick:()=>setShow(false)},'×')),
         msg&&h('div',{className:'message error'},msg),
         h('div',{className:'modal-grid'},
-          h('div',{className:'field'},h('label',null,'Room number'),h('select',{value:form.room_no,onChange:e=>setForm({...form,room_no:e.target.value}),required:true},ROOM_NUMBER_OPTIONS.map(n=>h('option',{key:n,value:n},n)))),h('div',{className:'field'},h('label',null,'Bed code'),h('select',{value:form.bed_no,onChange:e=>setForm({...form,bed_no:e.target.value}),required:true},BED_CODE_OPTIONS.map(n=>h('option',{key:n,value:n},n)))),
-          miniSelect('Room type',form.room_type,['Private','Deluxe','Standard','General','Twin Sharing','Triple Sharing','Isolation','Rehabilitation'],v=>setForm({...form,room_type:v})),
-          miniInput('Daily rate',form.daily_rate,v=>setForm({...form,daily_rate:v}),false,'number'),miniInput('Floor',form.floor,v=>setForm({...form,floor:v})),miniInput('Wing',form.wing,v=>setForm({...form,wing:v})),
-          h('div',{className:'field'},h('label',null,'Status'),h('select',{className:`status-select status-select-${String(form.status).toLowerCase()}`,value:form.status,onChange:e=>setForm({...form,status:e.target.value})},h('option',{value:'Available',style:{backgroundColor:'#dff7e8',color:'#087a3d'}},'Available'),h('option',{value:'Occupied',style:{backgroundColor:'#ffe1e1',color:'#b42318'}},'Occupied'),h('option',{value:'Reserved',style:{backgroundColor:'#e3eeff',color:'#175cd3'}},'Reserved'),h('option',{value:'Maintenance',style:{backgroundColor:'#eeeeee',color:'#555'}},'Maintenance'))),
-          h('div',{className:'field'},h('label',null,'Assign patient'),h('select',{value:form.patient_id,onChange:e=>setForm({...form,patient_id:e.target.value})},h('option',{value:''},'No patient / Available'),patients.map(p=>h('option',{key:p.id,value:p.id,style:{backgroundColor:String(p.gender||'').toLowerCase()==='female'?'#ffe4f1':'#ffffff',color:String(p.gender||'').toLowerCase()==='female'?'#a50f5d':'#063f36'}},`${p.patient_id||'NO-ID'} · ${p.full_name}${String(p.gender||'').toLowerCase()==='female'?' · Female':''}${p.room_no&&p.bed_no?` · currently ${p.room_no}-${p.bed_no}`:''}`)))),
-          h('div',{className:'field span-2'},h('label',null,'Notes'),h('textarea',{value:form.notes,onChange:e=>setForm({...form,notes:e.target.value}),rows:3}))
+          h('div',{className:'field'},h('label',null,'Room Number'),h('select',{value:form.room_no,onChange:e=>setForm({...form,room_no:e.target.value}),required:true},ROOM_NUMBER_OPTIONS.map(n=>h('option',{key:n,value:n},n)))),
+          h('div',{className:'field'},h('label',null,'Bed Code'),h('select',{value:form.bed_no,onChange:e=>setForm({...form,bed_no:e.target.value}),required:true},BED_CODE_OPTIONS.map(n=>h('option',{key:n,value:n},n)))),
+          h('div',{className:'field'},h('label',null,'Room Type'),h('select',{value:form.room_type,onChange:e=>changeRoomType(e.target.value)},['Private / Single','Deluxe','Twin Sharing','Triple Sharing','General','Isolation','Rehabilitation'].map(x=>h('option',{key:x,value:x},x)))),
+          miniInput('Room Rent per Day',form.room_daily_rate,v=>setForm({...form,room_daily_rate:v}),true,'number'),
+          miniInput('Nursing Charge per Day',form.nursing_daily_rate,v=>setForm({...form,nursing_daily_rate:v}),true,'number'),
+          miniInput('Special Nurse Charge per Day',form.special_nurse_daily_rate,v=>setForm({...form,special_nurse_daily_rate:v}),false,'number'),
+          miniInput('Floor',form.floor,v=>setForm({...form,floor:v})),
+          miniInput('Wing',form.wing,v=>setForm({...form,wing:v})),
+          h('div',{className:'field'},h('label',null,'Status'),h('select',{value:form.status,onChange:e=>setForm({...form,status:e.target.value}),disabled:editing&&!!patientFor(editing)},['Available','Reserved','Maintenance','Occupied'].map(x=>h('option',{key:x,value:x},x)))),
+          h('div',{className:'field span-2'},h('label',null,'Notes'),h('textarea',{rows:3,value:form.notes,onChange:e=>setForm({...form,notes:e.target.value})}))
         ),
-        h('button',{className:'btn btn-primary full',disabled:busy},busy?'Saving…':editing?'Save Room / Bed':'Add Room / Bed')
-      )):null
+        h('button',{className:'btn btn-primary full',disabled:busy},busy?'Saving…':'Save Room & Tariff')
+      )),
+
+      showTransfer&&h('div',{className:'modal-backdrop'},h('form',{className:'card modal',onSubmit:transferPatient},
+        h('div',{className:'panel-head'},h('div',null,h('h3',null,'Shift Patient to Another Room'),h('small',null,patientName(transfer.patient_id))),h('button',{type:'button',className:'close',onClick:()=>setShowTransfer(false)},'×')),
+        h('div',{className:'modal-grid'},
+          h('div',{className:'field span-2'},h('label',null,'New Room / Bed'),h('select',{required:true,value:transfer.to_room_bed_id,onChange:e=>setTransfer({...transfer,to_room_bed_id:e.target.value})},h('option',{value:''},'Select available room/bed'),availableRows.map(r=>h('option',{key:r.id,value:r.id},`Room ${r.room_no}-${r.bed_no} · ${r.room_type} · Room ₹${Number(r.room_daily_rate??r.daily_rate??0).toLocaleString('en-IN')} + Nursing ₹${Number(r.nursing_daily_rate||0).toLocaleString('en-IN')}`)))),
+          h('div',{className:'field'},h('label',null,'Effective Date & Time'),h('input',{type:'datetime-local',value:transfer.effective_at,onChange:e=>setTransfer({...transfer,effective_at:e.target.value}),max:new Date().toISOString().slice(0,16),required:true})),
+          h('div',{className:'field span-2'},h('label',null,'Reason for Shifting'),h('textarea',{required:true,rows:4,value:transfer.reason,onChange:e=>setTransfer({...transfer,reason:e.target.value}),placeholder:'Clinical need, patient/relative request, maintenance, upgrade/downgrade, gender allocation, etc.'}))
+        ),
+        h('p',{className:'small-note'},'The patient ID and complete billing history remain unchanged. Future automatic room, nursing and special-nurse charges will use the new room tariff.'),
+        h('button',{className:'btn btn-primary full',disabled:busy},busy?'Shifting…':'Confirm Room Shift')
+      )),
+
+      toast&&h('div',{className:`samara-toast ${toast.type}`},h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),h('div',null,h('strong',null,toast.type==='success'?'Rooms updated':'Update failed'),h('span',null,toast.text)),h('button',{onClick:()=>setToast(null)},'×'))
     );
   }
-
   function ClinicalDashboard({profile,onNavigate}){
     const [state,setState]=React.useState({loading:true,patients:[],medOrders:[],medLogs:[],careOrders:[],careLogs:[],vitals:[],physioOrders:[],physioSessions:[],incidents:[],handovers:[]});
     const today=new Date().toISOString().slice(0,10);
