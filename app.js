@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.2';
-  const APP_BUILD_DATE = '04-Aug-2026 11:10 IST';
+  const APP_VERSION = '1.3.3';
+  const APP_BUILD_DATE = '04-Aug-2026 11:45 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1228,6 +1228,14 @@ Caring with Compassion. Living with Dignity.`;
     const clinicalView=CLINICAL_ROLES.includes(profile?.role);
     const [rows,setRows]=React.useState([]),[selected,setSelected]=React.useState(null),[details,setDetails]=React.useState(null),[photoUrl,setPhotoUrl]=React.useState(''),[tab,setTab]=React.useState('Overview');
     const [editTarget,setEditTarget]=React.useState(null),[editForm,setEditForm]=React.useState(null),[editBusy,setEditBusy]=React.useState(false),[editMsg,setEditMsg]=React.useState('');
+    const [patientToast,setPatientToast]=React.useState(null);
+    const patientToastTimer=React.useRef(null);
+    function showPatientToast(type,text){
+      clearTimeout(patientToastTimer.current);
+      setPatientToast({type,text});
+      patientToastTimer.current=setTimeout(()=>setPatientToast(null),4500);
+    }
+    React.useEffect(()=>()=>clearTimeout(patientToastTimer.current),[]);
     const [editMeds,setEditMeds]=React.useState([]),[editCare,setEditCare]=React.useState([]);
     const [roomBeds,setRoomBeds]=React.useState([]);
     const [editDocs,setEditDocs]=React.useState([]),[editPhotoUrl,setEditPhotoUrl]=React.useState(''),[editCameraConfig,setEditCameraConfig]=React.useState(null);
@@ -1321,11 +1329,11 @@ Caring with Compassion. Living with Dignity.`;
     }
     async function savePatientEdit(e){
       e.preventDefault();setEditBusy(true);setEditMsg('');
-      if(isFutureDateIndia(editForm.admission_date)){setEditMsg(`Admission date cannot be later than today (${formatDateIN(todayISOIndia())}). Please correct the date.`);setEditBusy(false);return}
+      if(isFutureDateIndia(editForm.admission_date)){const text=`Admission date cannot be later than today (${formatDateIN(todayISOIndia())}). Please correct the date.`;setEditMsg(text);showPatientToast('error',text);setEditBusy(false);return}
       const allowed=['title','full_name','age','gender','mobile','address','attendant_name','attendant_phone','diagnosis','referring_doctor','treating_doctor','doctor_phone','hospital_name','admission_type','patient_category','room_no','bed_no','allergies','special_instructions','admission_date','is_active','diet_plan','feeding_instruction','fall_risk','pressure_sore_risk','aspiration_risk','wandering_risk','infection_risk','seizure_history','special_nurse_required','special_nurse_name','special_nurse_shift'];
       const payload={};allowed.forEach(k=>payload[k]=editForm[k]===''?null:editForm[k]);payload.age=editForm.age===''?null:Number(editForm.age);
       const {data,error}=await client.from('patients').update(payload).eq('id',editTarget.id).select().single();
-      if(error){setEditMsg(error.message||'Unable to update patient');setEditBusy(false);return}
+      if(error){const text=error.message||'Unable to update patient';setEditMsg(text);showPatientToast('error',text);setEditBusy(false);return}
       try{
         for(const f of editUploads.photo)await uploadEditDocument(editTarget.id,f,'Patient Photo',true);
         for(const f of editUploads.identity)await uploadEditDocument(editTarget.id,f,'Identity Proof');
@@ -1333,7 +1341,7 @@ Caring with Compassion. Living with Dignity.`;
         for(const f of editUploads.discharge)await uploadEditDocument(editTarget.id,f,'Discharge / Transfer Summary');
         for(const f of editUploads.reports)await uploadEditDocument(editTarget.id,f,'Lab / Scan / Test Report');
         for(const f of editUploads.other)await uploadEditDocument(editTarget.id,f,'Other Medical Document');
-      }catch(uploadError){setEditMsg(`Patient details saved, but media upload failed: ${uploadError.message}`);setEditBusy(false);return}
+      }catch(uploadError){const text=`Patient details saved, but media upload failed: ${uploadError.message}`;setEditMsg(text);showPatientToast('error',text);setEditBusy(false);return}
       try{
         const {data:{user}}=await client.auth.getUser();
         await client.from('medication_orders').delete().eq('patient_id',editTarget.id);
@@ -1342,8 +1350,9 @@ Caring with Compassion. Living with Dignity.`;
         await client.from('care_orders').delete().eq('patient_id',editTarget.id);
         const careRows=editCare.filter(c=>c.care_type).map(c=>({patient_id:editTarget.id,care_type:c.care_type,shift:c.shift,frequency:c.frequency,instruction:c.instruction||null,entered_by:user?.id||null}));
         if(careRows.length){const {error:ce}=await client.from('care_orders').insert(careRows);if(ce)throw ce}
-      }catch(orderError){setEditMsg(`Patient details saved, but medicines or care plan could not be updated: ${orderError.message}`);setEditBusy(false);return}
-      setEditMsg('Patient information, medicines, care plan and documents updated successfully.');await load();await loadEditMedia({...data,id:editTarget.id});
+      }catch(orderError){const text=`Patient details saved, but medicines or care plan could not be updated: ${orderError.message}`;setEditMsg(text);showPatientToast('error',text);setEditBusy(false);return}
+      const successText='Patient information, medicines, care plan and documents updated successfully.';
+      setEditMsg(successText);showPatientToast('success',successText);await load();await loadEditMedia({...data,id:editTarget.id});
       if(selected?.id===editTarget.id){setSelected(data);setTimeout(()=>openPatient(data),0)}
       setEditUploads({photo:[],identity:[],prescription:[],discharge:[],reports:[],other:[]});setEditBusy(false);
     }
@@ -1439,7 +1448,12 @@ Caring with Compassion. Living with Dignity.`;
         ),
         h('button',{className:'btn btn-primary full',disabled:editBusy},editBusy?'Saving changes…':'Save Patient Information & Documents')
       )),
-      editCameraConfig?h(CameraCaptureModal,{config:editCameraConfig,onClose:()=>setEditCameraConfig(null)}):null
+      editCameraConfig?h(CameraCaptureModal,{config:editCameraConfig,onClose:()=>setEditCameraConfig(null)}):null,
+      patientToast&&h('div',{className:`samara-toast ${patientToast.type}`,role:'status','aria-live':'polite'},
+        h('span',{className:'samara-toast-icon','aria-hidden':'true'},patientToast.type==='success'?'✓':'!'),
+        h('div',null,h('strong',null,patientToast.type==='success'?'Update successful':'Update failed'),h('span',null,patientToast.text)),
+        h('button',{type:'button','aria-label':'Close notification',onClick:()=>setPatientToast(null)},'×')
+      )
     );
   }
 
@@ -2354,6 +2368,12 @@ Caring with Compassion. Living with Dignity.`;
       if(e)e.preventDefault();
       const activeMode=requestedMode||mode;
       setMessage('');setReport(null);
+      if(isFutureDateIndia(reportDate)){
+        const today=todayISOIndia();
+        setReportDate(today);
+        setMessage(`Future report dates are not permitted. Report Date has been reset to today (${formatDateIN(today)}).`);
+        return;
+      }
       if(activeMode==='Patient-wise'&&!patientId){setMessage('Select a patient.');return;}
       if(activeMode==='Day-wise'&&!reportDate){setMessage('Select a report date.');return;}
       setBusy(true);
@@ -2632,7 +2652,7 @@ Caring with Compassion. Living with Dignity.`;
     return h(React.Fragment,null,
       h(Section,{title:'Intelligent Reports',subtitle:'Human-readable patient progress and complete day-wise operational reports'},
         h('form',{className:'intelligent-report-controls intelligent-report-controls-v3',onSubmit:e=>e.preventDefault()},
-          h('div',{className:'field report-date-field'},h('label',null,'Report Date'),h('input',{type:'date',value:reportDate,onChange:e=>{setReportDate(e.target.value);setReport(null);setMessage('')},required:true})),
+          h('div',{className:'field report-date-field'},h('label',null,'Report Date'),h('input',{type:'date',value:reportDate,max:todayISOIndia(),onChange:e=>{const next=e.target.value;if(isFutureDateIndia(next)){const today=todayISOIndia();setReportDate(today);setReport(null);setMessage(`Future report dates are not permitted. Report Date has been reset to today (${formatDateIN(today)}).`);return}setReportDate(next);setReport(null);setMessage('')},required:true})),
           h('div',{className:'field report-patient-field'},h('label',null,'Patient'),h('select',{value:patientId,onChange:e=>{setPatientId(e.target.value);setReport(null);setMessage('')}},h('option',{value:''},'Select patient'),patients.map(p=>h('option',{key:p.id,value:p.id},`${formalName(p)} · ${p.patient_id||'NO-ID'}${p.room_no?` · ${p.room_no}${p.bed_no?`-${p.bed_no}`:''}`:''}`)))),
           h('button',{type:'button',className:'btn btn-primary',disabled:busy,onClick:e=>generate(e,'Patient-wise')},busy&&mode==='Patient-wise'?'Generating…':'Generate Patient Report'),
           h('button',{type:'button',className:'btn btn-secondary',disabled:busy,onClick:e=>generate(e,'Day-wise')},busy&&mode==='Day-wise'?'Generating…':'Generate Daily Operations Report')

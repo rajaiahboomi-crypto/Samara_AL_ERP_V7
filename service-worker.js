@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.2-medicine-names-future-date-block';
+const CACHE = 'samara-erp-1.3.3-report-date-toast';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.2', './app.js?v=1.3.2',
-  './bootstrap-error.js?v=1.3.2', './health-check.js?v=1.3.2',
-  './config.js?v=1.3.2', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.3', './app.js?v=1.3.3',
+  './bootstrap-error.js?v=1.3.3', './health-check.js?v=1.3.3',
+  './config.js?v=1.3.3', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

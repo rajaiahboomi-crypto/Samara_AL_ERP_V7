@@ -1,0 +1,29 @@
+SAMARA CARE ERP 1.3.3 — FUTURE REPORT DATE BLOCK & PATIENT UPDATE POP-UP
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+- styles.css
+
+No Supabase SQL is required.
+
+1. Intelligent Reports:
+- Future dates are disabled in the Report Date calendar.
+- A future date typed or pasted manually is rejected.
+- The date is reset to today's Indian date.
+- Patient and Daily Operations reports cannot be generated for a future date.
+- WhatsApp sharing therefore cannot use a future report date.
+
+2. Patient Edit confirmation:
+- Successful update: fixed green confirmation pop-up.
+- Failed update: fixed red error pop-up.
+- The notification appears at the top-centre of the visible screen.
+- No scrolling is required.
+- It closes automatically after 4.5 seconds or can be closed manually.
+
+After uploading:
+1. Close all ERP windows.
+2. Reopen the app.
+3. Tap “App update available” if shown.
+4. Confirm Version 1.3.3.

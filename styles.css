@@ -1004,3 +1004,45 @@ body{-webkit-tap-highlight-color:transparent}
     top:0;
   }
 }
+
+/* Samara Care ERP 1.3.3 — fixed success/error notifications */
+.samara-toast{
+  position:fixed;
+  top:78px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:10050;
+  width:min(560px,calc(100vw - 28px));
+  display:grid;
+  grid-template-columns:42px 1fr 32px;
+  align-items:center;
+  gap:12px;
+  padding:14px 16px;
+  border-radius:14px;
+  color:#fff;
+  box-shadow:0 14px 38px rgba(0,0,0,.24);
+  animation:samaraToastIn .22s ease-out;
+}
+.samara-toast.success{background:#118553;border:1px solid #087345}
+.samara-toast.error{background:#c63e3e;border:1px solid #a92e2e}
+.samara-toast-icon{
+  width:36px;height:36px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,.2);
+  font-size:22px;font-weight:900;
+}
+.samara-toast strong,.samara-toast span{display:block}
+.samara-toast strong{font-size:16px;margin-bottom:2px}
+.samara-toast span{font-size:14px;line-height:1.35}
+.samara-toast>button{
+  border:0;background:transparent;color:#fff;
+  font-size:25px;line-height:1;cursor:pointer;padding:2px;
+}
+@keyframes samaraToastIn{
+  from{opacity:0;transform:translate(-50%,-14px)}
+  to{opacity:1;transform:translate(-50%,0)}
+}
+@media(max-width:760px){
+  .samara-toast{top:72px;grid-template-columns:36px 1fr 28px;padding:12px}
+  .samara-toast-icon{width:32px;height:32px;font-size:19px}
+}
