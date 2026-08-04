@@ -1,0 +1,43 @@
+SAMARA CARE ERP 1.3.12 — SPECIAL NURSE MANAGEMENT
+
+1. Run once in Supabase SQL Editor:
+   37_special_nurse_management.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+New dedicated module:
+NURSING → Special Nurse
+
+Access:
+- All roles can view assignments.
+- Admin and Manager can create and edit assignments.
+- Nurse and Caregiver can update duty status.
+- Accounts and Kitchen are view-only.
+
+Fields:
+- Special Nurse / employee name
+- Assigned patient
+- Assignment type
+- Coverage days
+- Start and end time
+- Shift
+- Start and end date
+- Duration and custom duration
+- Responsibilities
+- Special instructions / precautions
+- Emergency contact
+- Status
+- Notes
+
+Status:
+- Active
+- On Duty
+- Off Duty
+- Leave
+- Completed
+- Cancelled
+
+Green/red fixed confirmation pop-ups and Audit Trail recording are included.

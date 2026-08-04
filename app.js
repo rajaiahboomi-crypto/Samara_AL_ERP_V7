@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.11';
-  const APP_BUILD_DATE = '04-Aug-2026 15:10 IST';
+  const APP_VERSION = '1.3.12';
+  const APP_BUILD_DATE = '04-Aug-2026 15:45 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -47,7 +47,7 @@
     { title:'ADMIN', items:['Employees','Audit Trail'] },
     { title:'ADMISSION', items:['Enquiries','Admissions','Patients','Documents'] },
     { title:'MANAGER', items:['Reports','Intelligent Reports','Medication Errors','Recovery Timeline'] },
-    { title:'NURSING', items:['Clinical Dashboard','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Shift Handover'] },
+    { title:'NURSING', items:['Clinical Dashboard','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Special Nurse','Shift Handover'] },
     { title:'OPERATIONS', items:['Rooms & Beds','Incidents'] },
     { title:'FOOD & DIET', items:['Food & Diet'] },
     { title:'ACCOUNTS / BILLING', items:['Billing & Payments'] }
@@ -56,10 +56,10 @@
   const ROLE_NAV={
     Admin:ALL_NAV,
     Manager:ALL_NAV,
-    Nurse:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Shift Handover','Incidents','Notifications'],
-    Caregiver:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Shift Handover','Incidents','Notifications'],
-    Accounts:['Notifications','Patients','Physiotherapy','Rooms & Beds','Billing & Payments','Reports','Intelligent Reports'],
-    Kitchen:['Notifications','Patients','Physiotherapy','Food & Diet']
+    Nurse:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Notifications'],
+    Caregiver:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Notifications'],
+    Accounts:['Notifications','Patients','Physiotherapy','Special Nurse','Rooms & Beds','Billing & Payments','Reports','Intelligent Reports'],
+    Kitchen:['Notifications','Patients','Physiotherapy','Special Nurse','Food & Diet']
   };
   const ROLE_HOME={Admin:'Dashboard',Manager:'Dashboard',Nurse:'Clinical Dashboard',Caregiver:'Clinical Dashboard',Accounts:'Billing & Payments',Kitchen:'Food & Diet'};
   const CLINICAL_ROLES=['Nurse','Caregiver'];
@@ -73,7 +73,7 @@
   const sectionsFor = (allowed,role) => {
     if(CLINICAL_ROLES.includes(role)){
       return [
-        {title:'NURSING WORKSPACE',items:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Shift Handover','Incidents','Notifications'].filter(item=>allowed.includes(item))}
+        {title:'NURSING WORKSPACE',items:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Notifications'].filter(item=>allowed.includes(item))}
       ];
     }
     return NAV_SECTIONS.map(section=>({...section,items:section.items.filter(item=>allowed.includes(item))})).filter(section=>section.items.length);
@@ -340,6 +340,7 @@ Caring with Compassion. Living with Dignity.`;
           page==='Medicines'&&h(Medicines,{profile}),
           page==='Food & Diet'&&h(FoodDiet,{profile}),
           page==='Physiotherapy'&&h(Physiotherapy,{profile}),
+          page==='Special Nurse'&&h(SpecialNurseManagement,{profile}),
           page==='Shift Handover'&&h(ShiftHandover,{profile}),
           page==='Incidents'&&h(Incidents,{profile}),
           page==='Documents'&&h(Documents,{profile}),
@@ -2583,7 +2584,234 @@ Caring with Compassion. Living with Dignity.`;
       )
     );
   }
-  function ShiftHandover({profile}){
+  
+  function SpecialNurseManagement({profile}){
+    const canManage=['Admin','Manager'].includes(profile?.role);
+    const canUpdate=['Admin','Manager','Nurse','Caregiver'].includes(profile?.role);
+    const [assignments,setAssignments]=React.useState([]);
+    const [patients,setPatients]=React.useState([]);
+    const [employees,setEmployees]=React.useState([]);
+    const [loading,setLoading]=React.useState(true);
+    const [message,setMessage]=React.useState('');
+    const [showForm,setShowForm]=React.useState(false);
+    const [editing,setEditing]=React.useState(null);
+    const [busy,setBusy]=React.useState(false);
+    const [toast,setToast]=React.useState(null);
+    const toastTimer=React.useRef(null);
+    const emptyForm={
+      patient_id:'',
+      nurse_profile_id:'',
+      nurse_name:'',
+      assignment_type:'Dedicated Nurse',
+      coverage_days:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'],
+      start_time:'07:00',
+      end_time:'19:00',
+      shift:'Day Shift',
+      start_date:todayISOIndia(),
+      end_date:'',
+      duration_type:'Until further order',
+      duration_value:'',
+      responsibilities:'',
+      special_instructions:'',
+      emergency_contact:'',
+      status:'Active',
+      notes:''
+    };
+    const [form,setForm]=React.useState(emptyForm);
+
+    function showToast(type,text){
+      clearTimeout(toastTimer.current);
+      setToast({type,text});
+      toastTimer.current=setTimeout(()=>setToast(null),4500);
+    }
+    React.useEffect(()=>()=>clearTimeout(toastTimer.current),[]);
+
+    async function load(){
+      setLoading(true);setMessage('');
+      const [a,p,e]=await Promise.all([
+        client.from('special_nurse_assignments').select('*').order('created_at',{ascending:false}),
+        client.from('patients').select('id,title,full_name,patient_id,room_no,bed_no,is_active').order('full_name'),
+        client.from('profiles').select('id,auth_user_id,title,full_name,employee_id,role,is_active').order('full_name')
+      ]);
+      if(a.error){setMessage(a.error.message||'Unable to load Special Nurse assignments.');setAssignments([])}
+      else setAssignments(a.data||[]);
+      if(!p.error)setPatients(p.data||[]);
+      if(!e.error)setEmployees((e.data||[]).filter(x=>x.is_active!==false&&['Nurse','Caregiver','Manager','Admin'].includes(x.role)));
+      setLoading(false);
+    }
+
+    React.useEffect(()=>{
+      load();
+      const channel=client.channel('special-nurse-live')
+        .on('postgres_changes',{event:'*',schema:'public',table:'special_nurse_assignments'},load)
+        .subscribe();
+      return()=>client.removeChannel(channel);
+    },[]);
+
+    const patientFor=id=>patients.find(p=>p.id===id)||{};
+    const employeeFor=id=>employees.find(e=>e.id===id||e.auth_user_id===id)||{};
+    const patientLabel=id=>{const p=patientFor(id);return p.id?`${formalName(p)} · ${p.patient_id||'—'} · Room ${p.room_no||'—'}${p.bed_no?`-${p.bed_no}`:''}`:'Patient not linked'};
+    const nurseLabel=row=>{const e=employeeFor(row.nurse_profile_id);return e.id?`${formalName(e)} · ${e.role}`:(row.nurse_name||'Not assigned')};
+    const clockLabel=value=>{
+      if(!value)return '—';
+      const [hour,minute]=String(value).slice(0,5).split(':').map(Number);
+      return `${hour%12||12}:${String(minute||0).padStart(2,'0')} ${hour<12?'AM':'PM'}`;
+    };
+    const daysLabel=value=>Array.isArray(value)?value.join(', '):(value||'—');
+
+    function openCreate(){
+      setEditing(null);
+      setForm({...emptyForm,start_date:todayISOIndia()});
+      setShowForm(true);
+    }
+    function openEdit(row){
+      setEditing(row);
+      setForm({
+        ...emptyForm,...row,
+        coverage_days:Array.isArray(row.coverage_days)?row.coverage_days:[],
+        start_time:String(row.start_time||'07:00').slice(0,5),
+        end_time:String(row.end_time||'19:00').slice(0,5),
+        start_date:row.start_date||todayISOIndia(),
+        end_date:row.end_date||''
+      });
+      setShowForm(true);
+    }
+    function toggleDay(day){
+      setForm(current=>({...current,coverage_days:current.coverage_days.includes(day)?current.coverage_days.filter(x=>x!==day):[...current.coverage_days,day]}));
+    }
+
+    async function save(e){
+      e.preventDefault();
+      if(!canManage)return;
+      if(!form.patient_id){showToast('error','Please select the assigned patient.');return}
+      if(!form.nurse_profile_id&&!form.nurse_name.trim()){showToast('error','Please select or enter the Special Nurse name.');return}
+      if(!form.coverage_days.length){showToast('error','Select at least one coverage day.');return}
+      if(isFutureDateIndia(form.start_date)){showToast('error','Future assignment start dates are not permitted.');return}
+      if(form.end_date&&form.end_date<form.start_date){showToast('error','End date cannot be earlier than the start date.');return}
+      setBusy(true);
+      const {data:{user}}=await client.auth.getUser();
+      const selectedEmployee=employeeFor(form.nurse_profile_id);
+      const payload={
+        patient_id:form.patient_id,
+        nurse_profile_id:form.nurse_profile_id||null,
+        nurse_name:form.nurse_name||formalName(selectedEmployee)||null,
+        assignment_type:form.assignment_type,
+        coverage_days:form.coverage_days,
+        start_time:form.start_time||null,
+        end_time:form.end_time||null,
+        shift:form.shift,
+        start_date:form.start_date,
+        end_date:form.end_date||null,
+        duration_type:form.duration_type,
+        duration_value:form.duration_value||null,
+        responsibilities:form.responsibilities||null,
+        special_instructions:form.special_instructions||null,
+        emergency_contact:form.emergency_contact||null,
+        status:form.status,
+        notes:form.notes||null,
+        assigned_by:user?.id||profile?.id,
+        updated_at:new Date().toISOString()
+      };
+      const query=editing
+        ?client.from('special_nurse_assignments').update(payload).eq('id',editing.id).select('id').single()
+        :client.from('special_nurse_assignments').insert(payload).select('id').single();
+      const {data,error}=await query;
+      setBusy(false);
+      if(error){showToast('error',error.message||'Unable to save Special Nurse assignment.');return}
+      showToast('success',editing?'Special Nurse assignment updated successfully.':'Special Nurse assigned successfully.');
+      setShowForm(false);await load();
+      writeAuditEvent(editing?'Special Nurse Assignment Updated':'Special Nurse Assigned','Special Nurse',data?.id||editing?.id,{
+        patient_id:form.patient_id,
+        nurse_name:payload.nurse_name,
+        shift:form.shift,
+        coverage_days:form.coverage_days,
+        status:form.status
+      },'Success');
+    }
+
+    async function updateStatus(row,status){
+      if(!canUpdate)return;
+      const {data:{user}}=await client.auth.getUser();
+      const {error}=await client.from('special_nurse_assignments').update({
+        status,
+        last_status_updated_by:user?.id||profile?.id,
+        last_status_updated_at:new Date().toISOString(),
+        updated_at:new Date().toISOString()
+      }).eq('id',row.id);
+      if(error){showToast('error',error.message||'Unable to update assignment status.');return}
+      showToast('success',`Assignment status changed to ${status}.`);
+      await load();
+    }
+
+    const rows=assignments.map(row=>[
+      patientLabel(row.patient_id),
+      nurseLabel(row),
+      row.assignment_type||'Special Nurse',
+      daysLabel(row.coverage_days),
+      `${clockLabel(row.start_time)} – ${clockLabel(row.end_time)}`,
+      row.shift||'—',
+      `${formatDateIN(row.start_date)}${row.end_date?` to ${formatDateIN(row.end_date)}`:''}`,
+      row.duration_type+(row.duration_value?` · ${row.duration_value}`:''),
+      row.responsibilities||row.special_instructions||'—',
+      h('span',{className:`badge ${row.status==='Active'?'':'off'}`},row.status||'Active'),
+      h('div',{className:'employee-actions'},
+        canManage&&h('button',{type:'button',className:'btn btn-secondary',onClick:()=>openEdit(row)},'Edit'),
+        canUpdate&&h('select',{value:row.status||'Active',onChange:e=>updateStatus(row,e.target.value)},['Active','On Duty','Off Duty','Leave','Completed','Cancelled'].map(x=>h('option',{key:x,value:x},x)))
+      )
+    ]);
+
+    return h(React.Fragment,null,
+      h(Section,{title:'Special Nurse Management',subtitle:'Dedicated nurse assignment, coverage, duration and responsibility tracking'},
+        message&&h('div',{className:'message error'},message),
+        h('div',{className:'panel-head'},
+          h('div',null,h('p',{className:'small-note'},'All authorised users can view assignments. Admin and Manager can create/edit; Nurses and Caregivers can update duty status.')),
+          canManage&&h('button',{type:'button',className:'btn btn-primary',onClick:openCreate},'Assign Special Nurse')
+        )
+      ),
+      h(LogTable,{
+        title:`Special Nurse Assignments (${rows.length})`,
+        subtitle:'Current and historical dedicated nursing coverage',
+        heads:['Assigned Patient','Special Nurse','Assignment','Days','Time','Shift','Period','Duration','Responsibilities / Instructions','Status','Action'],
+        rows
+      }),
+      !loading&&!message&&!rows.length&&h('div',{className:'card panel'},h('p',{className:'small-note'},'No Special Nurse assignment has been entered. Admin or Manager can create the first assignment.')),
+      showForm&&h('div',{className:'modal-backdrop',onClick:e=>{if(e.target===e.currentTarget)setShowForm(false)}},
+        h('form',{className:'card modal',style:{width:'min(1050px,96vw)',maxHeight:'92vh',overflow:'auto'},onSubmit:save},
+          h('div',{className:'panel-head'},
+            h('div',null,h('h3',null,editing?'Edit Special Nurse Assignment':'Assign Special Nurse'),h('small',null,'Patient-specific dedicated nursing coverage')),
+            h('button',{type:'button',className:'close',onClick:()=>setShowForm(false)},'×')
+          ),
+          h('div',{className:'modal-grid'},
+            h('div',{className:'field'},h('label',null,'Assigned Patient'),h('select',{required:true,value:form.patient_id,onChange:e=>setForm({...form,patient_id:e.target.value})},h('option',{value:''},'Select patient'),patients.filter(p=>p.is_active!==false).map(p=>h('option',{key:p.id,value:p.id},patientLabel(p.id))))),
+            h('div',{className:'field'},h('label',null,'Special Nurse / Staff'),h('select',{value:form.nurse_profile_id,onChange:e=>{const emp=employeeFor(e.target.value);setForm({...form,nurse_profile_id:e.target.value,nurse_name:formalName(emp)||form.nurse_name})}},h('option',{value:''},'Select registered employee'),employees.map(emp=>h('option',{key:emp.id,value:emp.id},`${formalName(emp)} · ${emp.role}`)))),
+            h('div',{className:'field'},h('label',null,'External / Display Name'),h('input',{value:form.nurse_name,onChange:e=>setForm({...form,nurse_name:e.target.value}),placeholder:'Name of assigned Special Nurse'})),
+            h('div',{className:'field'},h('label',null,'Assignment Type'),h('select',{value:form.assignment_type,onChange:e=>setForm({...form,assignment_type:e.target.value})},['Dedicated Nurse','Special Nurse','One-to-One Caregiver','Night Attendant','Procedure Support','Temporary Relief'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field span-2'},h('label',null,'Coverage Days'),h('div',{className:'check-grid'},['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(day=>h('label',{className:'check-card',key:day},h('input',{type:'checkbox',checked:form.coverage_days.includes(day),onChange:()=>toggleDay(day)}),h('span',null,day))))),
+            h('div',{className:'field'},h('label',null,'Start Time'),h('input',{type:'time',value:form.start_time,onChange:e=>setForm({...form,start_time:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'End Time'),h('input',{type:'time',value:form.end_time,onChange:e=>setForm({...form,end_time:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Shift'),h('select',{value:form.shift,onChange:e=>setForm({...form,shift:e.target.value})},['Day Shift','Night Shift','Both Shifts','Custom Hours'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Status'),h('select',{value:form.status,onChange:e=>setForm({...form,status:e.target.value})},['Active','On Duty','Off Duty','Leave','Completed','Cancelled'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Start Date'),h('input',{type:'date',max:todayISOIndia(),value:form.start_date,onChange:e=>setForm({...form,start_date:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'End Date'),h('input',{type:'date',min:form.start_date||undefined,value:form.end_date,onChange:e=>setForm({...form,end_date:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Duration'),h('select',{value:form.duration_type,onChange:e=>setForm({...form,duration_type:e.target.value})},['Single Shift','1 Day','3 Days','5 Days','7 Days','15 Days','1 Month','Until further order','Custom'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Custom Duration / Details'),h('input',{value:form.duration_value,onChange:e=>setForm({...form,duration_value:e.target.value}),placeholder:'Example: 6 weeks / 12-hour duty'})),
+            h('div',{className:'field'},h('label',null,'Emergency Contact'),h('input',{value:form.emergency_contact,onChange:e=>setForm({...form,emergency_contact:e.target.value}),placeholder:'Contact number'})),
+            h('div',{className:'field span-2'},h('label',null,'Responsibilities'),h('textarea',{rows:3,value:form.responsibilities,onChange:e=>setForm({...form,responsibilities:e.target.value}),placeholder:'Medication supervision, mobility support, fall prevention, feeding, observation, escort, etc.'})),
+            h('div',{className:'field span-2'},h('label',null,'Special Instructions / Precautions'),h('textarea',{rows:3,value:form.special_instructions,onChange:e=>setForm({...form,special_instructions:e.target.value}),placeholder:'Clinical precautions, escalation instructions, doctor advice or family requirements'})),
+            h('div',{className:'field span-2'},h('label',null,'Other Notes'),h('textarea',{rows:2,value:form.notes,onChange:e=>setForm({...form,notes:e.target.value})}))
+          ),
+          h('div',{className:'actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setShowForm(false)},'Cancel'),h('button',{className:'btn btn-primary',disabled:busy},busy?'Saving…':editing?'Update Assignment':'Save Assignment'))
+        )
+      ),
+      toast&&h('div',{className:`samara-toast ${toast.type}`,role:'status','aria-live':'polite'},
+        h('span',{className:'samara-toast-icon','aria-hidden':'true'},toast.type==='success'?'✓':'!'),
+        h('div',null,h('strong',null,toast.type==='success'?'Special Nurse updated':'Update failed'),h('span',null,toast.text)),
+        h('button',{type:'button','aria-label':'Close notification',onClick:()=>setToast(null)},'×')
+      )
+    );
+  }
+
+function ShiftHandover({profile}){
     const [rows,setRows]=React.useState([]),[form,setForm]=React.useState({shift:currentShift(),patient_summary:'',pending_tasks:'',special_instructions:'',priority:'Routine'});async function load(){const {data}=await client.from('shift_handovers').select('*,profiles!shift_handovers_submitted_by_fkey(full_name)').order('created_at',{ascending:false}).limit(50);setRows(data||[])}React.useEffect(()=>{load()},[]);
     async function save(e){e.preventDefault();const {error}=await client.from('shift_handovers').insert({...form,handover_date:new Date().toISOString().slice(0,10),submitted_by:profile.id});if(error)return alert(error.message);setForm({...form,patient_summary:'',pending_tasks:'',special_instructions:''});load()}
     return h(React.Fragment,null,h(Section,{title:'Shift Handover',subtitle:'Patient status, pending work and priority instructions'},h('form',{className:'form-stack',onSubmit:save},miniSelect('Outgoing shift',form.shift,['Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)'],v=>setForm({...form,shift:v})),textareaSimple('Patient summary',form.patient_summary,v=>setForm({...form,patient_summary:v})),textareaSimple('Pending tasks',form.pending_tasks,v=>setForm({...form,pending_tasks:v})),textareaSimple('Special instructions',form.special_instructions,v=>setForm({...form,special_instructions:v})),miniSelect('Priority',form.priority,['Routine','Important','Critical'],v=>setForm({...form,priority:v})),h('button',{className:'btn btn-primary'},'Submit handover'))),h(LogTable,{title:'Recent Handovers',heads:['Date','Shift','Priority','Summary','Pending','Submitted by'],rows:rows.map(r=>[r.handover_date,r.shift,r.priority,r.patient_summary,r.pending_tasks,r.profiles?.full_name])}))
