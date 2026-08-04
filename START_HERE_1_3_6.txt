@@ -1,0 +1,23 @@
+SAMARA CARE ERP 1.3.6 — DAILY CARE RELATIONSHIP FIX
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Fixed:
+- Removed the invalid care_logs → profiles relationship query.
+- Daily Care now loads patient details without depending on a missing foreign-key relationship.
+- Save care record works normally.
+- Saved records appear under Recent Care Records.
+- Green/red fixed pop-up notifications remain.
+- Audit logging remains non-blocking.
+
+After uploading:
+1. Close all ERP windows.
+2. Reopen the app.
+3. Tap “App update available” if shown.
+4. Confirm Version 1.3.6.
+5. Test Daily Care Save again.

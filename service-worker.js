@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.5-daily-care-save';
+const CACHE = 'samara-erp-1.3.6-daily-care-relationship-fix';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.5', './app.js?v=1.3.5',
-  './bootstrap-error.js?v=1.3.5', './health-check.js?v=1.3.5',
-  './config.js?v=1.3.5', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.6', './app.js?v=1.3.6',
+  './bootstrap-error.js?v=1.3.6', './health-check.js?v=1.3.6',
+  './config.js?v=1.3.6', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

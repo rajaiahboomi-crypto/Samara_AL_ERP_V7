@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.5';
-  const APP_BUILD_DATE = '04-Aug-2026 12:35 IST';
+  const APP_VERSION = '1.3.6';
+  const APP_BUILD_DATE = '04-Aug-2026 12:55 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1705,15 +1705,15 @@ Caring with Compassion. Living with Dignity.`;
     async function load(){
       const {data,error}=await client
         .from('care_logs')
-        .select('*,patients(full_name,room_no,bed_no),profiles!care_logs_completed_by_fkey(full_name)')
+        .select('*,patients(full_name,room_no,bed_no)')
         .order('created_at',{ascending:false})
         .limit(100);
       if(error){
-        console.error(error);
-        showToast('error',error.message||'Unable to load recent care records.');
-        return;
+        console.error('Recent Daily Care records could not be loaded:',error);
+        return false;
       }
       setRows(data||[]);
+      return true;
     }
     React.useEffect(()=>{load()},[]);
 
