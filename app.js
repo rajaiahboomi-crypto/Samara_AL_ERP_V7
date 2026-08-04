@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.2.9';
-  const APP_BUILD_DATE = '04-Aug-2026 09:20 IST';
+  const APP_VERSION = '1.2.10';
+  const APP_BUILD_DATE = '04-Aug-2026 09:35 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -2446,6 +2446,7 @@ Caring with Compassion. Living with Dignity.`;
       if(error)console.warn('Communication history could not be saved:',error);
     }
     async function openWhatsAppShare(){
+      if(!['Admin','Manager'].includes(profile.role))return alert('WhatsApp report sharing is available only to Admin and Manager.');
       const p=selectedPatient();
       if(!p)return alert('Generate a patient report before sharing.');
       const targets=shareRecipient==='Both'?['Patient','Relative']:[shareRecipient];
@@ -2538,7 +2539,7 @@ Caring with Compassion. Living with Dignity.`;
         ),message&&h('div',{className:'message error'},message)
       ),
       report&&h('div',{className:'card panel intelligent-report printable-report hospital-report'},
-        h('div',{className:'panel-head no-print'},h('div',null,h('h2',null,report.mode==='Patient-wise'?`Patient Care Report – ${formalName(report.patient)||''}`:`Daily Facility Report – ${report.date}`),h('small',null,`Prepared by ${formalName(profile)} on ${new Date().toLocaleString()}`)),h('div',{className:'actions'},report.mode==='Patient-wise'&&h('button',{type:'button',className:'btn btn-whatsapp',onClick:()=>setShareOpen(true)},'WhatsApp'),h('button',{className:'btn btn-secondary',onClick:printReport},'Print / Save PDF'))),
+        h('div',{className:'panel-head no-print'},h('div',null,h('h2',null,report.mode==='Patient-wise'?`Patient Care Report – ${formalName(report.patient)||''}`:`Daily Facility Report – ${report.date}`),h('small',null,`Prepared by ${formalName(profile)} on ${new Date().toLocaleString()}`)),h('div',{className:'actions'},report.mode==='Patient-wise'&&['Admin','Manager'].includes(profile.role)&&h('button',{type:'button',className:'btn btn-whatsapp',onClick:()=>setShareOpen(true)},'WhatsApp'),h('button',{className:'btn btn-secondary',onClick:printReport},'Print / Save PDF'))),
         report.mode==='Patient-wise'?patientReportBody():h(React.Fragment,null,
           h('div',{className:'intelligent-summary human-report'},h('h3',null,'Executive Daily Summary'),narrative().map((p,i)=>h('p',{key:i},p))),
           section('Patient-wise Daily Status',report.data.patients,p=>h(React.Fragment,null,h('strong',null,`${p.patient_id||'NO-ID'} · ${formalName(p)}`),h('span',null,dailyPatientNarrative(p,report.data)))),
@@ -2548,7 +2549,7 @@ Caring with Compassion. Living with Dignity.`;
           h('div',{className:'report-footer'},h('strong',null,'Samara Health Care LLP'),h('span',null,'Assisted Living Management System'),h('span',null,'Caring with Compassion. Living with Dignity.'),h('small',null,`Prepared by ${formalName(profile)} · Generated ${new Date().toLocaleString()}`))
         )
       ),
-      communicationRows.length>0&&h(Section,{title:'Report Communication History',subtitle:'Manual WhatsApp sharing activity recorded by the ERP'},
+      ['Admin','Manager'].includes(profile.role)&&communicationRows.length>0&&h(Section,{title:'Report Communication History',subtitle:'Manual WhatsApp sharing activity recorded by the ERP'},
         h('div',{className:'table-wrap'},h('table',{className:'table'},
           h('thead',null,h('tr',null,['Patient','Report Date','Recipient','Number','Type','Status','Opened By','Date / Time'].map(x=>h('th',{key:x},x)))),
           h('tbody',null,communicationRows.filter(r=>!patientId||r.patient_id===patientId).slice(0,50).map(r=>h('tr',{key:r.id},

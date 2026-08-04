@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.2.9-intelligent-report-whatsapp';
+const CACHE = 'samara-erp-1.2.10-whatsapp-admin-manager-only';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.2.9', './app.js?v=1.2.9',
-  './bootstrap-error.js?v=1.2.9', './health-check.js?v=1.2.9',
-  './config.js?v=1.2.9', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.2.10', './app.js?v=1.2.10',
+  './bootstrap-error.js?v=1.2.10', './health-check.js?v=1.2.10',
+  './config.js?v=1.2.10', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

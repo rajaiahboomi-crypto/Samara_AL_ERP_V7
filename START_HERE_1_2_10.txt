@@ -1,0 +1,20 @@
+SAMARA CARE ERP 1.2.10 — WHATSAPP ACCESS RESTRICTION
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Access:
+- Admin: WhatsApp report sharing available
+- Manager: WhatsApp report sharing available
+- Nurse: hidden and blocked
+- Caregiver: hidden and blocked
+- Accounts: hidden and blocked
+- Kitchen: hidden and blocked
+
+The Communication History section is also visible only to Admin and Manager.
+
+After upload, close and reopen the ERP and tap “App update available” if displayed.
