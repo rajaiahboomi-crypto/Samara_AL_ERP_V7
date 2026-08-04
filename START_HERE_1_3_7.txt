@@ -1,0 +1,25 @@
+SAMARA CARE ERP 1.3.7 — PHYSIOTHERAPY PLAN FIX
+
+1. Run once in Supabase SQL Editor:
+   34_physiotherapy_plan_compatibility.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+3. Close all ERP windows and reopen.
+   Tap “App update available” if displayed.
+
+Fixed:
+- The app now uses the existing production table: physiotherapy_plans.
+- New Admission saves physiotherapy advice to physiotherapy_plans.
+- Clinical Dashboard, Patient File, Reports and Physiotherapy page use the same table.
+- Existing plans are displayed even when is_active was blank.
+- Patient details are loaded separately, avoiding schema relationship-cache failures.
+- Caregiver/Nurse can view plans.
+- Admin/Manager can add plans from Patient Admission/Edit.
+- Live refresh is enabled.
+
+If the screen still says no active plan:
+No plan has been entered for those patients yet. Open Patients → Edit as Admin/Manager and add the physiotherapy advice.

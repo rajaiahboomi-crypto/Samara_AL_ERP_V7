@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.6';
-  const APP_BUILD_DATE = '04-Aug-2026 12:55 IST';
+  const APP_VERSION = '1.3.7';
+  const APP_BUILD_DATE = '04-Aug-2026 13:20 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1175,7 +1175,7 @@ Caring with Compassion. Living with Dignity.`;
         const medRows=meds.map(m=>{const start=m.start_date||new Date().toISOString().slice(0,10);const durationDays=m.duration==='Custom'?Number(m.custom_duration_days||0):({'Single Dose':0,'1 Day':1,'3 Days':3,'5 Days':5,'7 Days':7,'10 Days':10,'14 Days':14,'21 Days':21,'30 Days':30}[m.duration]??null);let endDate=null;if(durationDays!==null){const d=new Date(`${start}T00:00:00`);d.setDate(d.getDate()+Math.max(durationDays-1,0));endDate=d.toISOString().slice(0,10)}return {patient_id:patient.id,medicine_name:m.medicine_name,strength:m.strength,dose:m.strength,route:m.route,food_instruction:m.food_instruction,special_instruction:m.special_instruction,scheduled_times:m.times.split(',').map(x=>x.trim()).filter(Boolean),frequency:m.frequency,duration:m.duration,duration_days:m.duration==='Custom'?Number(m.custom_duration_days||0):durationDays,start_date:start,end_date:endDate,entered_by:user.id,verified_by:user.id}});
         await client.from('medication_orders').insert(medRows);
         const careRows=care.filter(c=>c.care_type).map(c=>({...c,patient_id:patient.id,entered_by:user.id}));if(careRows.length)await client.from('care_orders').insert(careRows);
-        if(form.physio_required&&form.therapy_type)await client.from('physiotherapy_orders').insert({patient_id:patient.id,advised_by:form.treating_doctor||form.referring_doctor,therapy_type:form.therapy_type,frequency:form.physio_frequency,preferred_time:form.physio_time,precautions:form.physio_precautions,start_date:form.admission_date,entered_by:user.id});
+        if(form.physio_required&&form.therapy_type)await client.from('physiotherapy_plans').insert({patient_id:patient.id,advised_by:form.treating_doctor||form.referring_doctor,therapy_type:form.therapy_type,frequency:form.physio_frequency,preferred_time:form.physio_time,precautions:form.physio_precautions,start_date:form.admission_date,entered_by:user.id});
         await client.from('audit_log').insert({user_id:user.id,action:'PATIENT_ADMISSION_COMPLETED',entity:'patients',entity_id:patient.id,details:{admission_type:form.admission_type,category:form.patient_category}});
         setMsg('Admission completed. Patient photo, documents, medicines and care plan are active.');setForm(initial);setMeds([blankMedicine()]);setCare([blankCare()]);setPhotoFiles([]);setIdFiles([]);setDischargeFiles([]);setPrescriptionFiles([]);setReportFiles([]);if(patientPhotoPreview)URL.revokeObjectURL(patientPhotoPreview);setPatientPhotoPreview('');
       }catch(err){setMsg('Patient created, but document or care setup failed: '+err.message)}
@@ -1212,7 +1212,7 @@ Caring with Compassion. Living with Dignity.`;
       client.from('medication_administrations').select('*').eq('scheduled_date',today),
       client.from('care_orders').select(`*,patients(${patientFields})`).eq('is_active',true),
       client.from('care_logs').select('*').eq('care_date',today),
-      client.from('physiotherapy_orders').select(`*,patients(${patientFields})`).eq('is_active',true),
+      client.from('physiotherapy_plans').select(`*,patients(${patientFields})`).eq('is_active',true),
       client.from('physiotherapy_sessions').select('*').eq('session_date',today)
     ]);setMeds(m.data||[]);setMedLogs(ml.data||[]);setCare(c.data||[]);setCareLogs(cl.data||[]);setPhysio(p.data||[]);setPhysioLogs(pl.data||[]);setLoading(false)}
     React.useEffect(()=>{load();const ch=client.channel('shift-live-v31').on('postgres_changes',{event:'*',schema:'public',table:'medication_administrations'},load).on('postgres_changes',{event:'*',schema:'public',table:'care_logs'},load).on('postgres_changes',{event:'*',schema:'public',table:'physiotherapy_sessions'},load).subscribe();return()=>client.removeChannel(ch)},[]);
@@ -1277,7 +1277,7 @@ Caring with Compassion. Living with Dignity.`;
         client.from('care_orders').select('*').eq('patient_id',p.id).order('created_at',{ascending:false}),
         client.from('care_logs').select('*').eq('patient_id',p.id).order('created_at',{ascending:false}).limit(100),
         client.from('vital_signs').select('*').eq('patient_id',p.id).order('recorded_at',{ascending:false}).limit(100),
-        client.from('physiotherapy_orders').select('*').eq('patient_id',p.id).order('created_at',{ascending:false}),
+        client.from('physiotherapy_plans').select('*').eq('patient_id',p.id).order('created_at',{ascending:false}),
         client.from('physiotherapy_sessions').select('*').eq('patient_id',p.id).order('session_date',{ascending:false}).limit(100),
         client.from('patient_documents').select('*').eq('patient_id',p.id).order('created_at',{ascending:false}),
         client.from('meal_records').select('*').eq('patient_id',p.id).order('served_at',{ascending:false}).limit(100),
@@ -1648,7 +1648,7 @@ Caring with Compassion. Living with Dignity.`;
         client.from('care_orders').select('*,patients(full_name,title,patient_id,room_no,bed_no)').eq('is_active',true),
         client.from('care_logs').select('*').eq('care_date',today),
         client.from('vital_signs').select('*,patients(full_name,title,patient_id,room_no,bed_no)').gte('recorded_at',today+'T00:00:00').order('recorded_at',{ascending:false}),
-        client.from('physiotherapy_orders').select('*,patients(full_name,title,patient_id,room_no,bed_no)').eq('is_active',true),
+        client.from('physiotherapy_plans').select('*,patients(full_name,title,patient_id,room_no,bed_no)').eq('is_active',true),
         client.from('physiotherapy_sessions').select('*').eq('session_date',today),
         client.from('incidents').select('*,patients(full_name,title,patient_id,room_no,bed_no)').eq('status','Open').order('incident_at',{ascending:false}),
         client.from('shift_handovers').select('*,profiles!shift_handovers_submitted_by_fkey(full_name,title)').order('created_at',{ascending:false}).limit(5)
@@ -2256,8 +2256,64 @@ Caring with Compassion. Living with Dignity.`;
     return h(React.Fragment,null,h(Section,{title:'Food & Diet',subtitle:'Meal service, intake and feeding assistance'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),miniSelect('Meal',form.meal_type,['Breakfast','Lunch','Evening snack','Dinner','Tube feed','Other'],v=>setForm({...form,meal_type:v})),miniInput('Menu / feed',form.menu,v=>setForm({...form,menu:v}),true),miniSelect('Consumption',form.consumption_status,['Consumed fully','Consumed partially','Refused','Vomited','Tube feed completed'],v=>setForm({...form,consumption_status:v})),miniInput('Remarks',form.remarks,v=>setForm({...form,remarks:v})),h('button',{className:'btn btn-primary'},'Save meal record'))),h(LogTable,{title:'Recent Meal Records',heads:['Patient','Meal','Menu','Consumption','Time'],rows:rows.map(r=>[r.patients?.full_name,r.meal_type,r.menu,r.consumption_status,fmt(r.served_at)])}))
   }
 
-  function Physiotherapy(){const [rows,setRows]=React.useState([]);async function load(){const {data}=await client.from('physiotherapy_orders').select('*,patients(full_name,room_no,bed_no)').eq('is_active',true).order('created_at',{ascending:false});setRows(data||[])}React.useEffect(()=>{load()},[]);return h(LogTable,{title:'Physiotherapy Plan',subtitle:'Therapy advised at discharge',heads:['Patient','Therapy','Frequency','Preferred time','Precautions'],rows:rows.map(r=>[r.patients?.full_name,r.therapy_type,r.frequency,r.preferred_time||'—',r.precautions||'—'])})}
+  function Physiotherapy(){
+    const [rows,setRows]=React.useState([]);
+    const [patients,setPatients]=React.useState([]);
+    const [loading,setLoading]=React.useState(true);
+    const [message,setMessage]=React.useState('');
 
+    async function load(){
+      setLoading(true);setMessage('');
+      const [plansResult,patientsResult]=await Promise.all([
+        client.from('physiotherapy_plans').select('*').order('created_at',{ascending:false}),
+        client.from('patients').select('id,title,full_name,patient_id,room_no,bed_no,is_active').order('full_name')
+      ]);
+      if(plansResult.error){
+        setMessage(plansResult.error.message||'Unable to load physiotherapy plans.');
+        setRows([]);
+      }else{
+        setRows((plansResult.data||[]).filter(row=>row.is_active!==false));
+      }
+      if(!patientsResult.error)setPatients(patientsResult.data||[]);
+      setLoading(false);
+    }
+
+    React.useEffect(()=>{
+      load();
+      const channel=client.channel('physiotherapy-plan-live')
+        .on('postgres_changes',{event:'*',schema:'public',table:'physiotherapy_plans'},load)
+        .subscribe();
+      return()=>client.removeChannel(channel);
+    },[]);
+
+    const patientFor=id=>patients.find(p=>p.id===id)||{};
+    const displayRows=rows.map(row=>{
+      const patient=patientFor(row.patient_id);
+      const patientLabel=patient.id
+        ? `${formalName(patient)}${patient.patient_id?` · ${patient.patient_id}`:''}${patient.room_no?` · Room ${patient.room_no}${patient.bed_no?`-${patient.bed_no}`:''}`:''}`
+        : 'Patient not linked';
+      return [
+        patientLabel,
+        row.therapy_type||row.therapy||row.exercise_name||'—',
+        row.frequency||'—',
+        row.preferred_time||row.session_time||'—',
+        row.precautions||row.special_instructions||'—'
+      ];
+    });
+
+    return h(React.Fragment,null,
+      message&&h('div',{className:'message error'},message),
+      h(LogTable,{
+        title:'Physiotherapy Plan',
+        subtitle:'Therapy advised at discharge or during patient review',
+        heads:['Patient','Therapy','Frequency','Preferred time','Precautions'],
+        rows:displayRows
+      }),
+      !loading&&!message&&!displayRows.length&&h('div',{className:'card panel'},
+        h('p',{className:'small-note'},'No active physiotherapy plan has been entered. Admin or Manager can add the plan from Patient Edit.')
+      )
+    );
+  }
   function ShiftHandover({profile}){
     const [rows,setRows]=React.useState([]),[form,setForm]=React.useState({shift:currentShift(),patient_summary:'',pending_tasks:'',special_instructions:'',priority:'Routine'});async function load(){const {data}=await client.from('shift_handovers').select('*,profiles!shift_handovers_submitted_by_fkey(full_name)').order('created_at',{ascending:false}).limit(50);setRows(data||[])}React.useEffect(()=>{load()},[]);
     async function save(e){e.preventDefault();const {error}=await client.from('shift_handovers').insert({...form,handover_date:new Date().toISOString().slice(0,10),submitted_by:profile.id});if(error)return alert(error.message);setForm({...form,patient_summary:'',pending_tasks:'',special_instructions:''});load()}
@@ -2490,7 +2546,7 @@ Caring with Compassion. Living with Dignity.`;
       setBusy(true);
       try{
         const results=await Promise.all([
-          client.from('patients').select('*'),client.from('vital_signs').select('*'),client.from('care_logs').select('*'),client.from('care_orders').select('*'),client.from('medication_orders').select('*'),client.from('medication_administrations').select('*'),client.from('meal_records').select('*'),client.from('physiotherapy_orders').select('*'),client.from('physiotherapy_sessions').select('*'),client.from('incidents').select('*'),client.from('billing_transactions').select('*'),client.from('recovery_events').select('*'),client.from('shift_handovers').select('*'),client.from('patient_documents').select('*'),client.from('profiles').select('*'),client.from('audit_log').select('*')
+          client.from('patients').select('*'),client.from('vital_signs').select('*'),client.from('care_logs').select('*'),client.from('care_orders').select('*'),client.from('medication_orders').select('*'),client.from('medication_administrations').select('*'),client.from('meal_records').select('*'),client.from('physiotherapy_plans').select('*'),client.from('physiotherapy_sessions').select('*'),client.from('incidents').select('*'),client.from('billing_transactions').select('*'),client.from('recovery_events').select('*'),client.from('shift_handovers').select('*'),client.from('patient_documents').select('*'),client.from('profiles').select('*'),client.from('audit_log').select('*')
         ]);
         const [pats,vitals,care,careOrders,orders,mar,meals,physioOrders,physioSessions,incidents,billing,recovery,handovers,documents,staff,audit]=results.map(safeRows);
         const selectedPatient=pats.find(p=>p.id===patientId)||patients.find(p=>p.id===patientId)||null;
