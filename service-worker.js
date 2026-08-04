@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.14-special-nurse-role-validation';
+const CACHE = 'samara-erp-1.3.15-discharge-workflow';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.14', './app.js?v=1.3.14',
-  './bootstrap-error.js?v=1.3.14', './health-check.js?v=1.3.14',
-  './config.js?v=1.3.14', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.15', './app.js?v=1.3.15',
+  './bootstrap-error.js?v=1.3.15', './health-check.js?v=1.3.15',
+  './config.js?v=1.3.15', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

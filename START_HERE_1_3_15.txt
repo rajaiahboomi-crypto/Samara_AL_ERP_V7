@@ -1,0 +1,32 @@
+SAMARA CARE ERP 1.3.15 — PATIENT DISCHARGE & AUTOMATIC BED RELEASE
+
+1. Run once in Supabase SQL Editor:
+   40_patient_discharge_auto_bed_release.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Workflow:
+- Nurse/Admin/Manager can initiate discharge.
+- Nurse completes clinical details and handover checklist.
+- Accounts marks billing clearance.
+- Admin/Manager verifies all clearances and completes discharge.
+- Caregiver/Kitchen can view only.
+
+Completion automatically:
+- Marks patient inactive/discharged.
+- Saves discharge date and time.
+- Removes room and bed from patient record.
+- Changes Room/Bed status to Available.
+- Stops active medicines, care plans and physiotherapy plans.
+- Completes active Special Nurse assignments.
+- Records completion in Audit Trail.
+
+Mandatory before completion:
+- Billing clearance
+- Clinical clearance
+- Room/property clearance
+- Medicines handed over
+- Discharge summary handed over

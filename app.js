@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.14';
-  const APP_BUILD_DATE = '04-Aug-2026 16:25 IST';
+  const APP_VERSION = '1.3.15';
+  const APP_BUILD_DATE = '04-Aug-2026 16:55 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -45,7 +45,7 @@
   const NAV_SECTIONS = [
     { title:'OVERVIEW', items:['Dashboard','Notifications'] },
     { title:'ADMIN', items:['Employees','Audit Trail'] },
-    { title:'ADMISSION', items:['Enquiries','Admissions','Patients','Documents'] },
+    { title:'ADMISSION', items:['Enquiries','Admissions','Patients','Discharge','Documents'] },
     { title:'MANAGER', items:['Reports','Intelligent Reports','Medication Errors','Recovery Timeline'] },
     { title:'NURSING', items:['Clinical Dashboard','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Special Nurse','Shift Handover'] },
     { title:'OPERATIONS', items:['Rooms & Beds','Incidents'] },
@@ -56,10 +56,10 @@
   const ROLE_NAV={
     Admin:ALL_NAV,
     Manager:ALL_NAV,
-    Nurse:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Notifications'],
-    Caregiver:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Notifications'],
-    Accounts:['Notifications','Patients','Physiotherapy','Special Nurse','Rooms & Beds','Billing & Payments','Reports','Intelligent Reports'],
-    Kitchen:['Notifications','Patients','Physiotherapy','Special Nurse','Food & Diet']
+    Nurse:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Notifications'],
+    Caregiver:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Notifications'],
+    Accounts:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Rooms & Beds','Billing & Payments','Reports','Intelligent Reports'],
+    Kitchen:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Food & Diet']
   };
   const ROLE_HOME={Admin:'Dashboard',Manager:'Dashboard',Nurse:'Clinical Dashboard',Caregiver:'Clinical Dashboard',Accounts:'Billing & Payments',Kitchen:'Food & Diet'};
   const CLINICAL_ROLES=['Nurse','Caregiver'];
@@ -334,6 +334,7 @@ Caring with Compassion. Living with Dignity.`;
           page==='Admissions'&&h(Admissions,{profile}),
           page==='Clinical Dashboard'&&h(ClinicalDashboard,{profile,onNavigate:setPage}),page==='Shift Tasks'&&h(ShiftTasks,{profile}),
           page==='Patients'&&h(Patients,{profile}),
+          page==='Discharge'&&h(DischargeManagement,{profile}),
           page==='Rooms & Beds'&&h(RoomsBeds,{profile}),
           page==='Daily Care'&&h(DailyCare,{profile}),
           page==='Vital Signs'&&h(VitalSigns,{profile}),
@@ -1600,7 +1601,215 @@ Caring with Compassion. Living with Dignity.`;
 
   function Section({title,subtitle,actions,children}){return h('div',{className:'card panel'},h('div',{className:'panel-head'},h('div',null,h('h3',null,title),subtitle&&h('small',null,subtitle)),actions),children)}
 
-  function RoomsBeds({profile}){
+  
+  function DischargeManagement({profile}){
+    const canInitiate=['Admin','Manager','Nurse'].includes(profile?.role);
+    const canComplete=['Admin','Manager'].includes(profile?.role);
+    const canClearBilling=['Admin','Manager','Accounts'].includes(profile?.role);
+    const [rows,setRows]=React.useState([]);
+    const [patients,setPatients]=React.useState([]);
+    const [loading,setLoading]=React.useState(true);
+    const [message,setMessage]=React.useState('');
+    const [show,setShow]=React.useState(false);
+    const [editing,setEditing]=React.useState(null);
+    const [busy,setBusy]=React.useState(false);
+    const [toast,setToast]=React.useState(null);
+    const toastTimer=React.useRef(null);
+    const initial={
+      patient_id:'',
+      discharge_type:'Planned Discharge',
+      proposed_discharge_date:todayISOIndia(),
+      proposed_discharge_time:'10:00',
+      destination:'Home',
+      destination_details:'',
+      doctor_name:'',
+      doctor_contact:'',
+      doctor_discharge_advice:'',
+      condition_at_discharge:'Stable',
+      relative_name:'',
+      relative_contact:'',
+      transport_arrangement:'Family Transport',
+      medicines_handed_over:false,
+      discharge_summary_handed_over:false,
+      reports_handed_over:false,
+      valuables_handed_over:false,
+      billing_clearance_status:'Pending',
+      clinical_clearance_status:'Pending',
+      room_clearance_status:'Pending',
+      final_instructions:'',
+      remarks:'',
+      status:'Initiated'
+    };
+    const [form,setForm]=React.useState(initial);
+
+    function showToast(type,text){
+      clearTimeout(toastTimer.current);
+      setToast({type,text});
+      toastTimer.current=setTimeout(()=>setToast(null),5000);
+    }
+    React.useEffect(()=>()=>clearTimeout(toastTimer.current),[]);
+
+    async function load(){
+      setLoading(true);setMessage('');
+      const [d,p]=await Promise.all([
+        client.from('patient_discharges').select('*').order('created_at',{ascending:false}),
+        client.from('patients').select('id,title,full_name,patient_id,room_no,bed_no,is_active,attendant_name,attendant_phone,treating_doctor,doctor_phone').order('full_name')
+      ]);
+      if(d.error){setMessage(d.error.message||'Unable to load discharge records.');setRows([])}else setRows(d.data||[]);
+      if(!p.error)setPatients(p.data||[]);
+      setLoading(false);
+    }
+    React.useEffect(()=>{
+      load();
+      const ch=client.channel('discharge-live')
+        .on('postgres_changes',{event:'*',schema:'public',table:'patient_discharges'},load)
+        .on('postgres_changes',{event:'*',schema:'public',table:'patients'},load)
+        .subscribe();
+      return()=>client.removeChannel(ch);
+    },[]);
+
+    const patientFor=id=>patients.find(p=>p.id===id)||{};
+    const patientLabel=id=>{
+      const p=patientFor(id);
+      return p.id?`${formalName(p)} · ${p.patient_id||'—'} · Room ${p.room_no||'—'}${p.bed_no?`-${p.bed_no}`:''}`:'Patient not linked';
+    };
+    const clockLabel=value=>{
+      if(!value)return '—';
+      const [h,m]=String(value).slice(0,5).split(':').map(Number);
+      return `${h%12||12}:${String(m||0).padStart(2,'0')} ${h<12?'AM':'PM'}`;
+    };
+
+    function openNew(){
+      setEditing(null);setForm({...initial,proposed_discharge_date:todayISOIndia()});setShow(true);
+    }
+    function openEdit(row){
+      setEditing(row);setForm({...initial,...row,proposed_discharge_time:String(row.proposed_discharge_time||'10:00').slice(0,5)});setShow(true);
+    }
+    function onPatient(id){
+      const p=patientFor(id);
+      setForm(current=>({...current,patient_id:id,relative_name:p.attendant_name||'',relative_contact:p.attendant_phone||'',doctor_name:p.treating_doctor||'',doctor_contact:p.doctor_phone||''}));
+    }
+
+    async function save(e){
+      e.preventDefault();
+      if(!canInitiate&&!editing)return;
+      if(!form.patient_id){showToast('error','Please select the patient.');return}
+      if(isFutureDateIndia(form.proposed_discharge_date)){showToast('error','Future discharge dates are not permitted at the time of final discharge.');return}
+      if(!form.doctor_name.trim()||!form.doctor_discharge_advice.trim()){showToast('error','Doctor name and discharge advice are mandatory.');return}
+      setBusy(true);
+      const {data:{user}}=await client.auth.getUser();
+      const payload={...form,initiated_by:editing?.initiated_by||user?.id||profile?.id,updated_at:new Date().toISOString()};
+      delete payload.id;delete payload.created_at;delete payload.completed_at;delete payload.completed_by;
+      let result=editing
+        ?await client.from('patient_discharges').update(payload).eq('id',editing.id).select('id').single()
+        :await client.from('patient_discharges').insert(payload).select('id').single();
+      setBusy(false);
+      if(result.error){showToast('error',result.error.message||'Unable to save discharge request.');return}
+      showToast('success',editing?'Discharge formalities updated successfully.':'Discharge process initiated successfully.');
+      setShow(false);await load();
+      writeAuditEvent(editing?'Discharge Updated':'Discharge Initiated','Discharge',result.data?.id,{
+        patient_id:form.patient_id,status:form.status,discharge_type:form.discharge_type
+      },'Success');
+    }
+
+    async function setBilling(row,status){
+      if(!canClearBilling)return;
+      const {error}=await client.from('patient_discharges').update({billing_clearance_status:status,updated_at:new Date().toISOString()}).eq('id',row.id);
+      if(error){showToast('error',error.message);return}
+      showToast('success',`Billing clearance marked ${status}.`);await load();
+    }
+
+    async function complete(row){
+      if(!canComplete)return;
+      const missing=[];
+      if(row.billing_clearance_status!=='Cleared')missing.push('Billing clearance');
+      if(row.clinical_clearance_status!=='Cleared')missing.push('Clinical clearance');
+      if(row.room_clearance_status!=='Cleared')missing.push('Room/property clearance');
+      if(!row.medicines_handed_over)missing.push('Medicines handover');
+      if(!row.discharge_summary_handed_over)missing.push('Discharge summary');
+      if(missing.length){showToast('error',`Complete the following before discharge: ${missing.join(', ')}.`);return}
+      if(!confirm(`Complete discharge for ${patientLabel(row.patient_id)}? The room and bed will become Available automatically.`))return;
+      setBusy(true);
+      const {data,error}=await client.rpc('complete_patient_discharge',{p_discharge_id:row.id});
+      setBusy(false);
+      if(error){showToast('error',error.message||'Unable to complete discharge.');return}
+      showToast('success','Patient discharged successfully. The room and bed are now Available.');
+      await load();
+      writeAuditEvent('Patient Discharged','Discharge',row.id,{patient_id:row.patient_id,bed_released:true},'Success');
+    }
+
+    const tableRows=rows.map(row=>[
+      patientLabel(row.patient_id),
+      row.discharge_type||'—',
+      `${formatDateIN(row.proposed_discharge_date)} ${clockLabel(row.proposed_discharge_time)}`,
+      row.destination||'—',
+      row.doctor_name||'—',
+      h('span',{className:`badge ${row.billing_clearance_status==='Cleared'?'':'off'}`},`Billing: ${row.billing_clearance_status||'Pending'}`),
+      h('span',{className:`badge ${row.clinical_clearance_status==='Cleared'?'':'off'}`},`Clinical: ${row.clinical_clearance_status||'Pending'}`),
+      h('span',{className:`badge ${row.status==='Completed'?'':'off'}`},row.status||'Initiated'),
+      h('div',{className:'employee-actions'},
+        ['Admin','Manager','Nurse'].includes(profile.role)&&row.status!=='Completed'&&h('button',{className:'btn btn-secondary',onClick:()=>openEdit(row)},'Update'),
+        canClearBilling&&row.status!=='Completed'&&h('button',{className:'btn btn-secondary',onClick:()=>setBilling(row,row.billing_clearance_status==='Cleared'?'Pending':'Cleared')},row.billing_clearance_status==='Cleared'?'Reopen Billing':'Clear Billing'),
+        canComplete&&row.status!=='Completed'&&h('button',{className:'btn btn-primary',onClick:()=>complete(row),disabled:busy},'Complete Discharge')
+      )
+    ]);
+
+    return h(React.Fragment,null,
+      h(Section,{title:'Patient Discharge',subtitle:'Controlled discharge formalities with automatic room and bed release'},
+        message&&h('div',{className:'message error'},message),
+        h('div',{className:'panel-head'},
+          h('p',{className:'small-note'},'Nurse initiates the clinical discharge process. Accounts clears billing. Admin or Manager verifies all formalities and completes discharge.'),
+          canInitiate&&h('button',{className:'btn btn-primary',onClick:openNew},'Initiate Discharge')
+        )
+      ),
+      h(LogTable,{
+        title:`Discharge Register (${tableRows.length})`,
+        subtitle:'The bed is released only after Admin/Manager completes discharge',
+        heads:['Patient','Type','Planned Date / Time','Destination','Doctor','Billing','Clinical','Status','Action'],
+        rows:tableRows
+      }),
+      !loading&&!message&&!tableRows.length&&h('div',{className:'card panel'},h('p',{className:'small-note'},'No discharge process has been initiated.')),
+      show&&h('div',{className:'modal-backdrop',onClick:e=>{if(e.target===e.currentTarget)setShow(false)}},
+        h('form',{className:'card modal',style:{width:'min(1100px,96vw)',maxHeight:'92vh',overflow:'auto'},onSubmit:save},
+          h('div',{className:'panel-head'},
+            h('div',null,h('h3',null,editing?'Update Discharge Formalities':'Initiate Patient Discharge'),h('small',null,'Clinical, billing, documents, belongings and room-clearance checklist')),
+            h('button',{type:'button',className:'close',onClick:()=>setShow(false)},'×')
+          ),
+          h('div',{className:'modal-grid'},
+            h('div',{className:'field'},h('label',null,'Patient'),h('select',{required:true,value:form.patient_id,disabled:!!editing,onChange:e=>onPatient(e.target.value)},h('option',{value:''},'Select active patient'),patients.filter(p=>p.is_active!==false).map(p=>h('option',{key:p.id,value:p.id},patientLabel(p.id))))),
+            h('div',{className:'field'},h('label',null,'Discharge Type'),h('select',{value:form.discharge_type,onChange:e=>setForm({...form,discharge_type:e.target.value})},['Planned Discharge','Transfer to Hospital','Discharge Against Medical Advice','Home Care Transfer','Death / Expiry','Other'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Discharge Date'),h('input',{type:'date',max:todayISOIndia(),value:form.proposed_discharge_date,onChange:e=>setForm({...form,proposed_discharge_date:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Discharge Time'),h('input',{type:'time',value:form.proposed_discharge_time,onChange:e=>setForm({...form,proposed_discharge_time:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Destination'),h('select',{value:form.destination,onChange:e=>setForm({...form,destination:e.target.value})},['Home','Hospital','Rehabilitation Centre','Another Assisted Living Facility','Relative Residence','Other'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Destination Details'),h('input',{value:form.destination_details,onChange:e=>setForm({...form,destination_details:e.target.value}),placeholder:'Hospital/facility/address'})),
+            h('div',{className:'field'},h('label',null,'Doctor Name'),h('input',{required:true,value:form.doctor_name,onChange:e=>setForm({...form,doctor_name:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Doctor Contact'),h('input',{value:form.doctor_contact,onChange:e=>setForm({...form,doctor_contact:e.target.value})})),
+            h('div',{className:'field span-2'},h('label',null,'Doctor Discharge Advice'),h('textarea',{required:true,rows:3,value:form.doctor_discharge_advice,onChange:e=>setForm({...form,doctor_discharge_advice:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Condition at Discharge'),h('select',{value:form.condition_at_discharge,onChange:e=>setForm({...form,condition_at_discharge:e.target.value})},['Stable','Improved','Requires Continued Monitoring','Transferred for Higher Care','Critical','Other'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Transport Arrangement'),h('select',{value:form.transport_arrangement,onChange:e=>setForm({...form,transport_arrangement:e.target.value})},['Family Transport','Ambulance','Facility Vehicle','Taxi','Other'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Receiving Relative / Attendant'),h('input',{value:form.relative_name,onChange:e=>setForm({...form,relative_name:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Relative Contact'),h('input',{value:form.relative_contact,onChange:e=>setForm({...form,relative_contact:e.target.value})})),
+            h('div',{className:'field span-2'},h('label',null,'Handover Checklist'),h('div',{className:'check-grid'},
+              [['medicines_handed_over','Medicines handed over'],['discharge_summary_handed_over','Discharge summary handed over'],['reports_handed_over','Reports/documents handed over'],['valuables_handed_over','Personal belongings/valuables handed over']].map(([key,label])=>h('label',{className:'check-card',key},h('input',{type:'checkbox',checked:!!form[key],onChange:e=>setForm({...form,[key]:e.target.checked})}),h('span',null,label)))
+            )),
+            h('div',{className:'field'},h('label',null,'Clinical Clearance'),h('select',{value:form.clinical_clearance_status,onChange:e=>setForm({...form,clinical_clearance_status:e.target.value})},['Pending','Cleared'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Room / Property Clearance'),h('select',{value:form.room_clearance_status,onChange:e=>setForm({...form,room_clearance_status:e.target.value})},['Pending','Cleared'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Billing Clearance'),h('select',{disabled:!canClearBilling,value:form.billing_clearance_status,onChange:e=>setForm({...form,billing_clearance_status:e.target.value})},['Pending','Cleared'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field span-2'},h('label',null,'Final Instructions'),h('textarea',{rows:3,value:form.final_instructions,onChange:e=>setForm({...form,final_instructions:e.target.value})})),
+            h('div',{className:'field span-2'},h('label',null,'Remarks'),h('textarea',{rows:2,value:form.remarks,onChange:e=>setForm({...form,remarks:e.target.value})}))
+          ),
+          h('div',{className:'actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setShow(false)},'Cancel'),h('button',{className:'btn btn-primary',disabled:busy},busy?'Saving…':editing?'Update Formalities':'Initiate Discharge'))
+        )
+      ),
+      toast&&h('div',{className:`samara-toast ${toast.type}`,role:'status','aria-live':'polite'},
+        h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),
+        h('div',null,h('strong',null,toast.type==='success'?'Discharge updated':'Discharge failed'),h('span',null,toast.text)),
+        h('button',{type:'button',onClick:()=>setToast(null)},'×')
+      )
+    );
+  }
+
+function RoomsBeds({profile}){
     const canEdit=['Admin','Manager'].includes(profile?.role);
     const empty={room_no:'100',bed_no:'A',room_type:'Twin Sharing',daily_rate:'',status:'Available',patient_id:'',floor:'',wing:'',notes:''};
     const [rows,setRows]=React.useState([]),[patients,setPatients]=React.useState([]),[loading,setLoading]=React.useState(true);
