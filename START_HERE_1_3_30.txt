@@ -1,0 +1,21 @@
+SAMARA CARE ERP 1.3.30 — PHYSIOTHERAPY SESSION SAVE FIX
+
+The error occurred because the physiotherapy_sessions table requires plan_id,
+while the application was sending only order_id.
+
+1. Run once in Supabase SQL Editor:
+   48_physiotherapy_plan_id_compatibility.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Fixed:
+- Record Physiotherapy Session now sends both plan_id and order_id.
+- Shift Tasks quick physiotherapy completion also sends both identifiers.
+- Existing historical sessions are synchronised.
+- Recent session display recognises both old and new records.
+- Duplicate session entry for the same plan and date is prevented.
+- Completed, Pending and Not Done statuses remain available.
+- Reason remains mandatory for Pending and Not Done.

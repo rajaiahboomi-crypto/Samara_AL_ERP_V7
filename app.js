@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.29';
-  const APP_BUILD_DATE = '04-Aug-2026 13:50 IST';
+  const APP_VERSION = '1.3.30';
+  const APP_BUILD_DATE = '04-Aug-2026 14:20 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1459,10 +1459,10 @@ Caring with Compassion. Living with Dignity.`;
     function riskBadges(p){const items=[[p.fall_risk,'Fall'],[p.pressure_sore_risk,'Pressure sore'],[p.aspiration_risk,'Aspiration'],[p.wandering_risk,'Wandering'],[p.infection_risk,'Infection'],[p.seizure_history,'Seizure'],[p.oxygen_required,'Oxygen'],[p.dressing_required,'Dressing']].filter(x=>x[0]);return items.length?h('div',{className:'risk-badges'},items.map(x=>h('span',{className:'risk-badge',key:x[1]},x[1]))):null}
     async function logMedicine(order,time,status){const {data:{user}}=await client.auth.getUser();const remarks=status==='Given'?'':prompt('Enter reason / remarks:')||'';const {error}=await client.from('medication_administrations').insert({order_id:order.id,patient_id:order.patient_id,scheduled_date:today,scheduled_time:time,status,administered_at:new Date().toISOString(),administered_by:user.id,remarks});if(error)alert(error.message);else load()}
     async function logCare(order,status){const {data:{user}}=await client.auth.getUser();const shift=currentShift();const remarks=status==='Completed'?'':prompt('Enter reason / remarks:')||'';const {error}=await client.from('care_logs').upsert({care_order_id:order.id,patient_id:order.patient_id,care_date:today,shift,status,completed_at:new Date().toISOString(),completed_by:user.id,remarks},{onConflict:'care_order_id,care_date,shift'});if(error)alert(error.message);else load()}
-    async function logPhysio(order,status){const {data:{user}}=await client.auth.getUser();const notes=status==='Completed'?(prompt('Session notes (optional):')||''):(prompt('Reason / notes:')||'');const {error}=await client.from('physiotherapy_sessions').upsert({order_id:order.id,patient_id:order.patient_id,session_date:today,status,session_at:new Date().toISOString(),performed_by:user.id,notes},{onConflict:'order_id,session_date'});if(error)alert(error.message);else load()}
+    async function logPhysio(order,status){const {data:{user}}=await client.auth.getUser();const notes=status==='Completed'?(prompt('Session notes (optional):')||''):(prompt('Reason / notes:')||'');const {error}=await client.from('physiotherapy_sessions').upsert({plan_id:order.id,order_id:order.id,patient_id:order.patient_id,session_date:today,status,session_at:new Date().toISOString(),performed_by:user.id,notes},{onConflict:'order_id,session_date'});if(error)alert(error.message);else load()}
     const shift=currentShift();const medTasks=[];meds.forEach(o=>(o.scheduled_times||[]).forEach(t=>{const time=String(t).slice(0,5);if(shiftForTime(time)===shift)medTasks.push({order:o,time,log:medLogs.find(x=>x.order_id===o.id&&String(x.scheduled_time).slice(0,5)===time)})}));
     medTasks.sort((a,b)=>a.time.localeCompare(b.time));const careTasks=care.filter(o=>o.shift==='Both shifts'||o.shift===shift).map(o=>({...o,log:careLogs.find(x=>x.care_order_id===o.id&&x.shift===shift)}));
-    const physioTasks=physio.filter(o=>!o.preferred_time||shiftForTime(String(o.preferred_time).slice(0,5))===shift).map(o=>({...o,log:physioLogs.find(x=>x.order_id===o.id)}));
+    const physioTasks=physio.filter(o=>!o.preferred_time||shiftForTime(String(o.preferred_time).slice(0,5))===shift).map(o=>({...o,log:physioLogs.find(x=>(x.plan_id||x.order_id)===o.id)}));
     if(loading)return h('div',{className:'loading'},'Loading shift tasks…');
     const pending=medTasks.filter(x=>!x.log).length+careTasks.filter(x=>!x.log).length+physioTasks.filter(x=>!x.log).length;
     return h(React.Fragment,null,
@@ -2888,6 +2888,7 @@ function RoomsBeds({profile}){
       setSaving(true);
       const {data:{user}}=await client.auth.getUser();
       const payload={
+        plan_id:entryPlan.id,
         order_id:entryPlan.id,
         patient_id:entryPlan.patient_id,
         session_date:form.session_date,
@@ -2931,7 +2932,7 @@ function RoomsBeds({profile}){
     ]);
 
     const recentRows=sessions.map(session=>{
-      const plan=planFor(session.order_id);
+      const plan=planFor(session.plan_id||session.order_id);
       return [
         formatDateIN(session.session_date),
         patientLabel(session.patient_id),
