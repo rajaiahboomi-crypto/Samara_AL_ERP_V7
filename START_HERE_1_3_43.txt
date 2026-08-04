@@ -1,0 +1,32 @@
+SAMARA CARE ERP 1.3.43 — UNIVERSAL ACTION RETURN WORKFLOW
+
+Upload these four files:
+- app.js
+- index.html
+- service-worker.js
+- styles-1.3.43.css
+
+No Supabase SQL is required.
+
+STANDARD WORKFLOW
+
+Whenever an action button opens another page/window:
+1. The previous page is remembered.
+2. The relevant form opens with the patient/task preselected.
+3. The user completes and saves the action.
+4. The success confirmation appears briefly.
+5. Any action modal closes automatically.
+6. The ERP returns automatically to the previous page.
+7. The previous page refreshes and shows the updated status.
+
+Applied to the current cross-page clinical actions:
+- Daily Care
+- Medication Administration / MAR
+- Vital Signs
+- Physiotherapy
+
+Direct menu access is unchanged:
+- If a module is opened directly from the left menu, it remains open after saving.
+- Automatic return is used only when the module was opened from another page through an action button.
+
+This shared return framework can also be used by future action buttons without creating separate behaviour for every page.

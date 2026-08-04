@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.42';
-  const APP_BUILD_DATE = '04-Aug-2026 17:45 IST';
+  const APP_VERSION = '1.3.43';
+  const APP_BUILD_DATE = '04-Aug-2026 18:00 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -151,6 +151,12 @@
   };
   const clearTaskNavigationContext = () => {
     try{sessionStorage.removeItem(TASK_NAVIGATION_KEY)}catch(_error){}
+  };
+
+  const returnAfterSuccessfulAction = (returnPage,onNavigate,delay=650) => {
+    if(!returnPage||typeof onNavigate!=='function')return false;
+    setTimeout(()=>onNavigate(returnPage),delay);
+    return true;
   };
 
   const todayISOIndia = () => {
@@ -558,7 +564,7 @@ Caring with Compassion. Living with Dignity.`;
           page==='Discharge'&&h(DischargeManagement,{profile}),
           page==='Rooms'&&h(RoomsBeds,{profile}),
           page==='Daily Care'&&h(DailyCare,{profile,onNavigate:setPage}),
-          page==='Vital Signs'&&h(VitalSigns,{profile}),
+          page==='Vital Signs'&&h(VitalSigns,{profile,onNavigate:setPage}),
           page==='Medicines'&&h(Medicines,{profile,onNavigate:setPage}),
           page==='Food & Diet'&&h(FoodDiet,{profile}),
           page==='Physiotherapy'&&h(Physiotherapy,{profile,onNavigate:setPage}),
@@ -1866,7 +1872,7 @@ Caring with Compassion. Living with Dignity.`;
                 h('div',{className:`patient-work-task-row ${group.vitalsCompleted?'done':''}`},
                   h('div',null,h('strong',null,'Current shift vital observations'),h('small',null,group.vitalsCompleted?'Recorded today':'Not yet recorded today')),
                   group.vitalsCompleted?h('span',{className:'badge'},'Completed'):h('span',{className:'pill warning'},'Pending'),
-                  !group.vitalsCompleted&&h('button',{className:'btn btn-primary',onClick:()=>onNavigate?.('Vital Signs')},'Enter Vitals')
+                  !group.vitalsCompleted&&h('button',{className:'btn btn-primary',onClick:()=>openRegularTask('Vital Signs',{patient_id:group.id})},'Enter Vitals')
                 )
               ),
 
@@ -2913,7 +2919,7 @@ function RoomsBeds({profile}){
       showToast('success',`${form.care_type} recorded successfully for the selected patient.`);
       setForm(current=>({...current,remarks:''}));
       await load();
-      if(returnPage&&onNavigate)setTimeout(()=>onNavigate(returnPage),650);
+      returnAfterSuccessfulAction(returnPage,onNavigate);
 
       // Audit logging must never block the clinical save.
       writeAuditEvent(
@@ -2934,7 +2940,7 @@ function RoomsBeds({profile}){
 
     return h(React.Fragment,null,
       h(Section,{title:'Daily Care Entry',subtitle:'Bath, restroom, hygiene, feeding, mobility and positioning'},
-        returnPage&&h('div',{className:'return-after-save-note'},'After saving, the system will return automatically to Shift Tasks.'),
+        returnPage&&h('div',{className:'return-after-save-note'},`After saving, the system will return automatically to ${returnPage}.`),
         h('form',{className:'modal-grid',onSubmit:save},
           patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),
           miniSelect('Care activity',form.care_type,['Bathing assistance','Restroom assistance','Oral hygiene','Feeding assistance','Mobility assistance','Diaper change','Position change','Fluid monitoring','Sleep assistance'],v=>setForm({...form,care_type:v})),
@@ -2962,19 +2968,29 @@ function RoomsBeds({profile}){
       )
     );
   }
-  function VitalSigns({profile}){
+  function VitalSigns({profile,onNavigate}){
     const [patients]=usePatients(),[rows,setRows]=React.useState([]),[selectedPatient,setSelectedPatient]=React.useState(''),[form,setForm]=React.useState({patient_id:'',temperature:'',systolic:'',diastolic:'',pulse:'',respiration:'',spo2:'',blood_sugar_type:'Not Taken',blood_sugar:'',weight:'',pain_score:'',remarks:''});
+    const [returnPage,setReturnPage]=React.useState('');
     const measured=value=>{if(value===null||value===undefined||String(value).trim()==='')return null;const n=Number(value);return Number.isFinite(n)&&n!==0?n:null};
     const tempC=value=>{const n=measured(value);if(n===null)return null;return n>=70&&n<=115?(n-32)*5/9:n};
     const calculateLevel=v=>{const systolic=measured(v.systolic),diastolic=measured(v.diastolic),pulse=measured(v.pulse),temperature=tempC(v.temperature),respiration=measured(v.respiration),spo2=measured(v.spo2),sugar=measured(v.blood_sugar);const any=[systolic,diastolic,pulse,temperature,respiration,spo2,sugar,measured(v.weight),v.pain_score!==''&&v.pain_score!==null?Number(v.pain_score):null].some(x=>x!==null);if(!any)return 'Not Recorded';if((spo2!==null&&spo2<90)||(systolic!==null&&(systolic>=180||systolic<80))||(diastolic!==null&&(diastolic>=120||diastolic<50))||(pulse!==null&&(pulse>130||pulse<40))||(temperature!==null&&(temperature>=39.5||temperature<35))||(respiration!==null&&(respiration>30||respiration<8))||(sugar!==null&&(sugar>400||sugar<50)))return 'Critical';if((spo2!==null&&spo2<94)||(systolic!==null&&(systolic>=160||systolic<90))||(diastolic!==null&&(diastolic>=100||diastolic<60))||(pulse!==null&&(pulse>110||pulse<50))||(temperature!==null&&(temperature>=38||temperature<35.5))||(respiration!==null&&(respiration>24||respiration<10))||(sugar!==null&&(sugar>250||sugar<70)))return 'Warning';return 'Normal'};
     async function load(){const {data}=await client.from('vital_signs').select('*,patients(full_name,title,patient_id,room_no,bed_no)').order('recorded_at',{ascending:false}).limit(150);setRows((data||[]).map(r=>({...r,computed_alert_level:calculateLevel(r)})))}
     React.useEffect(()=>{load();const ch=client.channel('vitals-live').on('postgres_changes',{event:'*',schema:'public',table:'vital_signs'},load).subscribe();return()=>client.removeChannel(ch)},[]);
-    async function save(e){e.preventDefault();const sugarType=form.blood_sugar_type||'Not Taken';const sugarValue=sugarType==='Not Taken'?null:num(form.blood_sugar);if(sugarType!=='Not Taken'&&sugarValue===null)return window.alert('Please enter the blood sugar value for the selected test type.');const payload={...form,temperature:num(form.temperature),systolic:num(form.systolic),diastolic:num(form.diastolic),pulse:num(form.pulse),respiration:num(form.respiration),spo2:num(form.spo2),blood_sugar_type:sugarType,blood_sugar:sugarValue,weight:num(form.weight),pain_score:form.pain_score===''?null:Number(form.pain_score),recorded_at:new Date().toISOString(),recorded_by:profile.id};const level=calculateLevel(payload);if(level==='Not Recorded')return window.alert('Please enter at least one actual vital-sign measurement before saving.');payload.alert_level=level;const {error}=await client.from('vital_signs').insert(payload);if(error)return window.alert(error.message);setSelectedPatient(form.patient_id);setForm({...form,temperature:'',systolic:'',diastolic:'',pulse:'',respiration:'',spo2:'',blood_sugar_type:'Not Taken',blood_sugar:'',weight:'',pain_score:'',remarks:''});load()}
+    React.useEffect(()=>{
+      const context=readTaskNavigationContext('Vital Signs');
+      if(!context)return;
+      setForm(current=>({...current,patient_id:context.patient_id||current.patient_id}));
+      setSelectedPatient(context.patient_id||'');
+      setReturnPage(context.return_page||'');
+      clearTaskNavigationContext();
+    },[]);
+    async function save(e){e.preventDefault();const sugarType=form.blood_sugar_type||'Not Taken';const sugarValue=sugarType==='Not Taken'?null:num(form.blood_sugar);if(sugarType!=='Not Taken'&&sugarValue===null)return window.alert('Please enter the blood sugar value for the selected test type.');const payload={...form,temperature:num(form.temperature),systolic:num(form.systolic),diastolic:num(form.diastolic),pulse:num(form.pulse),respiration:num(form.respiration),spo2:num(form.spo2),blood_sugar_type:sugarType,blood_sugar:sugarValue,weight:num(form.weight),pain_score:form.pain_score===''?null:Number(form.pain_score),recorded_at:new Date().toISOString(),recorded_by:profile.id};const level=calculateLevel(payload);if(level==='Not Recorded')return window.alert('Please enter at least one actual vital-sign measurement before saving.');payload.alert_level=level;const {error}=await client.from('vital_signs').insert(payload);if(error)return window.alert(error.message);setSelectedPatient(form.patient_id);setForm({...form,temperature:'',systolic:'',diastolic:'',pulse:'',respiration:'',spo2:'',blood_sugar_type:'Not Taken',blood_sugar:'',weight:'',pain_score:'',remarks:''});await load();returnAfterSuccessfulAction(returnPage,onNavigate)}
     const patientRows=selectedPatient?rows.filter(r=>r.patient_id===selectedPatient).slice(0,10):rows.slice(0,10);
     const latest=patientRows[0];
     const input=(label,key,unit,opts={})=>h('div',{className:'vital-input'},h('label',null,label),h('div',{className:'vital-input-wrap'},h('input',{type:'number',step:opts.step||'any',min:opts.min,max:opts.max,value:form[key],placeholder:opts.placeholder||'',disabled:Boolean(opts.disabled),onChange:e=>setForm({...form,[key]:e.target.value})}),unit&&h('span',null,unit)));
     return h(React.Fragment,null,
       h(Section,{title:'Vital Signs',subtitle:'Fast clinical observation entry with automatic Normal, Warning and Critical classification'},
+        returnPage&&h('div',{className:'return-after-save-note'},`After saving, the system will return automatically to ${returnPage}.`),
         h('form',{className:'vitals-entry-card',onSubmit:save},
           h('div',{className:'vitals-patient-row'},patientSelect(patients,form.patient_id,v=>{setForm({...form,patient_id:v});setSelectedPatient(v)}),h('div',{className:`vital-live-status ${calculateLevel(form).toLowerCase().replace(' ','-')}`},h('small',null,'Current entry'),h('strong',null,calculateLevel(form)))),
           h('div',{className:'vitals-grid'},input('Temperature','temperature','°C / °F',{placeholder:'98.6'}),input('Systolic BP','systolic','mmHg'),input('Diastolic BP','diastolic','mmHg'),input('Pulse','pulse','/min'),input('Respiration','respiration','/min'),input('SpO₂','spo2','%'),h('div',{className:'vital-input'},h('label',null,'Blood Sugar Type'),h('select',{value:form.blood_sugar_type||'Not Taken',onChange:e=>setForm({...form,blood_sugar_type:e.target.value,blood_sugar:e.target.value==='Not Taken'?'':form.blood_sugar})},['Not Taken','FBS','PPBS','RBS'].map(x=>h('option',{value:x,key:x},x)))),input('Blood Sugar','blood_sugar','mg/dL',{disabled:(form.blood_sugar_type||'Not Taken')==='Not Taken'}),input('Weight','weight','kg',{step:'0.1'}),input('Pain Score','pain_score','/10',{min:0,max:10})),
@@ -3083,7 +3099,7 @@ function RoomsBeds({profile}){
       const {error}=await client.from('medication_administrations').insert(payload);
       if(error){setMarMessage(error.message||'Unable to save the Medication Administration Record.');setMarBusy(false);return;}
       setMarBusy(false);setMarTarget(null);setTab('Today’s MAR');await load();
-      if(returnPage&&onNavigate)setTimeout(()=>onNavigate(returnPage),650);
+      returnAfterSuccessfulAction(returnPage,onNavigate);
     }
 
     async function load(){
@@ -3592,7 +3608,7 @@ function RoomsBeds({profile}){
       showToast('success',`Physiotherapy session marked as ${form.status}.`);
       setEntryPlan(null);
       await load();
-      if(returnPage&&onNavigate)setTimeout(()=>onNavigate(returnPage),650);
+      returnAfterSuccessfulAction(returnPage,onNavigate);
       writeAuditEvent('Physiotherapy Session Recorded','Physiotherapy',data?.id||entryPlan.id,{
         patient_id:entryPlan.patient_id,
         therapy:entryPlan.therapy_type,

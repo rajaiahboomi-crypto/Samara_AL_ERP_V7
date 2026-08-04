@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.42-return-to-worklist';
+const CACHE = 'samara-erp-1.3.43-universal-action-return';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.42', './app.js?v=1.3.42',
-  './bootstrap-error.js?v=1.3.42', './health-check.js?v=1.3.42',
-  './config.js?v=1.3.42', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.43', './app.js?v=1.3.43',
+  './bootstrap-error.js?v=1.3.43', './health-check.js?v=1.3.43',
+  './config.js?v=1.3.43', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {
