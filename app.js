@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.46';
-  const APP_BUILD_DATE = '04-Aug-2026 18:45 IST';
+  const APP_VERSION = '1.3.47';
+  const APP_BUILD_DATE = '04-Aug-2026 19:05 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -4027,15 +4027,207 @@ function RoomsBeds({profile}){
   }
 
 function ShiftHandover({profile}){
-    const [rows,setRows]=React.useState([]),[form,setForm]=React.useState({shift:currentShift(),patient_summary:'',pending_tasks:'',special_instructions:'',priority:'Routine'});async function load(){const {data}=await client.from('shift_handovers').select('*,profiles!shift_handovers_submitted_by_fkey(full_name)').order('created_at',{ascending:false}).limit(50);setRows(data||[])}React.useEffect(()=>{load()},[]);
-    async function save(e){e.preventDefault();const {error}=await client.from('shift_handovers').insert({...form,handover_date:new Date().toISOString().slice(0,10),submitted_by:profile.id});if(error)return alert(error.message);setForm({...form,patient_summary:'',pending_tasks:'',special_instructions:''});load()}
-    return h(React.Fragment,null,h(Section,{title:'Shift Handover',subtitle:'Patient status, pending work and priority instructions'},h('form',{className:'form-stack',onSubmit:save},miniSelect('Outgoing shift',form.shift,['Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)'],v=>setForm({...form,shift:v})),textareaSimple('Patient summary',form.patient_summary,v=>setForm({...form,patient_summary:v})),textareaSimple('Pending tasks',form.pending_tasks,v=>setForm({...form,pending_tasks:v})),textareaSimple('Special instructions',form.special_instructions,v=>setForm({...form,special_instructions:v})),miniSelect('Priority',form.priority,['Routine','Important','Critical'],v=>setForm({...form,priority:v})),h('button',{className:'btn btn-primary'},'Submit handover'))),h(LogTable,{title:'Recent Handovers',heads:['Date','Shift','Priority','Summary','Pending','Submitted by'],rows:rows.map(r=>[r.handover_date,r.shift,r.priority,r.patient_summary,r.pending_tasks,r.profiles?.full_name])}))
+    const [patients]=usePatients();
+    const [rows,setRows]=React.useState([]);
+    const [saving,setSaving]=React.useState(false);
+    const [toast,setToast]=React.useState(null);
+    const [form,setForm]=React.useState({
+      patient_id:'',
+      shift:currentShift(),
+      patient_summary:'',
+      pending_tasks:'',
+      special_instructions:'',
+      priority:'Routine'
+    });
+
+    async function load(){
+      const {data,error}=await client.from('shift_handovers')
+        .select('*,patients(full_name,patient_id,room_no,bed_no),profiles!shift_handovers_submitted_by_fkey(full_name)')
+        .order('created_at',{ascending:false})
+        .limit(100);
+      if(error){
+        console.error('Shift handovers could not be loaded:',error);
+        setRows([]);
+        return;
+      }
+      setRows(data||[]);
+    }
+
+    React.useEffect(()=>{load()},[]);
+
+    function showToast(type,text){
+      setToast({type,text});
+      setTimeout(()=>setToast(null),4000);
+    }
+
+    async function save(e){
+      e.preventDefault();
+      if(saving)return;
+      if(!form.patient_id){
+        showToast('error','Select the patient for this shift handover.');
+        return;
+      }
+      if(!form.patient_summary.trim()&&!form.pending_tasks.trim()&&!form.special_instructions.trim()){
+        showToast('error','Enter at least one handover detail.');
+        return;
+      }
+      setSaving(true);
+      const payload={
+        patient_id:form.patient_id,
+        shift:form.shift,
+        patient_summary:form.patient_summary.trim(),
+        pending_tasks:form.pending_tasks.trim(),
+        special_instructions:form.special_instructions.trim(),
+        priority:form.priority,
+        handover_date:todayISOIndia(),
+        submitted_by:profile.id
+      };
+      const {data,error}=await client.from('shift_handovers').insert(payload).select('id').single();
+      if(error){
+        console.error('Shift handover save failed:',error);
+        showToast('error',error.message||'Shift handover could not be saved.');
+        setSaving(false);
+        return;
+      }
+      showToast('success','Patient shift handover submitted successfully.');
+      setForm(current=>({...current,patient_id:'',patient_summary:'',pending_tasks:'',special_instructions:''}));
+      await load();
+      writeAuditEvent('Shift Handover Submitted','Shift Handover',data?.id||form.patient_id,{
+        patient_id:form.patient_id,shift:form.shift,priority:form.priority
+      },'Success');
+      setSaving(false);
+    }
+
+    return h(React.Fragment,null,
+      h(Section,{title:'Shift Handover',subtitle:'Patient-specific status, pending work and priority instructions'},
+        h('form',{className:'form-stack',onSubmit:save},
+          patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),
+          miniSelect('Outgoing shift',form.shift,['Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)'],v=>setForm({...form,shift:v})),
+          textareaSimple('Patient summary',form.patient_summary,v=>setForm({...form,patient_summary:v})),
+          textareaSimple('Pending tasks',form.pending_tasks,v=>setForm({...form,pending_tasks:v})),
+          textareaSimple('Special instructions',form.special_instructions,v=>setForm({...form,special_instructions:v})),
+          miniSelect('Priority',form.priority,['Routine','Important','Critical'],v=>setForm({...form,priority:v})),
+          h('button',{className:'btn btn-primary',disabled:saving},saving?'Submitting…':'Submit handover')
+        )
+      ),
+      h(LogTable,{
+        title:'Recent Handovers',
+        heads:['Date','Patient','Room / Bed','Shift','Priority','Summary','Pending','Submitted by'],
+        rows:rows.map(r=>[
+          formatDateIN(r.handover_date),
+          r.patients?.full_name||'—',
+          r.patients?`${r.patients.room_no||'—'}-${r.patients.bed_no||'—'}`:'—',
+          r.shift,r.priority,r.patient_summary,r.pending_tasks,r.profiles?.full_name||'—'
+        ])
+      }),
+      toast&&h('div',{className:`samara-toast ${toast.type}`},
+        h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),
+        h('div',null,h('strong',null,toast.type==='success'?'Handover saved':'Save failed'),h('span',null,toast.text)),
+        h('button',{onClick:()=>setToast(null)},'×')
+      )
+    );
   }
 
   function Incidents({profile}){
-    const [patients]=usePatients(),[rows,setRows]=React.useState([]),[form,setForm]=React.useState({patient_id:'',incident_type:'Fall',description:'',immediate_action:'',severity:'Low'});async function load(){const {data}=await client.from('incidents').select('*,patients(full_name),profiles!incidents_reported_by_fkey(full_name)').order('incident_at',{ascending:false}).limit(100);setRows(data||[])}React.useEffect(()=>{load()},[]);
-    async function save(e){e.preventDefault();const {error}=await client.from('incidents').insert({...form,incident_at:new Date().toISOString(),reported_by:profile.id,status:'Open'});if(error)return alert(error.message);setForm({...form,description:'',immediate_action:''});load()}
-    return h(React.Fragment,null,h(Section,{title:'Incident & Fall Register',subtitle:'Report, review and close safety events'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),miniSelect('Incident type',form.incident_type,['Fall','Medicine error','Injury','Behaviour','Food issue','Equipment failure','Hospital transfer','Other'],v=>setForm({...form,incident_type:v})),miniSelect('Severity',form.severity,['Low','Moderate','High','Critical'],v=>setForm({...form,severity:v})),miniInput('Description',form.description,v=>setForm({...form,description:v}),true),miniInput('Immediate action',form.immediate_action,v=>setForm({...form,immediate_action:v}),true),h('button',{className:'btn btn-primary'},'Report incident'))),h(LogTable,{title:'Incident Register',heads:['Patient','Type','Severity','Description','Action','Status','Time'],rows:rows.map(r=>[r.patients?.full_name,r.incident_type,r.severity,r.description,r.immediate_action,r.status,fmt(r.incident_at)])}))
+    const [patients]=usePatients();
+    const [rows,setRows]=React.useState([]);
+    const [saving,setSaving]=React.useState(false);
+    const [toast,setToast]=React.useState(null);
+    const [form,setForm]=React.useState({
+      patient_id:'',
+      incident_type:'Fall',
+      description:'',
+      immediate_action:'',
+      severity:'Low'
+    });
+
+    async function load(){
+      const {data,error}=await client.from('incidents')
+        .select('*,patients(full_name,patient_id,room_no,bed_no),profiles!incidents_reported_by_fkey(full_name)')
+        .order('incident_at',{ascending:false})
+        .limit(150);
+      if(error){
+        console.error('Incidents could not be loaded:',error);
+        setRows([]);
+        return;
+      }
+      setRows(data||[]);
+    }
+
+    React.useEffect(()=>{load()},[]);
+
+    function showToast(type,text){
+      setToast({type,text});
+      setTimeout(()=>setToast(null),4000);
+    }
+
+    async function save(e){
+      e.preventDefault();
+      if(saving)return;
+      if(!form.patient_id){
+        showToast('error','Select the patient involved in the incident.');
+        return;
+      }
+      if(!form.description.trim()||!form.immediate_action.trim()){
+        showToast('error','Description and immediate action are mandatory.');
+        return;
+      }
+      setSaving(true);
+      const payload={
+        patient_id:form.patient_id,
+        incident_type:form.incident_type,
+        description:form.description.trim(),
+        immediate_action:form.immediate_action.trim(),
+        severity:form.severity,
+        incident_at:new Date().toISOString(),
+        reported_by:profile.id,
+        status:'Open'
+      };
+      const {data,error}=await client.from('incidents').insert(payload).select('id,incident_no').single();
+      if(error){
+        console.error('Incident save failed:',error);
+        showToast('error',error.message||'Incident could not be reported.');
+        setSaving(false);
+        return;
+      }
+      showToast('success',`Incident ${data?.incident_no||''} reported successfully.`.trim());
+      setForm(current=>({...current,description:'',immediate_action:''}));
+      await load();
+      writeAuditEvent('Incident Reported','Incidents',data?.id||form.patient_id,{
+        incident_no:data?.incident_no||null,patient_id:form.patient_id,
+        type:form.incident_type,severity:form.severity
+      },'Success');
+      setSaving(false);
+    }
+
+    return h(React.Fragment,null,
+      h(Section,{title:'Incident & Fall Register',subtitle:'Report, review and close patient safety events'},
+        h('form',{className:'modal-grid',onSubmit:save},
+          patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),
+          miniSelect('Incident type',form.incident_type,['Fall','Medicine error','Injury','Behaviour','Food issue','Equipment failure','Hospital transfer','Other'],v=>setForm({...form,incident_type:v})),
+          miniSelect('Severity',form.severity,['Low','Moderate','High','Critical'],v=>setForm({...form,severity:v})),
+          miniInput('Description',form.description,v=>setForm({...form,description:v}),true),
+          miniInput('Immediate action',form.immediate_action,v=>setForm({...form,immediate_action:v}),true),
+          h('button',{className:'btn btn-primary',disabled:saving},saving?'Reporting…':'Report incident')
+        )
+      ),
+      h(LogTable,{
+        title:'Incident Register',
+        heads:['Incident No.','Patient','Room / Bed','Type','Severity','Description','Immediate Action','Status','Reported By','Time'],
+        rows:rows.map(r=>[
+          r.incident_no||'—',
+          r.patients?.full_name||'—',
+          r.patients?`${r.patients.room_no||'—'}-${r.patients.bed_no||'—'}`:'—',
+          r.incident_type,r.severity,r.description,r.immediate_action,r.status,
+          r.profiles?.full_name||'—',fmt(r.incident_at)
+        ])
+      }),
+      toast&&h('div',{className:`samara-toast ${toast.type}`},
+        h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),
+        h('div',null,h('strong',null,toast.type==='success'?'Incident reported':'Report failed'),h('span',null,toast.text)),
+        h('button',{onClick:()=>setToast(null)},'×')
+      )
+    );
   }
 
   function Documents({profile}){

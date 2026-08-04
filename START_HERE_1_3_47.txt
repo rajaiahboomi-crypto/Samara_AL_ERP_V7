@@ -1,0 +1,33 @@
+SAMARA CARE ERP 1.3.47 — SHIFT HANDOVER & INCIDENT FIX
+
+1. Run once in Supabase SQL Editor:
+   52_handover_incident_number_fix.sql
+
+2. Upload these four files:
+   app.js
+   index.html
+   service-worker.js
+   styles-1.3.47.css
+
+FIXED — SHIFT HANDOVER
+Error:
+null value in column "patient_id" of relation "shift_handovers"
+
+- Shift Handover is now patient-specific.
+- Patient selection is mandatory.
+- Patient name, ID and room/bed are shown in the handover register.
+- Empty handovers are blocked.
+- Success/error confirmation uses ERP toast messages.
+
+FIXED — INCIDENT REGISTER
+Error:
+null value in column "incident_no" of relation "incidents"
+
+- Incident Number is generated automatically by Supabase.
+- Format: INC-YYYYMMDD-0001
+- Existing incidents without numbers are backfilled.
+- Incident register now displays:
+  Incident number, patient, room/bed, type, severity, description,
+  immediate action, status, reported by and time.
+- Patient, description and immediate action are mandatory.
+- Success/error confirmation uses ERP toast messages.
