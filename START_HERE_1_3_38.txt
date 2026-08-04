@@ -1,0 +1,27 @@
+SAMARA CARE ERP 1.3.38 — PATIENT WORKLIST NULL-GUARD FIX
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+ERROR CORRECTED
+TypeError: Cannot read properties of null (reading 'id') at logCare
+
+Cause:
+One incomplete or stale care-task object reached the new patient-centred worklist.
+The previous save function attempted to read order.id without first verifying the task.
+
+Corrections:
+- Care task is validated before saving.
+- The complete task object is passed to the save function.
+- Missing or stale care orders are skipped safely.
+- Tasks without a valid patient relation are excluded from the worklist.
+- Patient grouping ignores incomplete task records.
+- A clear refresh message appears instead of crashing the entire application.
+- Login identity is verified before saving.
+- JavaScript syntax has been checked.
+
+Version: 1.3.38

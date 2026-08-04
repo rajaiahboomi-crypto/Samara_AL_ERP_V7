@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.37';
-  const APP_BUILD_DATE = '04-Aug-2026 16:25 IST';
+  const APP_VERSION = '1.3.38';
+  const APP_BUILD_DATE = '04-Aug-2026 16:40 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1531,18 +1531,39 @@ Caring with Compassion. Living with Dignity.`;
       if(error)alert(error.message);else load()
     }
 
-    async function logCare(order,status,taskShift=shift){
-      if(taskShift!==shift){
-        alert(`${taskShift} has not started. This task can be completed only during that shift.`);
-        return;
+    async function logCare(taskOrOrder,status,taskShift=shift){
+      try{
+        const careOrder=taskOrOrder?.order||taskOrOrder;
+        if(!careOrder?.id||!careOrder?.patient_id){
+          alert('This care task is incomplete or no longer available. Please refresh the Shift Tasks page.');
+          await load();
+          return;
+        }
+        if(taskShift!==shift){
+          alert(`${taskShift} has not started. This task can be completed only during that shift.`);
+          return;
+        }
+        const {data:{user}}=await client.auth.getUser();
+        if(!user?.id){
+          alert('Your login session could not be verified. Please sign in again.');
+          return;
+        }
+        const remarks=status==='Completed'?'':prompt('Enter reason / remarks:')||'';
+        const {error}=await client.from('care_logs').upsert({
+          care_order_id:careOrder.id,
+          patient_id:careOrder.patient_id,
+          care_date:today,
+          shift:taskShift,
+          status,
+          completed_at:new Date().toISOString(),
+          completed_by:user.id,
+          remarks
+        },{onConflict:'care_order_id,care_date,shift'});
+        if(error)alert(error.message);else await load();
+      }catch(error){
+        console.error('Care task save failed:',error);
+        alert(error?.message||'Unable to save the care task.');
       }
-      const {data:{user}}=await client.auth.getUser();
-      const remarks=status==='Completed'?'':prompt('Enter reason / remarks:')||'';
-      const {error}=await client.from('care_logs').upsert({
-        care_order_id:order.id,patient_id:order.patient_id,care_date:today,shift:taskShift,status,
-        completed_at:new Date().toISOString(),completed_by:user.id,remarks
-      },{onConflict:'care_order_id,care_date,shift'});
-      if(error)alert(error.message);else load()
     }
 
     async function logPhysio(order,status){
@@ -1573,7 +1594,7 @@ Caring with Compassion. Living with Dignity.`;
     }));
     medTasks.sort((a,b)=>a.time.localeCompare(b.time));
 
-    const currentCareTasks=care.flatMap(order=>{
+    const currentCareTasks=care.filter(order=>order?.id&&order?.patient_id&&order?.patients).flatMap(order=>{
       const taskShifts=order.shift==='Both shifts'
         ?['Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)']
         :[order.shift];
@@ -1590,7 +1611,7 @@ Caring with Compassion. Living with Dignity.`;
         }));
     });
 
-    const upcomingCareTasks=care.flatMap(order=>{
+    const upcomingCareTasks=care.filter(order=>order?.id&&order?.patient_id&&order?.patients).flatMap(order=>{
       const taskShifts=order.shift==='Both shifts'
         ?['Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)']
         :[order.shift];
@@ -1622,7 +1643,8 @@ Caring with Compassion. Living with Dignity.`;
 
     const patientMap=new Map();
     function ensurePatient(task){
-      const id=task.patient_id;
+      const id=task?.patient_id;
+      if(!id||!task?.patient)return null;
       if(!patientMap.has(id)){
         patientMap.set(id,{
           id,
@@ -1636,10 +1658,10 @@ Caring with Compassion. Living with Dignity.`;
       }
       return patientMap.get(id);
     }
-    medTasks.forEach(x=>ensurePatient(x).medicines.push(x));
-    currentCareTasks.forEach(x=>ensurePatient(x).care.push(x));
-    physioTasks.forEach(x=>ensurePatient(x).physio.push(x));
-    upcomingCareTasks.forEach(x=>ensurePatient(x).upcomingCare.push(x));
+    medTasks.forEach(x=>{const g=ensurePatient(x);if(g)g.medicines.push(x)});
+    currentCareTasks.forEach(x=>{const g=ensurePatient(x);if(g)g.care.push(x)});
+    physioTasks.forEach(x=>{const g=ensurePatient(x);if(g)g.physio.push(x)});
+    upcomingCareTasks.forEach(x=>{const g=ensurePatient(x);if(g)g.upcomingCare.push(x)});
 
     const patientGroups=[...patientMap.values()]
       .map(group=>{
@@ -1754,8 +1776,8 @@ Caring with Compassion. Living with Dignity.`;
                   h('div',null,h('strong',null,x.label),h('small',null,`${x.order.frequency||'Daily'}${x.order.instruction?` · ${x.order.instruction}`:''}`)),
                   x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending'),
                   !x.log&&h('div',{className:'employee-actions'},
-                    h('button',{className:'btn btn-primary',onClick:()=>logCare(x.order,'Completed',x.taskShift)},'Complete'),
-                    h('button',{className:'btn btn-danger',onClick:()=>logCare(x.order,'Refused',x.taskShift)},'Exception')
+                    h('button',{className:'btn btn-primary',onClick:()=>logCare(x,'Completed',x.taskShift)},'Complete'),
+                    h('button',{className:'btn btn-danger',onClick:()=>logCare(x,'Refused',x.taskShift)},'Exception')
                   )
                 )),
                 group.care.length===0&&h('div',{className:'empty compact'},'No basic-care task in this shift.')
