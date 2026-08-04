@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.10';
-  const APP_BUILD_DATE = '04-Aug-2026 14:40 IST';
+  const APP_VERSION = '1.3.11';
+  const APP_BUILD_DATE = '04-Aug-2026 15:10 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -652,6 +652,14 @@ Caring with Compassion. Living with Dignity.`;
     const [detailsTarget,setDetailsTarget]=React.useState(null),[detailsForm,setDetailsForm]=React.useState(null),[detailsDocs,setDetailsDocs]=React.useState([]),[detailsBusy,setDetailsBusy]=React.useState(false),[detailsMsg,setDetailsMsg]=React.useState('');
     const [idFiles,setIdFiles]=React.useState([]),[qualificationFiles,setQualificationFiles]=React.useState([]),[experienceFiles,setExperienceFiles]=React.useState([]),[otherFiles,setOtherFiles]=React.useState([]),[cameraFiles,setCameraFiles]=React.useState([]),[photoFiles,setPhotoFiles]=React.useState([]),[photoPreview,setPhotoPreview]=React.useState(''),[welcomeLink,setWelcomeLink]=React.useState('');
     const [cameraConfig,setCameraConfig]=React.useState(null);
+    const [employeeToast,setEmployeeToast]=React.useState(null);
+    const employeeToastTimer=React.useRef(null);
+    function showEmployeeToast(type,text){
+      clearTimeout(employeeToastTimer.current);
+      setEmployeeToast({type,text});
+      employeeToastTimer.current=setTimeout(()=>setEmployeeToast(null),4500);
+    }
+    React.useEffect(()=>()=>clearTimeout(employeeToastTimer.current),[]);
 
     function updatePhotoSelection(files){
       const next=Array.from(files||[]).slice(0,1);
@@ -857,9 +865,14 @@ Caring with Compassion. Living with Dignity.`;
         const link=whatsappWelcomeUrl(createdRow,employeeForm.password);setWelcomeLink(link);
         if(preopened&&link){preopened.location.href=link}else if(preopened){preopened.close()}
         await load();
-        setMsg(result.repaired?'Employee account repaired and personnel details saved successfully.':'Employee created successfully with personnel details. The employee can sign in immediately.');
+        const successText=result.repaired?'Employee account repaired and personnel details saved successfully.':'Employee created successfully with personnel details. The employee can sign in immediately.';
+        setMsg(successText);showEmployeeToast('success',successText);
         setForm(empty);setIdFiles([]);setQualificationFiles([]);setExperienceFiles([]);setOtherFiles([]);setCameraFiles([]);setPhotoFiles([]);setPhotoPreview('');
-      }catch(error){if(preopened)preopened.close();setMsg(error.message||'Unable to create employee')}
+      }catch(error){
+        if(preopened)preopened.close();
+        const errorText=error.message||'Unable to create employee';
+        setMsg(errorText);showEmployeeToast('error',errorText);
+      }
       setBusy(false);
     }
 
@@ -923,12 +936,16 @@ Caring with Compassion. Living with Dignity.`;
         if(roleResult.role!==requestedRole)throw new Error(`Selected role ${requestedRole} was not saved correctly.`);
         await uploadEmployeePhoto(detailsTarget.id,photoFiles);
         await uploadEmployeeFiles(detailsTarget.id,[{type:'ID Card',files:idFiles},{type:'Qualification Certificate',files:qualificationFiles},{type:'Experience Certificate',files:experienceFiles},{type:'Other Certificate',files:otherFiles},{type:'Camera Capture',files:cameraFiles}]);
-        setDetailsMsg('Employee information and documents updated successfully.');setIdFiles([]);setQualificationFiles([]);setExperienceFiles([]);setOtherFiles([]);setCameraFiles([]);setPhotoFiles([]);await load();
+        const successText='Employee information and documents updated successfully.';
+        setDetailsMsg(successText);showEmployeeToast('success',successText);setIdFiles([]);setQualificationFiles([]);setExperienceFiles([]);setOtherFiles([]);setCameraFiles([]);setPhotoFiles([]);await load();
         const {data}=await client.from('employee_documents').select('*').eq('employee_id',detailsTarget.id).order('created_at',{ascending:false});setDetailsDocs(data||[]);
         const resolved=await resolveEmployeePhoto(detailsTarget,900);
         if(resolved.profile)setDetailsTarget(resolved.profile);
         if(resolved.url)setPhotoPreview(resolved.url);
-      }catch(error){setDetailsMsg(error.message||'Unable to update employee')}
+      }catch(error){
+        const errorText=error.message||'Unable to update employee';
+        setDetailsMsg(errorText);showEmployeeToast('error',errorText);
+      }
       setDetailsBusy(false);
     }
     async function openDocument(doc){
@@ -1003,7 +1020,19 @@ Caring with Compassion. Living with Dignity.`;
     const resetModal=resetTarget?h('div',{className:'modal-backdrop'},h('form',{className:'card modal reset-password-modal',onSubmit:resetPassword},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Reset Employee Password'),h('small',null,`${resetTarget.full_name} · ${resetTarget.login_id}`)),h('button',{type:'button',className:'close',onClick:()=>setResetTarget(null)},'×')),resetMsg&&h('div',{className:`message ${resetMsg.startsWith('Password reset')?'success':'error'}`},resetMsg),h('div',{className:'field'},h('label',null,'New password'),h('input',{type:'password',value:newPassword,onChange:e=>setNewPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('div',{className:'field'},h('label',null,'Confirm new password'),h('input',{type:'password',value:confirmPassword,onChange:e=>setConfirmPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('button',{type:'button',className:'btn btn-secondary full',onClick:generateTemporaryPassword},'Generate Temporary Password'),h('p',{className:'small-note'},'Resetting the password also enables and unblocks the employee account. The employee must create a private password at first login.'),h('button',{className:'btn btn-primary full',disabled:resetBusy},resetBusy?'Resetting…':'Reset Password & Enable Account'))):null;
     const repairModal=repairTarget?h('div',{className:'modal-backdrop'},h('form',{className:'card modal reset-password-modal',onSubmit:repairAccount},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Repair Employee Account'),h('small',null,`${repairTarget.full_name} · ${repairTarget.login_id}`)),h('button',{type:'button',className:'close',onClick:()=>setRepairTarget(null)},'×')),repairMsg&&h('div',{className:`message ${repairMsg.startsWith('Authentication account repaired')?'success':'error'}`},repairMsg),h('p',null,'This employee has a profile but no matching Supabase Authentication account. Enter a temporary password to rebuild the login account.'),h('div',{className:'field'},h('label',null,'Temporary password'),h('input',{type:'password',value:repairPassword,onChange:e=>setRepairPassword(e.target.value),minLength:8,required:true,autoComplete:'new-password'})),h('button',{className:'btn btn-warning full',disabled:repairBusy},repairBusy?'Repairing…':'Repair Account & Enable Login'))):null;
 
-    return h(React.Fragment,null,h('div',{className:'card panel'},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Employees'),h('small',null,'Personnel records, documents, central login accounts and Authentication status')),h('button',{className:'btn btn-primary',onClick:()=>{setShow(true);setMsg('')}},'Create Employee')),msg&&!show?h('div',{className:'message error'},msg):null,table),createModal,detailsModal,resetModal,repairModal,cameraConfig?h(CameraCaptureModal,{config:cameraConfig,onClose:()=>setCameraConfig(null)}):null);
+    return h(React.Fragment,null,
+      h('div',{className:'card panel'},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Employees'),h('small',null,'Personnel records, documents, central login accounts and Authentication status')),h('button',{className:'btn btn-primary',onClick:()=>{setShow(true);setMsg('')}},'Create Employee')),msg&&!show?h('div',{className:'message error'},msg):null,table),
+      createModal,detailsModal,resetModal,repairModal,
+      cameraConfig?h(CameraCaptureModal,{config:cameraConfig,onClose:()=>setCameraConfig(null)}):null,
+      employeeToast&&h('div',{className:`samara-toast ${employeeToast.type}`,role:'status','aria-live':'polite'},
+        h('span',{className:'samara-toast-icon','aria-hidden':'true'},employeeToast.type==='success'?'✓':'!'),
+        h('div',null,
+          h('strong',null,employeeToast.type==='success'?'Employee update successful':'Employee update failed'),
+          h('span',null,employeeToast.text)
+        ),
+        h('button',{type:'button','aria-label':'Close notification',onClick:()=>setEmployeeToast(null)},'×')
+      )
+    );
   }
 
 
