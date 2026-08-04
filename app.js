@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.43';
-  const APP_BUILD_DATE = '04-Aug-2026 18:00 IST';
+  const APP_VERSION = '1.3.44';
+  const APP_BUILD_DATE = '04-Aug-2026 18:15 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -2848,6 +2848,7 @@ function RoomsBeds({profile}){
     const [form,setForm]=React.useState({patient_id:'',care_type:'Bathing assistance',shift:currentShift(),status:'Completed',remarks:''});
     const [saving,setSaving]=React.useState(false);
     const [toast,setToast]=React.useState(null);
+    const [returnPage,setReturnPage]=React.useState('');
     const toastTimer=React.useRef(null);
 
     function showToast(type,text){
@@ -2919,7 +2920,6 @@ function RoomsBeds({profile}){
       showToast('success',`${form.care_type} recorded successfully for the selected patient.`);
       setForm(current=>({...current,remarks:''}));
       await load();
-      returnAfterSuccessfulAction(returnPage,onNavigate);
 
       // Audit logging must never block the clinical save.
       writeAuditEvent(
@@ -2936,6 +2936,7 @@ function RoomsBeds({profile}){
         'Success'
       );
       setSaving(false);
+      returnAfterSuccessfulAction(returnPage,onNavigate);
     }
 
     return h(React.Fragment,null,

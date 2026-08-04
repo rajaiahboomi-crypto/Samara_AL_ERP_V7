@@ -1,0 +1,21 @@
+SAMARA CARE ERP 1.3.44 — RETURN PAGE SCOPE FIX
+
+Upload these four files:
+- app.js
+- index.html
+- service-worker.js
+- styles-1.3.44.css
+
+No Supabase SQL is required.
+
+ERROR FIXED
+ReferenceError: returnPage is not defined at DailyCare
+
+Cause:
+The universal return workflow used returnPage inside Daily Care, but the Daily Care component was missing its returnPage state declaration.
+
+Corrections:
+- Added the missing Daily Care returnPage state.
+- Verified returnPage state in Daily Care, Medicines, Vital Signs and Physiotherapy.
+- Audit logging and save-state completion now happen before automatic return.
+- Universal return-to-previous-page behaviour remains active.
