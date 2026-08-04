@@ -1,0 +1,23 @@
+SAMARA CARE ERP 1.3.29 — CURRENT & UPCOMING MEDICINES ONLY
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Corrected:
+- Patient Edit now displays only active medicines that are current or scheduled for the future.
+- Expired, completed and inactive medicines are hidden.
+- Exact duplicate medicine entries are removed from the displayed list.
+- Medicines are arranged by start date and medicine name.
+- The section heading is changed to “Current and Upcoming Medicines”.
+
+History protection:
+- Saving Patient Edit no longer permanently deletes old prescription orders.
+- Existing active orders are archived as inactive.
+- The newly verified current/upcoming list is saved as active.
+- Previous prescriptions remain preserved as historical records.
+
+The Patient File medicine tab also shows only the current/upcoming active medicines.
