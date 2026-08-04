@@ -1,0 +1,31 @@
+SAMARA CARE ERP 1.3.50 — HANDOVER CONSTRAINT & INCIDENT AUTO-RETURN
+
+1. Run once in Supabase SQL Editor:
+   54_handover_shift_constraint_fix.sql
+
+2. Upload:
+   app.js
+   index.html
+   service-worker.js
+   styles-1.3.50.css
+
+FIX 1 — SHIFT HANDOVER
+Error:
+new row for relation "shift_handovers" violates check constraint "shift_handovers_shift_check"
+
+Cause:
+The database check constraint accepted older shift labels, while the form sends:
+- Day Shift (7 AM–7 PM)
+- Night Shift (7 PM–7 AM)
+
+The SQL removes the outdated check and recreates it with all supported shift labels.
+Existing short labels are normalised.
+
+FIX 2 — INCIDENT AUTO-CLOSE / RETURN
+After a successful Incident save:
+- Success notification appears briefly.
+- The Incident entry display closes automatically.
+- ERP returns to the previous page.
+- The previous page refreshes normally.
+
+The same previous-page return is now also applied after a successful Shift Handover.

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.49';
-  const APP_BUILD_DATE = '04-Aug-2026 17:33 IST';
+  const APP_VERSION = '1.3.50';
+  const APP_BUILD_DATE = '04-Aug-2026 17:55 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -465,10 +465,19 @@ Caring with Compassion. Living with Dignity.`;
     const [profile,setProfile]=React.useState(null);
     const [loading,setLoading]=React.useState(true);
     const [page,setPage]=React.useState('Dashboard');
+    const previousPageRef=React.useRef('Dashboard');
+    const currentPageRef=React.useRef('Dashboard');
     const [mobileDrawerOpen,setMobileDrawerOpen]=React.useState(false);
     const [authMessage,setAuthMessage]=React.useState('');
     const [recoveryMode,setRecoveryMode]=React.useState(false);
     const alertEngine=useClinicalAlertEngine(profile,setPage);
+    React.useEffect(()=>{
+      if(currentPageRef.current!==page){
+        previousPageRef.current=currentPageRef.current;
+        currentPageRef.current=page;
+        try{sessionStorage.setItem('samara_previous_page',previousPageRef.current)}catch(_error){}
+      }
+    },[page]);
     React.useEffect(()=>{
       const root=document.getElementById('root');
       if(!root)return;
@@ -591,8 +600,8 @@ Caring with Compassion. Living with Dignity.`;
           page==='Food & Diet'&&h(FoodDiet,{profile}),
           page==='Physiotherapy'&&h(Physiotherapy,{profile,onNavigate:setPage}),
           page==='Special Nurse'&&h(SpecialNurseManagement,{profile}),
-          page==='Shift Handover'&&h(ShiftHandover,{profile}),
-          page==='Incidents'&&h(Incidents,{profile}),
+          page==='Shift Handover'&&h(ShiftHandover,{profile,onNavigate:setPage}),
+          page==='Incidents'&&h(Incidents,{profile,onNavigate:setPage}),
           page==='Documents'&&h(Documents,{profile}),
           page==='Bills & Charges'&&h(BillsCharges,{profile}),
           page==='Billing & Payments'&&h(BillingPayments,{profile}),
@@ -4055,11 +4064,14 @@ function RoomsBeds({profile}){
     );
   }
 
-function ShiftHandover({profile}){
+function ShiftHandover({profile,onNavigate}){
     const [patients]=usePatients();
     const [rows,setRows]=React.useState([]);
     const [saving,setSaving]=React.useState(false);
     const [toast,setToast]=React.useState(null);
+    const [returnPage]=React.useState(()=>{
+      try{return sessionStorage.getItem('samara_previous_page')||'Nursing Dashboard'}catch(_error){return 'Nursing Dashboard'}
+    });
     const [form,setForm]=React.useState({
       patient_id:'',
       shift:currentShift(),
@@ -4127,6 +4139,7 @@ function ShiftHandover({profile}){
         patient_id:form.patient_id,shift:form.shift,priority:form.priority
       },'Success');
       setSaving(false);
+      finishSuccessfulAction({returnPage,onNavigate,delay:700});
     }
 
     return h(React.Fragment,null,
@@ -4159,11 +4172,14 @@ function ShiftHandover({profile}){
     );
   }
 
-  function Incidents({profile}){
+  function Incidents({profile,onNavigate}){
     const [patients]=usePatients();
     const [rows,setRows]=React.useState([]);
     const [saving,setSaving]=React.useState(false);
     const [toast,setToast]=React.useState(null);
+    const [returnPage]=React.useState(()=>{
+      try{return sessionStorage.getItem('samara_previous_page')||'Nursing Dashboard'}catch(_error){return 'Nursing Dashboard'}
+    });
     const [form,setForm]=React.useState({
       patient_id:'',
       incident_type:'Fall',
@@ -4229,6 +4245,7 @@ function ShiftHandover({profile}){
         type:form.incident_type,severity:form.severity
       },'Success');
       setSaving(false);
+      finishSuccessfulAction({returnPage,onNavigate,delay:700});
     }
 
     return h(React.Fragment,null,
