@@ -1,0 +1,23 @@
+SAMARA CARE ERP 1.3.22 — PATIENT-FILTERED BILLING VIEW
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Fixed:
+- No billing details are shown until a patient is selected.
+- Once selected, the complete page is restricted to that patient only.
+- Summary cards show only the selected patient.
+- Pending Bills shows only genuinely unpaid charge items.
+- Complete Transaction History shows only the selected patient.
+- Advances / Payments shows only the selected patient.
+- Monthly Collections chart is patient-specific.
+- Ageing analysis and Top Pending Bills are patient-specific.
+- Billing discrepancy queries are patient-specific.
+- Automatic Room and Nursing charges show only the selected patient.
+- Manual billing entry is automatically locked to the patient selected at the top.
+
+No other patient’s transaction or financial information appears in the window.
