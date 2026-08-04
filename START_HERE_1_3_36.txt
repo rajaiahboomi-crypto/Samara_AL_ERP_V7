@@ -1,0 +1,23 @@
+SAMARA CARE ERP 1.3.36 — CURRENT-SHIFT COMPACT TASK DISPLAY
+
+1. Run once in Supabase SQL Editor:
+   51_current_shift_clinical_alert_scope.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Corrected:
+- Shift Tasks now shows full task rows only for the currently active shift.
+- Tasks belonging to the next shift are not repeated as full rows.
+- Next-shift duties appear only in one compact expandable summary.
+- Current-shift pending count excludes future-shift tasks.
+- Next-shift scheduled count is shown separately.
+- Special Nurse information is shown once per patient, not repeated against every care task.
+- Nursing Dashboard has separate cards for:
+  Current-shift care pending
+  Next-shift care scheduled
+- Priority Worklist shows current-shift tasks individually and the next shift as one compact summary.
+- Clinical pop-up alerts for Daily Care are limited to the active shift.
+- Medication, vital signs and physiotherapy continue to display only when due for the applicable day/time.

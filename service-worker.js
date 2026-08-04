@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.35-shift-wise-daily-care';
+const CACHE = 'samara-erp-1.3.36-current-shift-compact-tasks';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.35', './app.js?v=1.3.35',
-  './bootstrap-error.js?v=1.3.35', './health-check.js?v=1.3.35',
-  './config.js?v=1.3.35', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.36', './app.js?v=1.3.36',
+  './bootstrap-error.js?v=1.3.36', './health-check.js?v=1.3.36',
+  './config.js?v=1.3.36', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

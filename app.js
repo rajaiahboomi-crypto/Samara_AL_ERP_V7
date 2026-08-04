@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.35';
-  const APP_BUILD_DATE = '04-Aug-2026 16:00 IST';
+  const APP_VERSION = '1.3.36';
+  const APP_BUILD_DATE = '04-Aug-2026 16:15 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1507,15 +1507,52 @@ Caring with Compassion. Living with Dignity.`;
         log:careLogs.find(x=>x.care_order_id===order.id&&x.shift===taskShift)
       }));
     });
+    const currentCareTasks=careTasks.filter(x=>x.isCurrentShift);
+    const upcomingCareTasks=careTasks.filter(x=>x.isUpcomingShift&&!x.log);
     const physioTasks=physio.filter(o=>!o.preferred_time||shiftForTime(String(o.preferred_time).slice(0,5))===shift).map(o=>({...o,log:physioLogs.find(x=>(x.plan_id||x.order_id)===o.id)}));
     if(loading)return h('div',{className:'loading'},'Loading shift tasks…');
-    const pending=medTasks.filter(x=>!x.log).length+careTasks.filter(x=>!x.log).length+physioTasks.filter(x=>!x.log).length;
+    const pending=medTasks.filter(x=>!x.log).length+currentCareTasks.filter(x=>!x.log).length+physioTasks.filter(x=>!x.log).length;
+    const upcomingPending=upcomingCareTasks.length;
     return h(React.Fragment,null,
-      h('div',{className:'shift-summary'},h('div',null,h('strong',null,shift),h('span',null,`${today} · ${pending} total tasks pending`)),h('span',{className:'badge'},profile.full_name)),
+      h('div',{className:'shift-summary'},h('div',null,h('strong',null,shift),h('span',null,`${formatDateIN(today)} · ${pending} current-shift task(s) pending${upcomingPending?` · ${upcomingPending} next-shift task(s) scheduled`:''}`)),h('span',{className:'badge'},profile.full_name)),
       h('div',{className:'card panel task-group'},h('div',{className:'panel-head'},h('div',null,h('h3',null,"Today's Medication Administration"),h('small',null,'Prescription-led MAR')),h('span',{className:'badge'},`${medTasks.filter(x=>!x.log).length} pending`)),
         medTasks.map(x=>h('div',{className:`task-card ${x.log?'done':''}`,key:x.order.id+x.time},h('div',null,h('strong',null,`${x.order.patients.full_name} · Room ${x.order.patients.room_no}-${x.order.patients.bed_no}`),x.order.patients.special_nurse_required&&h('div',{className:'special-alert'},`Special nurse: ${x.order.patients.special_nurse_name||'Required'} · ${x.order.patients.special_nurse_shift||''}`),riskBadges(x.order.patients),h('div',{className:'task-meta'},`${x.order.medicine_name} ${x.order.strength||''} · ${x.order.dose} · ${x.order.route}`),x.order.special_instruction&&h('div',{className:'small-note'},x.order.special_instruction)),h('div',null,h('span',{className:'pill'},x.time),h('div',{className:'small-note'},x.order.food_instruction)),h('div',null,x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending')),h('div',null,!x.log&&h(React.Fragment,null,h('button',{className:'btn btn-primary',onClick:()=>logMedicine(x.order,x.time,'Given')},'Given'),' ',h('button',{className:'btn btn-danger',onClick:()=>logMedicine(x.order,x.time,'Refused')},'Exception'))))),medTasks.length===0&&h('div',{className:'empty'},'No medication tasks in this shift')),
-      h('div',{className:'card panel task-group'},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Basic Care Tasks'),h('small',null,'Bath, restroom, hygiene, mobility and assistance')),h('span',{className:'badge'},`${careTasks.filter(x=>!x.log).length} pending`)),
-        careTasks.map(x=>h('div',{className:`task-card ${x.log?'done':''} ${x.isUpcomingShift?'upcoming-task':''}`,key:`${x.id}-${x.taskShift}`},h('div',null,h('strong',null,`${x.patients.full_name} · ${x.care_type}`),x.patients.special_nurse_required&&h('div',{className:'special-alert'},`Special nurse: ${x.patients.special_nurse_name||'Required'} · ${x.patients.special_nurse_shift||''}`),riskBadges(x.patients),h('div',{className:'task-meta'},`Room ${x.patients.room_no}-${x.patients.bed_no} · ${x.frequency}`),x.instruction&&h('div',{className:'small-note'},x.instruction)),h('div',null,h('span',{className:`pill ${x.isUpcomingShift?'upcoming-shift-pill':''}`},x.taskShift),x.isUpcomingShift&&h('div',{className:'small-note'},'Upcoming shift')),h('div',null,x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending')),h('div',null,!x.log&&h(React.Fragment,null,h('button',{className:'btn btn-primary',disabled:x.isUpcomingShift,onClick:()=>logCare(x,'Completed',x.taskShift)},x.isUpcomingShift?'Available at shift time':'Complete'),' ',h('button',{className:'btn btn-danger',disabled:x.isUpcomingShift,onClick:()=>logCare(x,'Refused',x.taskShift)},'Exception'))))),careTasks.length===0&&h('div',{className:'empty'},'No basic-care tasks scheduled for today')),
+      h('div',{className:'card panel task-group'},
+        h('div',{className:'panel-head'},
+          h('div',null,h('h3',null,`Basic Care Tasks — ${shift}`),h('small',null,'Only tasks applicable to the current shift are shown in full.')),
+          h('span',{className:'badge'},`${currentCareTasks.filter(x=>!x.log).length} pending`)
+        ),
+        [...new Map(currentCareTasks.filter(x=>x.patients?.special_nurse_required).map(x=>[x.patient_id,x])).values()].map(x=>
+          h('div',{className:'special-nurse-patient-banner',key:`special-${x.patient_id}`},
+            h('strong',null,`${x.patients.full_name} · Special nurse required`),
+            h('span',null,`${x.patients.special_nurse_name||'Not yet assigned'}${x.patients.special_nurse_shift?` · ${x.patients.special_nurse_shift}`:''}`)
+          )
+        ),
+        currentCareTasks.map(x=>h('div',{className:`compact-care-task ${x.log?'done':''}`,key:`${x.id}-${x.taskShift}`},
+          h('div',{className:'compact-care-main'},
+            h('strong',null,`${x.patients.full_name} · ${x.care_type}`),
+            h('small',null,`Room ${x.patients.room_no}-${x.patients.bed_no} · ${x.frequency}${x.instruction?` · ${x.instruction}`:''}`)
+          ),
+          h('span',{className:'pill'},x.taskShift),
+          x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending'),
+          h('div',{className:'employee-actions'},
+            !x.log&&h('button',{className:'btn btn-primary',onClick:()=>logCare(x,'Completed',x.taskShift)},'Complete'),
+            !x.log&&h('button',{className:'btn btn-danger',onClick:()=>logCare(x,'Refused',x.taskShift)},'Exception')
+          )
+        )),
+        currentCareTasks.length===0&&h('div',{className:'empty'},'No basic-care tasks scheduled for the current shift.'),
+        upcomingPending>0&&h('details',{className:'upcoming-care-summary'},
+          h('summary',null,`${upcomingPending} task(s) scheduled for the next shift — view summary`),
+          h('div',{className:'upcoming-care-list'},
+            [...new Map(upcomingCareTasks.map(x=>[x.patient_id,{patient:x.patients,tasks:upcomingCareTasks.filter(y=>y.patient_id===x.patient_id)}])).values()].map(group=>
+              h('div',{className:'upcoming-care-patient',key:`upcoming-${group.patient.full_name}`},
+                h('strong',null,`${group.patient.full_name} · Room ${group.patient.room_no}-${group.patient.bed_no}`),
+                h('span',null,group.tasks.map(t=>t.care_type).join(', '))
+              )
+            )
+          )
+        )
+      ),
       h('div',{className:'card panel task-group'},h('div',{className:'panel-head'},h('div',null,h('h3',null,'Physiotherapy Tasks'),h('small',null,'Exercises and rehabilitation advised at discharge')),h('span',{className:'badge'},`${physioTasks.filter(x=>!x.log).length} pending`)),
         physioTasks.map(x=>h('div',{className:`task-card ${x.log?'done':''}`,key:x.id},h('div',null,h('strong',null,`${x.patients.full_name} · ${x.therapy_type}`),x.patients.special_nurse_required&&h('div',{className:'special-alert'},`Special nurse: ${x.patients.special_nurse_name||'Required'}`),riskBadges(x.patients),h('div',{className:'task-meta'},`Room ${x.patients.room_no}-${x.patients.bed_no} · ${x.frequency}`),x.precautions&&h('div',{className:'small-note'},x.precautions)),h('div',null,h('span',{className:'pill'},x.preferred_time?String(x.preferred_time).slice(0,5):shift)),h('div',null,x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending')),h('div',null,!x.log&&h(React.Fragment,null,h('button',{className:'btn btn-primary',onClick:()=>logPhysio(x,'Completed')},'Complete'),' ',h('button',{className:'btn btn-danger',onClick:()=>logPhysio(x,'Postponed')},'Postpone'))))),physioTasks.length===0&&h('div',{className:'empty'},'No physiotherapy tasks in this shift'))
     );
@@ -2428,11 +2465,14 @@ function RoomsBeds({profile}){
     const physioDoneIds=new Set(state.physioSessions.map(x=>x.order_id));
     const physioPending=state.physioOrders.filter(x=>!physioDoneIds.has(x.id));
     const patientName=row=>formalName(row?.patients||row)||row?.patients?.full_name||row?.full_name||'Patient';
+    const currentShiftCarePending=carePending.filter(x=>!x.isUpcoming);
+    const upcomingShiftCarePending=carePending.filter(x=>x.isUpcoming);
     const cards=[
       ['Patients under care',state.patients.length,'Patients','👥','clinical-green'],
       ['Medicines due',medTasks.length,'Shift Tasks','💊',medTasks.some(x=>x.overdue)?'clinical-red':'clinical-blue'],
       ['Vitals pending',vitalsPending.length,'Vital Signs','🩺',vitalsPending.length?'clinical-amber':'clinical-green'],
-      ['Care tasks pending',carePending.length,'Daily Care','✅',carePending.length?'clinical-amber':'clinical-green'],
+      ['Current-shift care pending',currentShiftCarePending.length,'Shift Tasks','✅',currentShiftCarePending.length?'clinical-amber':'clinical-green'],
+      ['Next-shift care scheduled',upcomingShiftCarePending.length,'Shift Tasks','🕒','clinical-blue'],
       ['Physiotherapy pending',physioPending.length,'Physiotherapy','🏃','clinical-purple'],
       ['Open incidents',state.incidents.length,'Incidents','⚠️',state.incidents.length?'clinical-red':'clinical-green']
     ];
@@ -2443,8 +2483,9 @@ function RoomsBeds({profile}){
         h('section',{className:'card clinical-panel'},h('div',{className:'clinical-panel-head'},h('div',null,h('h3',null,'Priority Worklist'),h('small',null,'Overdue and pending tasks requiring attention')),h('button',{className:'btn btn-secondary',onClick:load},'Refresh')),
           medTasks.filter(x=>x.overdue).slice(0,5).map((x,i)=>h('div',{className:'clinical-work-row urgent',key:'m'+i},h('span',null,'💊'),h('div',null,h('strong',null,patientName(x.order)),h('small',null,`${x.order.medicine_name} ${x.order.dose||''} · Due ${x.time}`)),h('b',null,'OVERDUE'))),
           vitalsPending.slice(0,4).map(p=>h('div',{className:'clinical-work-row',key:p.id},h('span',null,'🩺'),h('div',null,h('strong',null,formalName(p)),h('small',null,`${p.patient_id||''} · Room ${p.room_no||'—'}-${p.bed_no||'—'} · Vitals not entered today`)),h('button',{className:'mini-link',onClick:()=>onNavigate('Vital Signs')},'Enter'))),
-          carePending.slice(0,6).map((x,i)=>h('div',{className:`clinical-work-row ${x.isUpcoming?'upcoming':''}`,key:`care-${x.id}-${x.taskShift}-${i}`},h('span',null,'✅'),h('div',null,h('strong',null,patientName(x)),h('small',null,`${x.care_type||x.activity||'Care task'} · ${x.taskShift}${x.isUpcoming?' · Upcoming shift':''}`)),h('button',{className:'mini-link',onClick:()=>onNavigate('Shift Tasks')},'View'))),
-          !medTasks.some(x=>x.overdue)&&!vitalsPending.length&&!carePending.length&&h('div',{className:'clinical-empty'},'No urgent clinical tasks are pending at present.')),
+          currentShiftCarePending.slice(0,5).map((x,i)=>h('div',{className:'clinical-work-row',key:`care-${x.id}-${x.taskShift}-${i}`},h('span',null,'✅'),h('div',null,h('strong',null,patientName(x)),h('small',null,`${x.care_type||x.activity||'Care task'} · ${x.taskShift}`)),h('button',{className:'mini-link',onClick:()=>onNavigate('Shift Tasks')},'View'))),
+          upcomingShiftCarePending.length>0&&h('div',{className:'clinical-work-row upcoming-summary'},h('span',null,'🕒'),h('div',null,h('strong',null,`${upcomingShiftCarePending.length} care task(s) scheduled for next shift`),h('small',null,'Shown as a compact summary; they become actionable when the next shift starts.')),h('button',{className:'mini-link',onClick:()=>onNavigate('Shift Tasks')},'Review')),
+          !medTasks.some(x=>x.overdue)&&!vitalsPending.length&&!currentShiftCarePending.length&&h('div',{className:'clinical-empty'},'No urgent clinical tasks are pending in the current shift.')),
         h('section',{className:'card clinical-panel'},h('div',{className:'clinical-panel-head'},h('div',null,h('h3',null,'Latest Shift Handover'),h('small',null,'Important information from the previous shift'))),
           state.handovers.length?state.handovers.slice(0,3).map(x=>h('div',{className:`handover-card ${String(x.priority||'').toLowerCase()}`,key:x.id},h('div',null,h('strong',null,`${x.shift} · ${x.priority}`),h('small',null,fmt(x.created_at))),h('p',null,x.patient_summary||'No patient summary.'),x.pending_tasks&&h('p',null,h('b',null,'Pending: '),x.pending_tasks),h('small',null,`Submitted by ${formalName(x.profiles||{})||x.profiles?.full_name||'Staff'}`))):h('div',{className:'clinical-empty'},'No shift handover has been submitted yet.'))
       )
