@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.15';
-  const APP_BUILD_DATE = '04-Aug-2026 16:55 IST';
+  const APP_VERSION = '1.3.16';
+  const APP_BUILD_DATE = '04-Aug-2026 17:30 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -50,15 +50,15 @@
     { title:'NURSING', items:['Clinical Dashboard','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Special Nurse','Shift Handover'] },
     { title:'OPERATIONS', items:['Rooms & Beds','Incidents'] },
     { title:'FOOD & DIET', items:['Food & Diet'] },
-    { title:'ACCOUNTS / BILLING', items:['Billing & Payments'] }
+    { title:'ACCOUNTS / BILLING', items:['Bills & Charges','Billing & Payments'] }
   ];
   const ALL_NAV = NAV_SECTIONS.flatMap(section=>section.items);
   const ROLE_NAV={
     Admin:ALL_NAV,
     Manager:ALL_NAV,
-    Nurse:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Notifications'],
+    Nurse:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Notifications'],
     Caregiver:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Notifications'],
-    Accounts:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Rooms & Beds','Billing & Payments','Reports','Intelligent Reports'],
+    Accounts:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Rooms & Beds','Bills & Charges','Billing & Payments','Reports','Intelligent Reports'],
     Kitchen:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Food & Diet']
   };
   const ROLE_HOME={Admin:'Dashboard',Manager:'Dashboard',Nurse:'Clinical Dashboard',Caregiver:'Clinical Dashboard',Accounts:'Billing & Payments',Kitchen:'Food & Diet'};
@@ -345,6 +345,7 @@ Caring with Compassion. Living with Dignity.`;
           page==='Shift Handover'&&h(ShiftHandover,{profile}),
           page==='Incidents'&&h(Incidents,{profile}),
           page==='Documents'&&h(Documents,{profile}),
+          page==='Bills & Charges'&&h(BillsCharges,{profile}),
           page==='Billing & Payments'&&h(BillingPayments,{profile}),
           page==='Recovery Timeline'&&h(RecoveryTimeline,{profile}),
           page==='Reports'&&h(Reports),
@@ -3081,7 +3082,221 @@ function ShiftHandover({profile}){
     return h(React.Fragment,null,h(Section,{title:'Patient Documents',subtitle:'Identity proof, discharge, prescription, lab, scan and test reports'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),miniSelect('Document type',form.document_type,['Identity Proof','Discharge Summary','Current Prescription','Previous Prescription','Lab Report','X-ray','CT Scan','MRI','Ultrasound','ECG','Echo','Operative Note','Physiotherapy Advice','Wound Photograph','Insurance','Consent','Other'],v=>setForm({...form,document_type:v})),miniInput('Report date',form.report_date,v=>setForm({...form,report_date:v}),false,'date'),miniInput('Hospital / Laboratory',form.hospital_laboratory,v=>setForm({...form,hospital_laboratory:v})),miniInput('Doctor',form.doctor_name,v=>setForm({...form,doctor_name:v})),miniInput('Remarks',form.remarks,v=>setForm({...form,remarks:v})),fileInput('Upload / Camera Capture',files,setFiles,'image/*,.pdf',true),h('button',{className:'btn btn-primary'},'Upload Document'))),h(LogTable,{title:'Medical Document Register',heads:['Patient','Type','Date','Hospital/Lab','Name','Action'],rows:rows.map(r=>[r.patients?.full_name,r.document_type,formatDateIN(r.report_date),r.hospital_laboratory||'—',r.document_name,h('button',{className:'btn btn-secondary',onClick:()=>openDoc(r)},'Open')])}))
   }
 
-  function BillingPayments({profile}){
+  
+  function BillsCharges({profile}){
+    const canRaise=['Admin','Manager','Nurse','Accounts'].includes(profile?.role);
+    const canFinalise=['Admin','Manager','Accounts'].includes(profile?.role);
+    const [patients]=usePatients();
+    const [rows,setRows]=React.useState([]);
+    const [loading,setLoading]=React.useState(true);
+    const [message,setMessage]=React.useState('');
+    const [show,setShow]=React.useState(false);
+    const [editing,setEditing]=React.useState(null);
+    const [busy,setBusy]=React.useState(false);
+    const [toast,setToast]=React.useState(null);
+    const toastTimer=React.useRef(null);
+    const initial={
+      patient_id:'',
+      charge_date:todayISOIndia(),
+      category:'Doctor Visit',
+      service_provider:'',
+      description:'',
+      quantity:'1',
+      unit_cost:'',
+      estimated_amount:'',
+      bill_available:false,
+      bill_number:'',
+      bill_date:'',
+      bill_reference:'',
+      requested_amount:'',
+      final_amount:'',
+      urgency:'Routine',
+      requested_for_date:todayISOIndia(),
+      remarks:'',
+      status:'Raised'
+    };
+    const [form,setForm]=React.useState(initial);
+
+    function showToast(type,text){
+      clearTimeout(toastTimer.current);
+      setToast({type,text});
+      toastTimer.current=setTimeout(()=>setToast(null),5000);
+    }
+    React.useEffect(()=>()=>clearTimeout(toastTimer.current),[]);
+
+    async function load(){
+      setLoading(true);setMessage('');
+      const {data,error}=await client.from('bill_charge_requests').select('*').order('created_at',{ascending:false}).limit(500);
+      if(error){setMessage(error.message||'Unable to load bills and charges.');setRows([])}
+      else setRows(data||[]);
+      setLoading(false);
+    }
+    React.useEffect(()=>{
+      load();
+      const ch=client.channel('bill-charge-live')
+        .on('postgres_changes',{event:'*',schema:'public',table:'bill_charge_requests'},load)
+        .subscribe();
+      return()=>client.removeChannel(ch);
+    },[]);
+
+    const patientFor=id=>patients.find(p=>p.id===id)||{};
+    const patientLabel=id=>{
+      const p=patientFor(id);
+      return p.id?`${formalName(p)} · ${p.patient_id||'—'}${p.room_no?` · Room ${p.room_no}${p.bed_no?`-${p.bed_no}`:''}`:''}`:'Patient not linked';
+    };
+    const currency=value=>value!==null&&value!==undefined&&value!==''?`₹${Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`:'—';
+
+    function openNew(){
+      setEditing(null);
+      setForm({...initial,charge_date:todayISOIndia(),requested_for_date:todayISOIndia()});
+      setShow(true);
+    }
+    function openEdit(row){
+      setEditing(row);
+      setForm({...initial,...row,charge_date:row.charge_date||todayISOIndia(),requested_for_date:row.requested_for_date||todayISOIndia(),bill_date:row.bill_date||''});
+      setShow(true);
+    }
+
+    async function save(e){
+      e.preventDefault();
+      if(!canRaise)return;
+      if(!form.patient_id){showToast('error','Please select the patient.');return}
+      if(isFutureDateIndia(form.charge_date)||isFutureDateIndia(form.bill_date)){showToast('error','Future bill or charge dates are not permitted.');return}
+      if(!form.description.trim()){showToast('error','Please describe the service, item or expense.');return}
+      if(form.bill_available&&!form.bill_number.trim()&&!form.bill_reference.trim()){showToast('error','Enter the bill number or bill reference when a bill is available.');return}
+      if(profile.role==='Nurse'&&form.bill_available&&!Number(form.requested_amount||form.estimated_amount||0)){showToast('error','Enter the bill amount or estimated amount.');return}
+      setBusy(true);
+      const {data:{user}}=await client.auth.getUser();
+      const qty=Math.max(1,Number(form.quantity||1));
+      const calculated=Number(form.unit_cost||0)*qty;
+      const requested=Number(form.requested_amount||form.estimated_amount||calculated||0);
+      const payload={
+        patient_id:form.patient_id,
+        charge_date:form.charge_date,
+        category:form.category,
+        service_provider:form.service_provider||null,
+        description:form.description.trim(),
+        quantity:qty,
+        unit_cost:form.unit_cost===''?null:Number(form.unit_cost),
+        estimated_amount:form.estimated_amount===''?(calculated||null):Number(form.estimated_amount),
+        bill_available:!!form.bill_available,
+        bill_number:form.bill_available?(form.bill_number||null):null,
+        bill_date:form.bill_available?(form.bill_date||null):null,
+        bill_reference:form.bill_available?(form.bill_reference||null):null,
+        requested_amount:requested||null,
+        final_amount:canFinalise&&form.final_amount!==''?Number(form.final_amount):null,
+        urgency:form.urgency,
+        requested_for_date:form.requested_for_date,
+        remarks:form.remarks||null,
+        status:editing?.status||'Raised',
+        raised_by:editing?.raised_by||user?.id||profile?.id,
+        updated_at:new Date().toISOString()
+      };
+      let result=editing
+        ?await client.from('bill_charge_requests').update(payload).eq('id',editing.id).select('id').single()
+        :await client.from('bill_charge_requests').insert(payload).select('id').single();
+      setBusy(false);
+      if(result.error){showToast('error',result.error.message||'Unable to save bill/charge request.');return}
+      showToast('success',editing?'Bill/charge request updated successfully.':'Bill/charge request raised successfully.');
+      setShow(false);await load();
+      writeAuditEvent(editing?'Bill/Charge Request Updated':'Bill/Charge Request Raised','Bills & Charges',result.data?.id,{
+        patient_id:form.patient_id,category:form.category,requested_amount:requested||null,bill_available:form.bill_available
+      },'Success');
+    }
+
+    async function finalise(row){
+      if(!canFinalise)return;
+      const amount=Number(row.final_amount||row.requested_amount||row.estimated_amount||0);
+      if(!amount){showToast('error','Enter the final fee/charge before approval.');openEdit(row);return}
+      if(!confirm(`Approve ${currency(amount)} for ${patientLabel(row.patient_id)} and post it to the Patient Ledger?`))return;
+      setBusy(true);
+      const {data,error}=await client.rpc('approve_bill_charge_request',{p_request_id:row.id,p_final_amount:amount});
+      setBusy(false);
+      if(error){showToast('error',error.message||'Unable to approve and post the charge.');return}
+      showToast('success','Charge approved and posted to the Patient Ledger.');
+      await load();
+      writeAuditEvent('Bill/Charge Approved','Bills & Charges',row.id,{patient_id:row.patient_id,final_amount:amount,ledger_posted:true},'Success');
+    }
+
+    async function reject(row){
+      if(!canFinalise)return;
+      const reason=prompt('Reason for rejecting/cancelling this charge request:');
+      if(!reason)return;
+      const {error}=await client.from('bill_charge_requests').update({status:'Rejected',approval_remarks:reason,updated_at:new Date().toISOString()}).eq('id',row.id);
+      if(error){showToast('error',error.message);return}
+      showToast('success','Charge request rejected.');await load();
+    }
+
+    const tableRows=rows.map(row=>[
+      patientLabel(row.patient_id),
+      formatDateIN(row.charge_date),
+      row.category||'—',
+      row.description||'—',
+      row.service_provider||'—',
+      row.bill_available?`Yes${row.bill_number?` · ${row.bill_number}`:''}`:'No',
+      currency(row.requested_amount||row.estimated_amount),
+      currency(row.final_amount),
+      row.urgency||'Routine',
+      h('span',{className:`badge ${['Approved','Posted'].includes(row.status)?'':'off'}`},row.status||'Raised'),
+      h('div',{className:'employee-actions'},
+        (canFinalise||row.status==='Raised')&&row.status!=='Posted'&&row.status!=='Rejected'&&h('button',{className:'btn btn-secondary',onClick:()=>openEdit(row)},canFinalise?'Review / Enter Fee':'Edit'),
+        canFinalise&&!['Posted','Rejected'].includes(row.status)&&h('button',{className:'btn btn-primary',disabled:busy,onClick:()=>finalise(row)},'Approve & Post'),
+        canFinalise&&!['Posted','Rejected'].includes(row.status)&&h('button',{className:'btn btn-danger',onClick:()=>reject(row)},'Reject')
+      )
+    ]);
+
+    return h(React.Fragment,null,
+      h(Section,{title:'Bills & Charges',subtitle:'Clinical staff raise service/expense requests; Accounts or Manager verifies fees and posts approved charges'},
+        message&&h('div',{className:'message error'},message),
+        h('div',{className:'panel-head'},
+          h('p',{className:'small-note'},'Nurses may raise Doctor Visit, Medicines, Physiotherapy, Additional Food and other charges. When the bill or fee is unavailable, Accounts/Manager enters the final amount before posting.'),
+          canRaise&&h('button',{className:'btn btn-primary',onClick:openNew},'Raise Bill / Charge')
+        )
+      ),
+      h(LogTable,{
+        title:`Bill & Charge Requests (${tableRows.length})`,
+        subtitle:'Approved charges are automatically transferred to Billing & Payments',
+        heads:['Patient','Date','Category','Description','Provider','Bill Available','Requested / Estimate','Final Charge','Urgency','Status','Action'],
+        rows:tableRows
+      }),
+      !loading&&!message&&!tableRows.length&&h('div',{className:'card panel'},h('p',{className:'small-note'},'No bill or charge request has been raised.')),
+      show&&h('div',{className:'modal-backdrop',onClick:e=>{if(e.target===e.currentTarget)setShow(false)}},
+        h('form',{className:'card modal',style:{width:'min(1050px,96vw)',maxHeight:'92vh',overflow:'auto'},onSubmit:save},
+          h('div',{className:'panel-head'},
+            h('div',null,h('h3',null,editing?'Review Bill / Charge':'Raise Bill / Charge'),h('small',null,'Patient-specific additional service or expense')),
+            h('button',{type:'button',className:'close',onClick:()=>setShow(false)},'×')
+          ),
+          h('div',{className:'modal-grid'},
+            h('div',{className:'field'},h('label',null,'Patient'),h('select',{required:true,value:form.patient_id,disabled:!!editing,onChange:e=>setForm({...form,patient_id:e.target.value})},h('option',{value:''},'Select patient'),patients.filter(p=>p.is_active!==false).map(p=>h('option',{key:p.id,value:p.id},patientLabel(p.id))))),
+            h('div',{className:'field'},h('label',null,'Charge / Service Date'),h('input',{type:'date',max:todayISOIndia(),value:form.charge_date,onChange:e=>setForm({...form,charge_date:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Category'),h('select',{value:form.category,onChange:e=>setForm({...form,category:e.target.value})},['Doctor Visit','Medicines','Physiotherapy','Additional Food','Diagnostic Test','Consumables','Medical Equipment','Ambulance / Transport','Special Nurse','Procedure / Dressing','Other'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field'},h('label',null,'Service Provider / Vendor'),h('input',{value:form.service_provider,onChange:e=>setForm({...form,service_provider:e.target.value}),placeholder:'Doctor, pharmacy, therapist, lab, vendor'})),
+            h('div',{className:'field span-2'},h('label',null,'Description / Query'),h('textarea',{required:true,rows:3,value:form.description,onChange:e=>setForm({...form,description:e.target.value}),placeholder:'Example: Doctor visit consultation on request / medicine purchased / extra protein diet'})),
+            h('div',{className:'field'},h('label',null,'Quantity'),h('input',{type:'number',min:'1',step:'1',value:form.quantity,onChange:e=>setForm({...form,quantity:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Unit Cost (if known)'),h('input',{type:'number',min:'0',step:'0.01',value:form.unit_cost,onChange:e=>setForm({...form,unit_cost:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Estimated Amount'),h('input',{type:'number',min:'0',step:'0.01',value:form.estimated_amount,onChange:e=>setForm({...form,estimated_amount:e.target.value})})),
+            h('div',{className:'field'},h('label',null,'Requested / Bill Amount'),h('input',{type:'number',min:'0',step:'0.01',value:form.requested_amount,onChange:e=>setForm({...form,requested_amount:e.target.value})})),
+            h('label',{className:'check-card'},h('input',{type:'checkbox',checked:!!form.bill_available,onChange:e=>setForm({...form,bill_available:e.target.checked})}),h('span',null,'Bill / Receipt is available')),
+            h('div',{className:'field'},h('label',null,'Urgency'),h('select',{value:form.urgency,onChange:e=>setForm({...form,urgency:e.target.value})},['Routine','Urgent','Immediate'].map(x=>h('option',{key:x,value:x},x)))),
+            form.bill_available&&h('div',{className:'field'},h('label',null,'Bill Number'),h('input',{value:form.bill_number,onChange:e=>setForm({...form,bill_number:e.target.value})})),
+            form.bill_available&&h('div',{className:'field'},h('label',null,'Bill Date'),h('input',{type:'date',max:todayISOIndia(),value:form.bill_date,onChange:e=>setForm({...form,bill_date:e.target.value})})),
+            form.bill_available&&h('div',{className:'field span-2'},h('label',null,'Bill / Receipt Reference'),h('input',{value:form.bill_reference,onChange:e=>setForm({...form,bill_reference:e.target.value}),placeholder:'Invoice reference, receipt details or document location'})),
+            canFinalise&&h('div',{className:'field'},h('label',null,'Final Approved Fee / Charge'),h('input',{type:'number',min:'0',step:'0.01',value:form.final_amount,onChange:e=>setForm({...form,final_amount:e.target.value}),placeholder:'Entered by Accounts / Manager'})),
+            h('div',{className:'field'},h('label',null,'Service Required On'),h('input',{type:'date',value:form.requested_for_date,onChange:e=>setForm({...form,requested_for_date:e.target.value})})),
+            h('div',{className:'field span-2'},h('label',null,'Remarks'),h('textarea',{rows:2,value:form.remarks,onChange:e=>setForm({...form,remarks:e.target.value})}))
+          ),
+          h('div',{className:'actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setShow(false)},'Cancel'),h('button',{className:'btn btn-primary',disabled:busy},busy?'Saving…':editing?'Save Review':'Raise Request'))
+        )
+      ),
+      toast&&h('div',{className:`samara-toast ${toast.type}`,role:'status','aria-live':'polite'},
+        h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),
+        h('div',null,h('strong',null,toast.type==='success'?'Bills & Charges updated':'Update failed'),h('span',null,toast.text)),
+        h('button',{type:'button',onClick:()=>setToast(null)},'×')
+      )
+    );
+  }
+
+function BillingPayments({profile}){
     const [patients]=usePatients(),[rows,setRows]=React.useState([]),[form,setForm]=React.useState({patient_id:'',transaction_type:'Charge',category:'Room Charges',amount:'',description:'',payment_mode:'Cash'});async function load(){const {data}=await client.from('billing_transactions').select('*,patients(full_name)').order('transaction_date',{ascending:false}).limit(200);setRows(data||[])}React.useEffect(()=>{load()},[]);
     async function save(e){e.preventDefault();const {error}=await client.from('billing_transactions').insert({...form,amount:Number(form.amount),transaction_date:new Date().toISOString(),entered_by:profile.id});if(error)return alert(error.message);setForm({...form,amount:'',description:''});load()}
     const totals=rows.reduce((a,r)=>{a[r.transaction_type]=(a[r.transaction_type]||0)+Number(r.amount||0);return a},{Charge:0,Payment:0,Discount:0,Refund:0});const due=totals.Charge-totals.Payment-totals.Discount+totals.Refund;

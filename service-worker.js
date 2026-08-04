@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.15-discharge-workflow';
+const CACHE = 'samara-erp-1.3.16-bills-charges-workflow';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.15', './app.js?v=1.3.15',
-  './bootstrap-error.js?v=1.3.15', './health-check.js?v=1.3.15',
-  './config.js?v=1.3.15', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.16', './app.js?v=1.3.16',
+  './bootstrap-error.js?v=1.3.16', './health-check.js?v=1.3.16',
+  './config.js?v=1.3.16', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

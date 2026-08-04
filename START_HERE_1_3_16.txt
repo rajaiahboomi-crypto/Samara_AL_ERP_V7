@@ -1,0 +1,38 @@
+SAMARA CARE ERP 1.3.16 — BILLS & CHARGES WORKFLOW
+
+1. Run once in Supabase SQL Editor:
+   41_bills_charges_workflow.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Access:
+- Nurse: raise and edit a bill/charge query.
+- Manager: raise, review, enter final fees, approve and post.
+- Accounts: raise, review, enter final fees, approve and post.
+- Admin: full access.
+- Caregiver/Kitchen: no access.
+
+Typical categories:
+- Doctor Visit
+- Medicines
+- Physiotherapy
+- Additional Food
+- Diagnostic Test
+- Consumables
+- Medical Equipment
+- Ambulance / Transport
+- Special Nurse
+- Procedure / Dressing
+- Other
+
+Workflow:
+1. Nurse raises the request.
+2. If bill/receipt and amount are available, the nurse enters them.
+3. If unavailable, the nurse may leave the final fee blank.
+4. Accounts or Manager verifies the bill/provider and enters the final charge.
+5. Approve & Post transfers the charge automatically to Billing & Payments / Patient Ledger.
+6. Duplicate posting is prevented.
+7. Green/red confirmation pop-ups and Audit Trail recording are included.
