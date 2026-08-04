@@ -1,0 +1,23 @@
+SAMARA CARE ERP 1.3.48 — SHIFT HANDOVER SUMMARY FIX
+
+1. Run once in Supabase SQL Editor:
+   53_handover_summary_compatibility_fix.sql
+
+2. Upload:
+   app.js
+   index.html
+   service-worker.js
+   styles-1.3.48.css
+
+ERROR FIXED
+null value in column "summary" of relation "shift_handovers" violates not-null constraint
+
+CAUSE
+The database still requires the older column named summary, while the revised form was sending patient_summary only.
+
+CORRECTIONS
+- The application now sends both summary and patient_summary.
+- Existing records are backfilled.
+- A database trigger keeps both columns synchronised.
+- Patient summary remains mandatory.
+- The handover register can read either the old or new column.

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.47';
-  const APP_BUILD_DATE = '04-Aug-2026 19:05 IST';
+  const APP_VERSION = '1.3.48';
+  const APP_BUILD_DATE = '04-Aug-2026 17:40 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -4072,10 +4072,12 @@ function ShiftHandover({profile}){
         return;
       }
       setSaving(true);
+      const summaryText=form.patient_summary.trim();
       const payload={
         patient_id:form.patient_id,
         shift:form.shift,
-        patient_summary:form.patient_summary.trim(),
+        summary:summaryText,
+        patient_summary:summaryText,
         pending_tasks:form.pending_tasks.trim(),
         special_instructions:form.special_instructions.trim(),
         priority:form.priority,
@@ -4117,7 +4119,7 @@ function ShiftHandover({profile}){
           formatDateIN(r.handover_date),
           r.patients?.full_name||'—',
           r.patients?`${r.patients.room_no||'—'}-${r.patients.bed_no||'—'}`:'—',
-          r.shift,r.priority,r.patient_summary,r.pending_tasks,r.profiles?.full_name||'—'
+          r.shift,r.priority,r.patient_summary||r.summary||'—',r.pending_tasks,r.profiles?.full_name||'—'
         ])
       }),
       toast&&h('div',{className:`samara-toast ${toast.type}`},
