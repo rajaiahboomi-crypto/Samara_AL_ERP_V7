@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.20-accounts-dashboard-colours';
+const CACHE = 'samara-erp-1.3.21-background-billing-maintenance';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.20', './app.js?v=1.3.20',
-  './bootstrap-error.js?v=1.3.20', './health-check.js?v=1.3.20',
-  './config.js?v=1.3.20', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.21', './app.js?v=1.3.21',
+  './bootstrap-error.js?v=1.3.21', './health-check.js?v=1.3.21',
+  './config.js?v=1.3.21', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

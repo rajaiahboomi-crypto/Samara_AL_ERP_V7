@@ -1,0 +1,35 @@
+SAMARA CARE ERP 1.3.21 — BACKGROUND BILLING & ADMIN SYSTEM MAINTENANCE
+
+1. Run once in Supabase SQL Editor:
+   44_background_billing_admin_maintenance.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Billing & Payments:
+- Removed “Generate / Verify Today”.
+- Automatic Accommodation Charges are view-only.
+- Accounts, Manager, Nurse and Caregiver cannot manually run the recurring billing engine.
+- The page clearly states that room and nursing charges are system generated.
+
+Background operation:
+- The first authenticated ERP user opening the application triggers the daily verification silently.
+- Missing Room Charges and Nursing Charges are created.
+- Duplicate charges are skipped.
+- Discharged/inactive patients and patients without an occupied bed are excluded.
+
+Admin only:
+Admin → System Maintenance
+
+The Administrator can:
+- View the last automatic billing run.
+- View room and nursing charges created.
+- View skipped duplicates and errors.
+- Review generator history.
+- Run Billing Generator Again after correcting room/patient data.
+
+Manager does not have access to System Maintenance.
+
+Version: 1.3.21

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.20';
-  const APP_BUILD_DATE = '04-Aug-2026 19:45 IST';
+  const APP_VERSION = '1.3.21';
+  const APP_BUILD_DATE = '04-Aug-2026 20:20 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -44,7 +44,7 @@
   const BED_CODE_OPTIONS = ['A','B','C','D'];
   const NAV_SECTIONS = [
     { title:'OVERVIEW', items:['Dashboard','Notifications'] },
-    { title:'ADMIN', items:['Employees','Audit Trail'] },
+    { title:'ADMIN', items:['Employees','Audit Trail','System Maintenance'] },
     { title:'ADMISSION', items:['Enquiries','Admissions','Patients','Discharge','Documents'] },
     { title:'MANAGER', items:['Reports','Intelligent Reports','Medication Errors','Recovery Timeline'] },
     { title:'NURSING', items:['Clinical Dashboard','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Special Nurse','Shift Handover'] },
@@ -55,7 +55,7 @@
   const ALL_NAV = NAV_SECTIONS.flatMap(section=>section.items);
   const ROLE_NAV={
     Admin:ALL_NAV,
-    Manager:ALL_NAV,
+    Manager:ALL_NAV.filter(item=>item!=='System Maintenance'),
     Nurse:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Billing & Payments','Notifications'],
     Caregiver:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Billing & Payments','Notifications'],
     Accounts:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Rooms & Beds','Bills & Charges','Billing & Payments','Reports','Intelligent Reports'],
@@ -295,6 +295,10 @@ Caring with Compassion. Living with Dignity.`;
         setProfile(data);
         setPage(ROLE_HOME[data.role]||'Notifications');
         client.from('profiles').update({last_sign_in_at:new Date().toISOString()}).eq('id',data.id).then(()=>{});
+        // Automatic daily room and nursing billing. Duplicate-safe and silent.
+        client.rpc('run_daily_billing_automation',{p_charge_date:todayISOIndia(),p_force:false})
+          .then(({error})=>{if(error)console.warn('Automatic daily billing unavailable:',error.message)})
+          .catch(error=>console.warn('Automatic daily billing unavailable:',error));
       })();
     },[session]);
 
@@ -354,7 +358,8 @@ Caring with Compassion. Living with Dignity.`;
           page==='Intelligent Reports'&&h(IntelligentReports,{profile}),
           page==='Medication Errors'&&h(MedicationErrors,{profile,onNavigate:setPage}),
           page==='Notifications'&&h(Notifications,{profile}),
-          page==='Audit Trail'&&h(AuditTrail)
+          page==='Audit Trail'&&h(AuditTrail),
+          page==='System Maintenance'&&h(SystemMaintenance,{profile})
         ),
         h(MobileBottomNav,{page,setPage,allowed,profile,onOpenMenu:()=>setMobileDrawerOpen(true)}),
         mobileDrawerOpen&&h(MobileNavigationDrawer,{profile,allowed,page,onNavigate:(next)=>{setPage(next);setMobileDrawerOpen(false)},onClose:()=>setMobileDrawerOpen(false)})
@@ -3305,7 +3310,6 @@ function BillingPayments({profile}){
     const [selectedPatient,setSelectedPatient]=React.useState('');
     const [viewMode,setViewMode]=React.useState('Pending Bills');
     const [form,setForm]=React.useState({patient_id:'',transaction_type:'Charge',category:'Room Charges',amount:'',description:'',payment_mode:'Cash'});
-    const [autoBusy,setAutoBusy]=React.useState(false);
     const [message,setMessage]=React.useState('');
     const [toast,setToast]=React.useState(null);
     const [queryTarget,setQueryTarget]=React.useState(null);
@@ -3334,19 +3338,8 @@ function BillingPayments({profile}){
       if(!queryResult.error)setDisputes(queryResult.data||[]);
     }
 
-    async function generateDailyCharges(silent=false){
-      if(!canManage)return;
-      setAutoBusy(true);
-      const {data,error}=await client.rpc('generate_daily_accommodation_charges',{p_charge_date:todayISOIndia()});
-      setAutoBusy(false);
-      if(error){if(!silent)showToast('error',error.message||'Unable to generate daily charges.');return}
-      const roomCount=Number(data?.room_charges_created||0),nursingCount=Number(data?.nursing_charges_created||0);
-      if(!silent||roomCount+nursingCount>0)showToast('success',`${roomCount} room charge(s) and ${nursingCount} nursing charge(s) generated.`);
-      await load();
-    }
-
     React.useEffect(()=>{
-      (async()=>{await load();if(canManage)await generateDailyCharges(true)})();
+      load();
       const ch=client.channel('billing-review-live')
         .on('postgres_changes',{event:'*',schema:'public',table:'billing_transactions'},load)
         .on('postgres_changes',{event:'*',schema:'public',table:'billing_discrepancies'},load)
@@ -3498,9 +3491,6 @@ function BillingPayments({profile}){
         h('div',{className:'card stat',style:cardStyle('neutral')},h('span',null,'Room Rent Generated Today'),h('strong',null,`₹${roomGeneratedToday.toLocaleString('en-IN')}`)),
         h('div',{className:'card stat',style:cardStyle('neutral')},h('span',null,'Nursing Charges Today'),h('strong',null,`₹${nursingGeneratedToday.toLocaleString('en-IN')}`))
       ),
-      canManage&&h(Section,{title:'Automatic Daily Accommodation Charges',subtitle:'Room and nursing charges are generated once per patient per day',actions:h('button',{className:'btn btn-primary',disabled:autoBusy,onClick:()=>generateDailyCharges(false)},autoBusy?'Calculating…':'Generate / Verify Today')},
-        h('p',{className:'small-note'},'Single/Separate: Room ₹3,000 + Nursing ₹1,000. Twin: Room ₹2,000 + Nursing ₹800. General: Room ₹1,800 + Nursing ₹750.')
-      ),
       canManage&&h(Section,{title:'Manual Billing & Payment Entry',subtitle:'Accounts/Admin/Manager only'},
         message&&h('div',{className:'message error'},message),
         h('form',{className:'modal-grid',onSubmit:save},
@@ -3512,6 +3502,9 @@ function BillingPayments({profile}){
           miniInput('Description / reference',form.description,v=>setForm({...form,description:v})),
           h('button',{className:'btn btn-primary'},'Save Transaction')
         )
+      ),
+      h(Section,{title:'Automatic Accommodation Charges',subtitle:'View-only system generated room and nursing charges'},
+        h('p',{className:'small-note'},'Room rent and nursing charges are generated automatically once per active occupied patient per day. No user action is required. Only the Administrator can review or rerun the billing engine under Admin → System Maintenance.')
       ),
       h('div',{className:'grid two',style:{marginTop:'16px'}},
         h(Section,{title:'Outstanding Ageing Analysis',subtitle:'Pending charges grouped by age'},
@@ -4135,7 +4128,88 @@ function Reports(){const [data,setData]=React.useState({patients:[],billing:[],i
 
   function Notifications({profile}){const [rows,setRows]=React.useState([]),[title,setTitle]=React.useState(''),[message,setMessage]=React.useState('');async function load(){const {data}=await client.from('notifications').select('*').order('created_at',{ascending:false}).limit(100);setRows(data||[])}React.useEffect(()=>{load()},[]);async function save(e){e.preventDefault();const {error}=await client.from('notifications').insert({title,message,priority:'Normal',created_by:profile.id});if(error)return alert(error.message);setTitle('');setMessage('');load()}return h(React.Fragment,null,['Admin','Manager'].includes(profile.role)&&h(Section,{title:'Create Notification'},h('form',{className:'modal-grid',onSubmit:save},miniInput('Title',title,setTitle,true),miniInput('Message',message,setMessage,true),h('button',{className:'btn btn-primary'},'Publish'))),h(LogTable,{title:'Notifications',heads:['Title','Message','Priority','Date'],rows:rows.map(r=>[r.title,r.message,r.priority,fmt(r.created_at)])}))}
 
-  function AuditTrail(){
+  
+  function SystemMaintenance({profile}){
+    const isAdmin=profile?.role==='Admin';
+    const [runs,setRuns]=React.useState([]);
+    const [busy,setBusy]=React.useState(false);
+    const [message,setMessage]=React.useState('');
+    const [toast,setToast]=React.useState(null);
+    const toastTimer=React.useRef(null);
+
+    function showToast(type,text){
+      clearTimeout(toastTimer.current);
+      setToast({type,text});
+      toastTimer.current=setTimeout(()=>setToast(null),5000);
+    }
+    React.useEffect(()=>()=>clearTimeout(toastTimer.current),[]);
+
+    async function load(){
+      const {data,error}=await client.from('daily_billing_runs')
+        .select('*')
+        .order('started_at',{ascending:false})
+        .limit(100);
+      if(error){setMessage(error.message||'Unable to load billing maintenance history.');setRuns([])}
+      else {setMessage('');setRuns(data||[])}
+    }
+    React.useEffect(()=>{if(isAdmin)load()},[]);
+
+    async function runAgain(){
+      if(!isAdmin||busy)return;
+      if(!confirm(`Run the daily billing verification again for ${formatDateIN(todayISOIndia())}? Duplicate room and nursing charges will be skipped automatically.`))return;
+      setBusy(true);
+      const {data,error}=await client.rpc('run_daily_billing_automation',{p_charge_date:todayISOIndia(),p_force:true});
+      setBusy(false);
+      if(error){showToast('error',error.message||'Billing maintenance run failed.');return}
+      const created=Number(data?.room_charges_created||0)+Number(data?.nursing_charges_created||0);
+      showToast('success',`Billing verification completed. ${created} missing charge(s) were created; existing charges were skipped.`);
+      await load();
+      writeAuditEvent('Daily Billing Generator Rerun','System Maintenance',todayISOIndia(),data||{},'Success');
+    }
+
+    if(!isAdmin)return h(Section,{title:'System Maintenance'},h('div',{className:'message error'},'Administrator access is required.'));
+
+    const latest=runs[0]||null;
+    return h(React.Fragment,null,
+      h(Section,{
+        title:'System Maintenance',
+        subtitle:'Administrator-only controls for automatic recurring billing',
+        actions:h('button',{type:'button',className:'btn btn-primary',disabled:busy,onClick:runAgain},busy?'Running Billing Verification…':'Run Billing Generator Again')
+      },
+        message&&h('div',{className:'message error'},message),
+        h('div',{className:'grid stats'},
+          h('div',{className:'card stat'},h('span',null,'Last Automatic Run'),h('strong',null,latest?fmt(latest.started_at):'No run recorded')),
+          h('div',{className:'card stat'},h('span',null,'Room Charges Created'),h('strong',null,latest?.room_charges_created??0)),
+          h('div',{className:'card stat'},h('span',null,'Nursing Charges Created'),h('strong',null,latest?.nursing_charges_created??0)),
+          h('div',{className:'card stat'},h('span',null,'Already Existing / Skipped'),h('strong',null,latest?.skipped_count??0)),
+          h('div',{className:'card stat'},h('span',null,'Errors'),h('strong',null,latest?.error_count??0))
+        ),
+        h('p',{className:'small-note'},'The ERP automatically verifies daily room rent and nursing charges when the first authenticated user opens the application. Duplicate protection ensures only one Room Charge and one Nursing Charge per patient per date.')
+      ),
+      h(LogTable,{
+        title:'Daily Billing Generator History',
+        subtitle:'Automatic and administrator-initiated verification runs',
+        heads:['Charge Date','Started','Run Type','Room Created','Nursing Created','Skipped','Errors','Status'],
+        rows:runs.map(row=>[
+          formatDateIN(row.charge_date),
+          fmt(row.started_at),
+          row.run_type||'Automatic',
+          row.room_charges_created??0,
+          row.nursing_charges_created??0,
+          row.skipped_count??0,
+          row.error_count??0,
+          h('span',{className:`badge ${row.status==='Completed'?'':'off'}`},row.status||'Completed')
+        ])
+      }),
+      toast&&h('div',{className:`samara-toast ${toast.type}`,role:'status','aria-live':'polite'},
+        h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),
+        h('div',null,h('strong',null,toast.type==='success'?'Maintenance completed':'Maintenance failed'),h('span',null,toast.text)),
+        h('button',{type:'button',onClick:()=>setToast(null)},'×')
+      )
+    );
+  }
+
+function AuditTrail(){
     const [rows,setRows]=React.useState([]);
     const [profiles,setProfiles]=React.useState([]);
     const [loading,setLoading]=React.useState(true);
