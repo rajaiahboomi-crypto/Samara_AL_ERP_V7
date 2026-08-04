@@ -1,0 +1,22 @@
+SAMARA CARE ERP 1.3.17 — NURSE BILLS & CHARGES MENU FIX
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Fixed:
+- “Raise Bills & Charges” now appears in the Nurse Nursing Workspace menu.
+- Nurse access already existed in the role permissions; the dedicated clinical sidebar list had omitted the menu item.
+- The page opens the Bills & Charges request workflow.
+- Nurses can raise and edit requests.
+- Accounts, Manager and Admin can verify fees, approve and post to the Patient Ledger.
+- Caregiver and Kitchen remain without access.
+
+After uploading:
+1. Close all ERP windows.
+2. Reopen the app.
+3. Tap “App update available” if shown.
+4. Confirm version 1.3.17.
