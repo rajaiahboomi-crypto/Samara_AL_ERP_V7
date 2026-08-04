@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.4';
-  const APP_BUILD_DATE = '04-Aug-2026 12:10 IST';
+  const APP_VERSION = '1.3.5';
+  const APP_BUILD_DATE = '04-Aug-2026 12:35 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1688,13 +1688,108 @@ Caring with Compassion. Living with Dignity.`;
   }
 
   function DailyCare({profile}){
-    const [patients]=usePatients(),[rows,setRows]=React.useState([]),[form,setForm]=React.useState({patient_id:'',care_type:'Bathing assistance',shift:currentShift(),status:'Completed',remarks:''});
-    async function load(){const {data}=await client.from('care_logs').select('*,patients(full_name,room_no,bed_no),profiles!care_logs_completed_by_fkey(full_name)').order('created_at',{ascending:false}).limit(100);setRows(data||[])}
-    React.useEffect(()=>{load()},[]);
-    async function save(e){e.preventDefault();const {error}=await client.from('care_logs').insert({patient_id:form.patient_id,care_date:new Date().toISOString().slice(0,10),shift:form.shift,status:form.status,completed_at:new Date().toISOString(),completed_by:profile.id,remarks:`${form.care_type}: ${form.remarks}`});if(error)return alert(error.message);setForm({...form,remarks:''});load()}
-    return h(React.Fragment,null,h(Section,{title:'Daily Care Entry',subtitle:'Bath, restroom, hygiene, feeding, mobility and positioning'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),miniSelect('Care activity',form.care_type,['Bathing assistance','Restroom assistance','Oral hygiene','Feeding assistance','Mobility assistance','Diaper change','Position change','Fluid monitoring','Sleep assistance'],v=>setForm({...form,care_type:v})),miniSelect('Shift',form.shift,['Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)'],v=>setForm({...form,shift:v})),miniSelect('Status',form.status,['Completed','Refused','Not required','Pending'],v=>setForm({...form,status:v})),miniInput('Remarks',form.remarks,v=>setForm({...form,remarks:v})),h('button',{className:'btn btn-primary'},'Save care record'))),h(LogTable,{title:'Recent Care Records',rows:rows.map(r=>[r.patients?.full_name,r.shift,r.status,r.remarks,fmt(r.created_at)]),heads:['Patient','Shift','Status','Activity / Remarks','Recorded']}))
-  }
+    const [patients]=usePatients();
+    const [rows,setRows]=React.useState([]);
+    const [form,setForm]=React.useState({patient_id:'',care_type:'Bathing assistance',shift:currentShift(),status:'Completed',remarks:''});
+    const [saving,setSaving]=React.useState(false);
+    const [toast,setToast]=React.useState(null);
+    const toastTimer=React.useRef(null);
 
+    function showToast(type,text){
+      clearTimeout(toastTimer.current);
+      setToast({type,text});
+      toastTimer.current=setTimeout(()=>setToast(null),4500);
+    }
+    React.useEffect(()=>()=>clearTimeout(toastTimer.current),[]);
+
+    async function load(){
+      const {data,error}=await client
+        .from('care_logs')
+        .select('*,patients(full_name,room_no,bed_no),profiles!care_logs_completed_by_fkey(full_name)')
+        .order('created_at',{ascending:false})
+        .limit(100);
+      if(error){
+        console.error(error);
+        showToast('error',error.message||'Unable to load recent care records.');
+        return;
+      }
+      setRows(data||[]);
+    }
+    React.useEffect(()=>{load()},[]);
+
+    async function save(e){
+      e.preventDefault();
+      if(saving)return;
+      if(!form.patient_id){
+        showToast('error','Please select a patient before saving the care record.');
+        return;
+      }
+      setSaving(true);
+      const now=new Date();
+      const payload={
+        patient_id:form.patient_id,
+        care_date:todayISOIndia(),
+        shift:form.shift,
+        status:form.status,
+        completed_at:now.toISOString(),
+        completed_by:profile.id,
+        remarks:`${form.care_type}${form.remarks?.trim()?`: ${form.remarks.trim()}`:''}`
+      };
+      const {data,error}=await client.from('care_logs').insert(payload).select('id').single();
+      if(error){
+        console.error('Daily Care save failed:',error);
+        showToast('error',error.message||'Daily care record could not be saved.');
+        setSaving(false);
+        return;
+      }
+
+      showToast('success',`${form.care_type} recorded successfully for the selected patient.`);
+      setForm(current=>({...current,remarks:''}));
+      await load();
+
+      // Audit logging must never block the clinical save.
+      writeAuditEvent(
+        'Daily Care Recorded',
+        'Daily Care',
+        data?.id||form.patient_id,
+        {
+          patient_id:form.patient_id,
+          care_activity:form.care_type,
+          shift:form.shift,
+          status:form.status,
+          summary:`${form.care_type} — ${form.status}`
+        },
+        'Success'
+      );
+      setSaving(false);
+    }
+
+    return h(React.Fragment,null,
+      h(Section,{title:'Daily Care Entry',subtitle:'Bath, restroom, hygiene, feeding, mobility and positioning'},
+        h('form',{className:'modal-grid',onSubmit:save},
+          patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),
+          miniSelect('Care activity',form.care_type,['Bathing assistance','Restroom assistance','Oral hygiene','Feeding assistance','Mobility assistance','Diaper change','Position change','Fluid monitoring','Sleep assistance'],v=>setForm({...form,care_type:v})),
+          miniSelect('Shift',form.shift,['Day Shift (7 AM–7 PM)','Night Shift (7 PM–7 AM)'],v=>setForm({...form,shift:v})),
+          miniSelect('Status',form.status,['Completed','Refused','Not required','Pending'],v=>setForm({...form,status:v})),
+          miniInput('Remarks',form.remarks,v=>setForm({...form,remarks:v})),
+          h('button',{className:'btn btn-primary',disabled:saving},saving?'Saving care record…':'Save care record')
+        )
+      ),
+      h(LogTable,{
+        title:'Recent Care Records',
+        rows:rows.map(r=>[r.patients?.full_name,r.shift,r.status,r.remarks,fmt(r.created_at)]),
+        heads:['Patient','Shift','Status','Activity / Remarks','Recorded']
+      }),
+      toast&&h('div',{className:`samara-toast ${toast.type}`,role:'status','aria-live':'polite'},
+        h('span',{className:'samara-toast-icon','aria-hidden':'true'},toast.type==='success'?'✓':'!'),
+        h('div',null,
+          h('strong',null,toast.type==='success'?'Care record saved':'Save failed'),
+          h('span',null,toast.text)
+        ),
+        h('button',{type:'button','aria-label':'Close notification',onClick:()=>setToast(null)},'×')
+      )
+    );
+  }
   function VitalSigns({profile}){
     const [patients]=usePatients(),[rows,setRows]=React.useState([]),[selectedPatient,setSelectedPatient]=React.useState(''),[form,setForm]=React.useState({patient_id:'',temperature:'',systolic:'',diastolic:'',pulse:'',respiration:'',spo2:'',blood_sugar_type:'Not Taken',blood_sugar:'',weight:'',pain_score:'',remarks:''});
     const measured=value=>{if(value===null||value===undefined||String(value).trim()==='')return null;const n=Number(value);return Number.isFinite(n)&&n!==0?n:null};

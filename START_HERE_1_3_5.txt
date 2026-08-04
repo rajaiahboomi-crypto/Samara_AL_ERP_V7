@@ -1,0 +1,24 @@
+SAMARA CARE ERP 1.3.5 — FOCUSED DAILY CARE SAVE FIX
+
+1. Run once in Supabase SQL Editor:
+   33_daily_care_audit_trigger_fix.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+3. Close all ERP windows and reopen.
+   Tap “App update available” if displayed.
+
+What is fixed:
+- Save care record responds correctly.
+- Patient selection is validated.
+- Button shows “Saving care record…” during save.
+- Green success pop-up appears without scrolling.
+- Red failure pop-up shows the actual database error.
+- The saved record immediately appears under Recent Care Records.
+- Daily Care is added to Audit Trail only after the clinical save succeeds.
+- Audit failure cannot cancel or block the care record.
+
+No Patient Edit, MAR, Vitals, Reports, Billing or other module is changed.
