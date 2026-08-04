@@ -1,0 +1,26 @@
+SAMARA CARE ERP 1.3.10 — PHYSIOTHERAPY SESSION ENTRY
+
+1. Run once in Supabase SQL Editor:
+   36_physiotherapy_session_workflow.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+New workflow:
+- Preferred Time is shown in AM/PM format.
+- Time selection uses an easy AM/PM dropdown.
+- Admin, Manager, Nurse and Caregiver can record physiotherapy sessions.
+- Accounts and Kitchen can view only.
+- Status options:
+  • Completed
+  • Pending
+  • Not Done
+- Reason is mandatory for Pending and Not Done.
+- Optional session notes capture exercises, tolerance, pain and response.
+- Recent Physiotherapy Sessions are displayed below the plan.
+- Green/red fixed confirmation pop-ups are included.
+- Session activity is added to Audit Trail without blocking the clinical save.
+
+No other module is changed.
