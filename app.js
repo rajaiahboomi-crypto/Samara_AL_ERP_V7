@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.13';
-  const APP_BUILD_DATE = '04-Aug-2026 16:05 IST';
+  const APP_VERSION = '1.3.14';
+  const APP_BUILD_DATE = '04-Aug-2026 16:25 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -2604,6 +2604,7 @@ Caring with Compassion. Living with Dignity.`;
       nurse_name:'',
       nurse_source:'Our Employee',
       outsourced_company_name:'',
+      outsourced_registration_number:'',
       outsourced_contact_person:'',
       outsourced_contact_number:'',
       outsourced_agreement_reference:'',
@@ -2641,7 +2642,7 @@ Caring with Compassion. Living with Dignity.`;
       if(a.error){setMessage(a.error.message||'Unable to load Special Nurse assignments.');setAssignments([])}
       else setAssignments(a.data||[]);
       if(!p.error)setPatients(p.data||[]);
-      if(!e.error)setEmployees((e.data||[]).filter(x=>x.is_active!==false&&['Nurse','Caregiver','Manager','Admin'].includes(x.role)));
+      if(!e.error)setEmployees((e.data||[]).filter(x=>x.is_active!==false&&['Nurse','Caregiver'].includes(x.role)));
       setLoading(false);
     }
 
@@ -2675,6 +2676,7 @@ Caring with Compassion. Living with Dignity.`;
         ...emptyForm,...row,
         nurse_source:row.nurse_source||'Our Employee',
         outsourced_company_name:row.outsourced_company_name||'',
+        outsourced_registration_number:row.outsourced_registration_number||'',
         outsourced_contact_person:row.outsourced_contact_person||'',
         outsourced_contact_number:row.outsourced_contact_number||'',
         outsourced_agreement_reference:row.outsourced_agreement_reference||'',
@@ -2694,7 +2696,14 @@ Caring with Compassion. Living with Dignity.`;
       e.preventDefault();
       if(!canManage)return;
       if(!form.patient_id){showToast('error','Please select the assigned patient.');return}
-      if(form.nurse_source==='Our Employee'&&!form.nurse_profile_id){showToast('error','Please select the registered employee assigned as Special Nurse.');return}
+      if(form.nurse_source==='Our Employee'&&!form.nurse_profile_id){showToast('error','Please select the registered Nurse or Caregiver assigned for special duty.');return}
+      if(form.nurse_source==='Our Employee'){
+        const selected=employeeFor(form.nurse_profile_id);
+        if(!selected.id||!['Nurse','Caregiver'].includes(selected.role)){
+          showToast('error','Only employees with the role Nurse or Caregiver can be assigned for Special Nurse duty.');
+          return;
+        }
+      }
       if(form.nurse_source==='Outsourced'&&!form.nurse_name.trim()){showToast('error','Please enter the outsourced Special Nurse name.');return}
       if(form.nurse_source==='Outsourced'&&!form.outsourced_company_name.trim()){showToast('error','Please enter the outsourcing company or organisation name.');return}
       if(!form.coverage_days.length){showToast('error','Select at least one coverage day.');return}
@@ -2709,6 +2718,7 @@ Caring with Compassion. Living with Dignity.`;
         nurse_name:form.nurse_source==='Our Employee'?(formalName(selectedEmployee)||form.nurse_name||null):(form.nurse_name||null),
         nurse_source:form.nurse_source,
         outsourced_company_name:form.nurse_source==='Outsourced'?(form.outsourced_company_name||null):null,
+        outsourced_registration_number:form.nurse_source==='Outsourced'?(form.outsourced_registration_number||null):null,
         outsourced_contact_person:form.nurse_source==='Outsourced'?(form.outsourced_contact_person||null):null,
         outsourced_contact_number:form.nurse_source==='Outsourced'?(form.outsourced_contact_number||null):null,
         outsourced_agreement_reference:form.nurse_source==='Outsourced'?(form.outsourced_agreement_reference||null):null,
@@ -2806,12 +2816,13 @@ Caring with Compassion. Living with Dignity.`;
             h('div',{className:'field'},h('label',null,'Assigned Patient'),h('select',{required:true,value:form.patient_id,onChange:e=>setForm({...form,patient_id:e.target.value})},h('option',{value:''},'Select patient'),patients.filter(p=>p.is_active!==false).map(p=>h('option',{key:p.id,value:p.id},patientLabel(p.id))))),
             h('div',{className:'field'},h('label',null,'Special Nurse Source'),h('select',{
               value:form.nurse_source,
-              onChange:e=>setForm({...form,nurse_source:e.target.value,nurse_profile_id:'',nurse_name:'',outsourced_company_name:'',outsourced_contact_person:'',outsourced_contact_number:'',outsourced_agreement_reference:''})
+              onChange:e=>setForm({...form,nurse_source:e.target.value,nurse_profile_id:'',nurse_name:'',outsourced_company_name:'',outsourced_registration_number:'',outsourced_contact_person:'',outsourced_contact_number:'',outsourced_agreement_reference:''})
             },['Our Employee','Outsourced'].map(x=>h('option',{key:x,value:x},x)))),
             form.nurse_source==='Our Employee'
-              ?h('div',{className:'field'},h('label',null,'Registered Nurse / Employee'),h('select',{required:true,value:form.nurse_profile_id,onChange:e=>{const emp=employeeFor(e.target.value);setForm({...form,nurse_profile_id:e.target.value,nurse_name:formalName(emp)||''})}},h('option',{value:''},'Select registered employee'),employees.map(emp=>h('option',{key:emp.id,value:emp.id},`${formalName(emp)} · ${emp.role}`))))
+              ?h('div',{className:'field'},h('label',null,'Registered Nurse / Caregiver'),h('select',{required:true,value:form.nurse_profile_id,onChange:e=>{const emp=employeeFor(e.target.value);setForm({...form,nurse_profile_id:e.target.value,nurse_name:formalName(emp)||''})}},h('option',{value:''},'Select Nurse or Caregiver'),employees.map(emp=>h('option',{key:emp.id,value:emp.id},`${formalName(emp)}${emp.employee_id?` · ${emp.employee_id}`:''} · ${emp.role}`))))
               :h('div',{className:'field'},h('label',null,'Outsourced Special Nurse Name'),h('input',{required:true,value:form.nurse_name,onChange:e=>setForm({...form,nurse_name:e.target.value}),placeholder:'Name of outsourced nurse'})),
             form.nurse_source==='Outsourced'&&h('div',{className:'field'},h('label',null,'Company / Organisation Name'),h('input',{required:true,value:form.outsourced_company_name,onChange:e=>setForm({...form,outsourced_company_name:e.target.value}),placeholder:'Agency, hospital or service provider'})),
+            form.nurse_source==='Outsourced'&&h('div',{className:'field'},h('label',null,'Nurse Registration Number (optional)'),h('input',{value:form.outsourced_registration_number,onChange:e=>setForm({...form,outsourced_registration_number:e.target.value}),placeholder:'Nursing council registration number'})),
             form.nurse_source==='Outsourced'&&h('div',{className:'field'},h('label',null,'Organisation Contact Person'),h('input',{value:form.outsourced_contact_person,onChange:e=>setForm({...form,outsourced_contact_person:e.target.value}),placeholder:'Coordinator / supervisor name'})),
             form.nurse_source==='Outsourced'&&h('div',{className:'field'},h('label',null,'Organisation Contact Number'),h('input',{value:form.outsourced_contact_number,onChange:e=>setForm({...form,outsourced_contact_number:e.target.value}),placeholder:'Mobile / office number'})),
             form.nurse_source==='Outsourced'&&h('div',{className:'field'},h('label',null,'Agreement / Work Order Reference'),h('input',{value:form.outsourced_agreement_reference,onChange:e=>setForm({...form,outsourced_agreement_reference:e.target.value}),placeholder:'Optional agreement, invoice or work-order number'})),

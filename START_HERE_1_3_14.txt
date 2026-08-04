@@ -1,0 +1,25 @@
+SAMARA CARE ERP 1.3.14 — SPECIAL NURSE ROLE VALIDATION
+
+1. Run once in Supabase SQL Editor:
+   39_special_nurse_role_validation.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Internal assignment:
+- The dropdown now displays only active employees whose role is Nurse or Caregiver.
+- Admin, Manager, Accounts, Kitchen and other roles are excluded.
+- Employee ID and role are shown in the dropdown.
+- A strict validation prevents an invalid role from being saved even if the form is manipulated.
+
+Outsourced assignment:
+- Outsourced nurse name
+- Company / Organisation name
+- Optional Nursing Council Registration Number
+- Organisation contact person and number
+- Agreement / Work Order reference
+
+All earlier Special Nurse assignment fields, access permissions, status updates,
+Audit Trail and confirmation pop-ups remain unchanged.
