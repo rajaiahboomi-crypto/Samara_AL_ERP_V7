@@ -1,0 +1,48 @@
+SAMARA CARE ERP 1.3.37 — PATIENT-CENTRIC UNIFIED NURSING WORKLIST
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+SHIFT TASKS REDESIGNED
+
+- One compact expandable card per patient.
+- The collapsed card shows:
+  Patient name
+  Patient ID
+  Room/bed
+  First one or two pending tasks
+  “+ more” count
+  Pending and completed counts
+- Clicking the patient card expands all work for that patient.
+
+EXPANDED PATIENT VIEW
+
+- Medicines due in the active shift.
+- Basic care tasks for the active shift.
+- Vital signs status.
+- Physiotherapy due in the active shift.
+- Next-shift care duties in one compact summary.
+- Individual Complete, Exception, Given, Postpone and Enter Vitals actions.
+
+SPECIAL NURSE
+
+- Special Nurse information appears once in the patient card.
+- It no longer appears against every task.
+- The screen clearly states that authorised Nurses and Caregivers may also perform the care tasks.
+
+TOP SUMMARY
+
+- Patients in worklist.
+- Patients needing attention.
+- Current-shift tasks pending.
+- Medicines due.
+- Care pending.
+- Vitals pending.
+- Physiotherapy pending.
+- Next-shift care scheduled.
+
+This layout remains practical for 25, 50 or more patients because only one compact row is shown per patient until expanded.

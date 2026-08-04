@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.36-current-shift-compact-tasks';
+const CACHE = 'samara-erp-1.3.37-patient-centric-worklist';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.36', './app.js?v=1.3.36',
-  './bootstrap-error.js?v=1.3.36', './health-check.js?v=1.3.36',
-  './config.js?v=1.3.36', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.37', './app.js?v=1.3.37',
+  './bootstrap-error.js?v=1.3.37', './health-check.js?v=1.3.37',
+  './config.js?v=1.3.37', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {
