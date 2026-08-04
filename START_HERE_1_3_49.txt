@@ -1,0 +1,33 @@
+SAMARA CARE ERP 1.3.49 — UNIVERSAL POPUP AUTO-CLOSE & RETURN
+
+Upload these four files:
+- app.js
+- index.html
+- service-worker.js
+- styles-1.3.49.css
+
+No Supabase SQL is required.
+
+STANDARD BEHAVIOUR
+
+Whenever an action opens a popup or another task window:
+1. The originating page/display is remembered.
+2. The relevant form opens.
+3. On successful save, the popup is closed automatically.
+4. The success confirmation is displayed briefly.
+5. The ERP returns automatically to the previous page/display.
+6. The previous page reloads its latest data and status.
+
+This standard behaviour is active for:
+- Medication Administration / MAR popup
+- Physiotherapy Session popup
+- Daily Care opened from another page
+- Vital Signs opened from another page
+- Other action-driven clinical workflows using the shared completion helper
+
+Direct menu access remains unchanged:
+- When a module is opened directly from the left menu, it remains open after save.
+- Auto-return occurs only when the module or popup was opened from another action screen.
+
+DEVELOPMENT STANDARD
+All newly added action popups must use finishSuccessfulAction() after a successful save so that close, refresh and return behaviour remains consistent throughout the ERP.

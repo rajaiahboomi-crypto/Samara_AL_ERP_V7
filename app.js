@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.48';
-  const APP_BUILD_DATE = '04-Aug-2026 17:40 IST';
+  const APP_VERSION = '1.3.49';
+  const APP_BUILD_DATE = '04-Aug-2026 17:33 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -153,11 +153,33 @@
     try{sessionStorage.removeItem(TASK_NAVIGATION_KEY)}catch(_error){}
   };
 
-  const returnAfterSuccessfulAction = (returnPage,onNavigate,delay=650) => {
-    if(!returnPage||typeof onNavigate!=='function')return false;
-    setTimeout(()=>onNavigate(returnPage),delay);
-    return true;
+  const finishSuccessfulAction = ({
+    close,
+    returnPage,
+    onNavigate,
+    delay=650,
+    refresh
+  }={}) => {
+    try{
+      if(typeof close==='function')close();
+    }catch(error){
+      console.warn('Action window could not be closed cleanly.',error);
+    }
+    try{
+      if(typeof refresh==='function')refresh();
+    }catch(error){
+      console.warn('Previous display refresh could not be started.',error);
+    }
+    if(returnPage&&typeof onNavigate==='function'){
+      setTimeout(()=>onNavigate(returnPage),delay);
+      return true;
+    }
+    return false;
   };
+
+  const returnAfterSuccessfulAction = (returnPage,onNavigate,delay=650) =>
+    finishSuccessfulAction({returnPage,onNavigate,delay});
+
 
   const todayISOIndia = () => {
     const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
@@ -2973,7 +2995,7 @@ function RoomsBeds({profile}){
         'Success'
       );
       setSaving(false);
-      returnAfterSuccessfulAction(returnPage,onNavigate);
+      finishSuccessfulAction({returnPage,onNavigate});
     }
 
     return h(React.Fragment,null,
@@ -3039,7 +3061,7 @@ function RoomsBeds({profile}){
       setReturnPage(context.return_page||'');
       clearTaskNavigationContext();
     },[]);
-    async function save(e){e.preventDefault();const sugarType=form.blood_sugar_type||'Not Taken';const sugarValue=sugarType==='Not Taken'?null:num(form.blood_sugar);if(sugarType!=='Not Taken'&&sugarValue===null)return window.alert('Please enter the blood sugar value for the selected test type.');const payload={...form,temperature:num(form.temperature),systolic:num(form.systolic),diastolic:num(form.diastolic),pulse:num(form.pulse),respiration:num(form.respiration),spo2:num(form.spo2),blood_sugar_type:sugarType,blood_sugar:sugarValue,weight:num(form.weight),pain_score:form.pain_score===''?null:Number(form.pain_score),recorded_at:new Date().toISOString(),recorded_by:profile.id};const level=calculateLevel(payload);if(level==='Not Recorded')return window.alert('Please enter at least one actual vital-sign measurement before saving.');payload.alert_level=level;const {error}=await client.from('vital_signs').insert(payload);if(error)return window.alert(error.message);setSelectedPatient(form.patient_id);setForm({...form,temperature:'',systolic:'',diastolic:'',pulse:'',respiration:'',spo2:'',blood_sugar_type:'Not Taken',blood_sugar:'',weight:'',pain_score:'',remarks:''});await load();returnAfterSuccessfulAction(returnPage,onNavigate)}
+    async function save(e){e.preventDefault();const sugarType=form.blood_sugar_type||'Not Taken';const sugarValue=sugarType==='Not Taken'?null:num(form.blood_sugar);if(sugarType!=='Not Taken'&&sugarValue===null)return window.alert('Please enter the blood sugar value for the selected test type.');const payload={...form,temperature:num(form.temperature),systolic:num(form.systolic),diastolic:num(form.diastolic),pulse:num(form.pulse),respiration:num(form.respiration),spo2:num(form.spo2),blood_sugar_type:sugarType,blood_sugar:sugarValue,weight:num(form.weight),pain_score:form.pain_score===''?null:Number(form.pain_score),recorded_at:new Date().toISOString(),recorded_by:profile.id};const level=calculateLevel(payload);if(level==='Not Recorded')return window.alert('Please enter at least one actual vital-sign measurement before saving.');payload.alert_level=level;const {error}=await client.from('vital_signs').insert(payload);if(error)return window.alert(error.message);setSelectedPatient(form.patient_id);setForm({...form,temperature:'',systolic:'',diastolic:'',pulse:'',respiration:'',spo2:'',blood_sugar_type:'Not Taken',blood_sugar:'',weight:'',pain_score:'',remarks:''});await load();finishSuccessfulAction({returnPage,onNavigate})}
     const patientRows=selectedPatient?rows.filter(r=>r.patient_id===selectedPatient).slice(0,10):rows.slice(0,10);
     const latest=patientRows[0];
     const input=(label,key,unit,opts={})=>h('div',{className:'vital-input'},h('label',null,label),h('div',{className:'vital-input-wrap'},h('input',{type:'number',step:opts.step||'any',min:opts.min,max:opts.max,value:form[key],placeholder:opts.placeholder||'',disabled:Boolean(opts.disabled),onChange:e=>setForm({...form,[key]:e.target.value})}),unit&&h('span',null,unit)));
@@ -3153,8 +3175,12 @@ function RoomsBeds({profile}){
       };
       const {error}=await client.from('medication_administrations').insert(payload);
       if(error){setMarMessage(error.message||'Unable to save the Medication Administration Record.');setMarBusy(false);return;}
-      setMarBusy(false);setMarTarget(null);setTab('Today’s MAR');await load();
-      returnAfterSuccessfulAction(returnPage,onNavigate);
+      setMarBusy(false);setTab('Today’s MAR');await load();
+      finishSuccessfulAction({
+        close:()=>setMarTarget(null),
+        returnPage,
+        onNavigate
+      });
     }
 
     async function load(){
@@ -3661,9 +3687,12 @@ function RoomsBeds({profile}){
         return;
       }
       showToast('success',`Physiotherapy session marked as ${form.status}.`);
-      setEntryPlan(null);
       await load();
-      returnAfterSuccessfulAction(returnPage,onNavigate);
+      finishSuccessfulAction({
+        close:()=>setEntryPlan(null),
+        returnPage,
+        onNavigate
+      });
       writeAuditEvent('Physiotherapy Session Recorded','Physiotherapy',data?.id||entryPlan.id,{
         patient_id:entryPlan.patient_id,
         therapy:entryPlan.therapy_type,

@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.48-handover-summary-fix';
+const CACHE = 'samara-erp-1.3.49-universal-popup-auto-close';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.48', './app.js?v=1.3.48',
-  './bootstrap-error.js?v=1.3.48', './health-check.js?v=1.3.48',
-  './config.js?v=1.3.48', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.49', './app.js?v=1.3.49',
+  './bootstrap-error.js?v=1.3.49', './health-check.js?v=1.3.49',
+  './config.js?v=1.3.49', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {
