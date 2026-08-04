@@ -1,0 +1,22 @@
+SAMARA CARE ERP 1.3.33 — ROOM STATUS & OCCUPANT DROPDOWN
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Admission room dropdown now shows:
+- Available rooms in Green and selectable.
+- Occupied rooms in Red and disabled.
+- Reserved rooms in Blue and disabled.
+- Maintenance rooms in Grey and disabled.
+- Occupied room includes the resident name and Patient ID.
+- Room type and tariff remain visible in the same compact line.
+
+Example:
+Room 102-A · Twin Sharing · Occupied · Occupied by Mrs. Radhamani (PAT-0004) · Room ₹2,000 + Nursing ₹800/day
+
+Only Available rooms can be allotted during admission.
+Occupied, Reserved and Maintenance rooms are shown only for Admin/Manager information.

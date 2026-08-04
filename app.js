@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.32';
-  const APP_BUILD_DATE = '04-Aug-2026 14:40 IST';
+  const APP_VERSION = '1.3.33';
+  const APP_BUILD_DATE = '04-Aug-2026 14:50 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1344,18 +1344,34 @@ Caring with Compassion. Living with Dignity.`;
     React.useEffect(()=>{
       let active=true;
       async function loadRoomBeds(){
-        const {data,error}=await client.from('room_beds').select('*').order('room_no',{ascending:true}).order('bed_no',{ascending:true});
+        const [roomResult,patientResult]=await Promise.all([
+          client.from('room_beds').select('*').order('room_no',{ascending:true}).order('bed_no',{ascending:true}),
+          client.from('patients').select('id,patient_id,title,full_name,room_no,bed_no,is_active').eq('is_active',true)
+        ]);
         if(!active)return;
-        if(error){
-          console.error('Unable to load Room & Bed Master:',error);
+        if(roomResult.error){
+          console.error('Unable to load Room & Bed Master:',roomResult.error);
           setRoomBeds([]);
           return;
         }
-        setRoomBeds(data||[]);
+        const patients=patientResult.data||[];
+        const merged=(roomResult.data||[]).map(room=>{
+          const occupant=patients.find(p=>p.id===room.patient_id)
+            ||patients.find(p=>String(p.room_no||'')===String(room.room_no||'')
+              &&String(p.bed_no||'').toUpperCase()===String(room.bed_no||'').toUpperCase());
+          return {
+            ...room,
+            occupant_name:occupant?formalName(occupant):'',
+            occupant_patient_id:occupant?.patient_id||'',
+            occupant_id:occupant?.id||room.patient_id||null
+          };
+        });
+        setRoomBeds(merged);
       }
       loadRoomBeds();
       const channel=client.channel('admission-room-beds-live')
         .on('postgres_changes',{event:'*',schema:'public',table:'room_beds'},loadRoomBeds)
+        .on('postgres_changes',{event:'*',schema:'public',table:'patients'},loadRoomBeds)
         .subscribe();
       return()=>{active=false;client.removeChannel(channel)};
     },[]);
@@ -1809,29 +1825,47 @@ Caring with Compassion. Living with Dignity.`;
   function patientSelect(rows,value,onChange,label='Patient'){return h('div',{className:'field'},h('label',null,label),h('select',{value,onChange:e=>onChange(e.target.value),required:true},h('option',{value:''},'Select patient'),rows.map(p=>h('option',{key:p.id,value:p.id},`${p.patient_id||'NO-ID'} · ${formalName(p)} · ${p.room_no&&p.bed_no?`Room ${p.room_no}-${p.bed_no}`:'Room unassigned'}`))))}
   function roomBedSelect(rows,roomNo,bedNo,onChange,required=false,currentPatientId=''){
     const value=roomNo&&bedNo?`${roomNo}|||${bedNo}`:'';
-    const available=[...(rows||[])]
-      .filter(r=>{
-        const occupied=!!r.patient_id&&r.patient_id!==currentPatientId;
-        const status=String(r.status||'Available');
-        const sameCurrent=currentPatientId&&r.patient_id===currentPatientId;
-        return sameCurrent||(!occupied&&status==='Available');
-      })
-      .sort((a,b)=>
-        String(a.room_no||'').localeCompare(String(b.room_no||''),undefined,{numeric:true})
-        ||String(a.bed_no||'').localeCompare(String(b.bed_no||''),undefined,{numeric:true})
-      );
+    const sorted=[...(rows||[])].sort((a,b)=>
+      String(a.room_no||'').localeCompare(String(b.room_no||''),undefined,{numeric:true})
+      ||String(a.bed_no||'').localeCompare(String(b.bed_no||''),undefined,{numeric:true})
+    );
 
-    function roomDescription(r){
-      const type=String(r.room_type||'Room').replace(/\s+/g,' ').trim();
+    const availableCount=sorted.filter(r=>{
+      const occupied=!!(r.occupant_id||r.patient_id)&&String(r.occupant_id||r.patient_id)!==String(currentPatientId||'');
+      const status=occupied?'Occupied':String(r.status||'Available');
+      return status==='Available';
+    }).length;
+
+    function tariffText(r){
       const roomRate=Number(r.room_daily_rate??r.daily_rate??0);
       const nursingRate=Number(r.nursing_daily_rate??0);
       const specialRate=Number(r.special_nurse_daily_rate??0);
-      const tariff=[
+      return [
         roomRate?`Room ₹${roomRate.toLocaleString('en-IN')}`:'',
         nursingRate?`Nursing ₹${nursingRate.toLocaleString('en-IN')}`:'',
         specialRate?`Special Nurse ₹${specialRate.toLocaleString('en-IN')}`:''
       ].filter(Boolean).join(' + ');
-      return `Room ${r.room_no}-${r.bed_no} · ${type}${tariff?` · ${tariff}/day`:''}`;
+    }
+
+    function optionDetails(r){
+      const occupantId=r.occupant_id||r.patient_id;
+      const isCurrent=currentPatientId&&String(occupantId||'')===String(currentPatientId);
+      const occupied=!!occupantId&&!isCurrent;
+      const status=isCurrent?'Current':occupied?'Occupied':String(r.status||'Available');
+      const type=String(r.room_type||'Room').replace(/\s+/g,' ').trim();
+      const occupant=occupied
+        ?` · Occupied by ${r.occupant_name||'Patient'}${r.occupant_patient_id?` (${r.occupant_patient_id})`:''}`
+        :status==='Reserved'
+          ?` · Reserved${r.reserved_for_name?` for ${r.reserved_for_name}`:''}`
+          :'';
+      const tariff=tariffText(r);
+      return {
+        status,
+        disabled:!isCurrent&&status!=='Available',
+        text:`Room ${r.room_no}-${r.bed_no} · ${type} · ${status}${occupant}${tariff?` · ${tariff}/day`:''}`,
+        background:status==='Available'?'#dff7e8':status==='Occupied'?'#ffe1e1':status==='Reserved'?'#e3eeff':status==='Current'?'#e8f7ee':'#f1f1f1',
+        color:status==='Available'||status==='Current'?'#087a3d':status==='Occupied'?'#b42318':status==='Reserved'?'#175cd3':'#555'
+      };
     }
 
     return h('div',{className:'field span-2 compact-room-select'},
@@ -1846,17 +1880,27 @@ Caring with Compassion. Living with Dignity.`;
         },
         style:{backgroundColor:value?'#e8f7ee':'#ffffff',color:value?'#087a3d':'#344054',fontWeight:'700'}
       },
-        h('option',{value:''},available.length?`Select available room / bed (${available.length})`:'No available rooms / beds'),
-        available.map(r=>h('option',{
-          key:r.id,
-          value:`${r.room_no}|||${r.bed_no}`,
-          style:{backgroundColor:'#dff7e8',color:'#087a3d',fontWeight:'700'}
-        },roomDescription(r)))
+        h('option',{value:''},availableCount?`Select available room / bed (${availableCount})`:'No available rooms / beds'),
+        sorted.map(r=>{
+          const info=optionDetails(r);
+          return h('option',{
+            key:r.id,
+            value:`${r.room_no}|||${r.bed_no}`,
+            disabled:info.disabled,
+            style:{backgroundColor:info.background,color:info.color,fontWeight:'700'}
+          },info.text);
+        })
       ),
-      h('small',{className:available.length?'room-availability-note available':'room-availability-note none'},
-        available.length
-          ?`${available.length} available room/bed option(s). Green entries are ready for allotment.`
-          :'No room or bed is currently marked Available. Update it under Admin → Rooms.'
+      h('div',{className:'room-status-legend'},
+        h('span',{className:'legend-item available'},'● Available'),
+        h('span',{className:'legend-item occupied'},'● Occupied'),
+        h('span',{className:'legend-item reserved'},'● Reserved'),
+        h('span',{className:'legend-item maintenance'},'● Maintenance')
+      ),
+      h('small',{className:availableCount?'room-availability-note available':'room-availability-note none'},
+        availableCount
+          ?`${availableCount} available room/bed option(s). Occupied and reserved rooms are shown for information but cannot be selected.`
+          :'No room or bed is currently available. Occupied and reserved rooms are shown for information only.'
       )
     );
   }
