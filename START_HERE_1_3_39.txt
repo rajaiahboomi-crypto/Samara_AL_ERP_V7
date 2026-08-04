@@ -1,0 +1,33 @@
+SAMARA CARE ERP 1.3.39 — NUMBERED PATIENT & MEDICINE ROWS
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+SHIFT TASKS
+- Every patient card is now serially numbered:
+  1. R. Boominathan
+  2. Mrs. Radhamani
+  3. Mr. Saravanan
+- Numbering automatically adjusts to the displayed patient order.
+- The patient number appears in a clear circular badge.
+
+EXPANDED PATIENT WORKLIST
+- Medicine rows are numbered 1, 2, 3, 4...
+- Basic Care rows are numbered.
+- Physiotherapy rows are numbered.
+- Numbering is separate within each section for easy checking.
+
+MEDICINE ENTRY / EDIT
+- When a patient has multiple medicines, each medicine block is numbered.
+- Example:
+  Medicine 1
+  Medicine 2
+  Medicine 3
+  Medicine 4
+- This applies while adding or editing a patient's prescription.
+
+Version: 1.3.39

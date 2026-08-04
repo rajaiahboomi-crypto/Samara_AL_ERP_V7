@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.38-patient-worklist-null-guard';
+const CACHE = 'samara-erp-1.3.39-numbered-patient-medicine-rows';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.38', './app.js?v=1.3.38',
-  './bootstrap-error.js?v=1.3.38', './health-check.js?v=1.3.38',
-  './config.js?v=1.3.38', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.39', './app.js?v=1.3.39',
+  './bootstrap-error.js?v=1.3.39', './health-check.js?v=1.3.39',
+  './config.js?v=1.3.39', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

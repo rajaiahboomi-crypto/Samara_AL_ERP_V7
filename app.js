@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.38';
-  const APP_BUILD_DATE = '04-Aug-2026 16:40 IST';
+  const APP_VERSION = '1.3.39';
+  const APP_BUILD_DATE = '04-Aug-2026 16:55 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1721,7 +1721,7 @@ Caring with Compassion. Living with Dignity.`;
           h('span',{className:'badge'},`${patientsNeedingAttention} patient(s) need attention`)
         ),
 
-        patientGroups.map(group=>{
+        patientGroups.map((group,patientIndex)=>{
           const open=!!expanded[group.id];
           const p=group.patient||{};
           const statusClass=group.pending===0?'complete':group.pending>=5?'high':'pending';
@@ -1732,6 +1732,7 @@ Caring with Compassion. Living with Dignity.`;
               onClick:()=>setExpanded(current=>({...current,[group.id]:!current[group.id]}))
             },
               h('div',{className:'patient-work-identity'},
+                h('span',{className:'patient-row-number'},patientIndex+1),
                 h('span',{className:`patient-status-dot ${statusClass}`}),
                 h('div',null,
                   h('strong',null,p.full_name||'Patient'),
@@ -1759,7 +1760,8 @@ Caring with Compassion. Living with Dignity.`;
 
               h('div',{className:'patient-work-section'},
                 h('h4',null,`Medicines (${group.medicines.filter(x=>!x.log).length} pending)`),
-                group.medicines.map(x=>h('div',{className:`patient-work-task-row ${x.log?'done':''}`,key:`med-${x.order.id}-${x.time}`},
+                group.medicines.map((x,medicineIndex)=>h('div',{className:`patient-work-task-row numbered-task-row ${x.log?'done':''}`,key:`med-${x.order.id}-${x.time}`},
+                  h('span',{className:'task-row-number'},medicineIndex+1),
                   h('div',null,h('strong',null,x.label),h('small',null,`${x.time} · ${x.order.route||'—'} · ${x.order.food_instruction||'—'}`)),
                   x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending'),
                   !x.log&&h('div',{className:'employee-actions'},
@@ -1772,7 +1774,8 @@ Caring with Compassion. Living with Dignity.`;
 
               h('div',{className:'patient-work-section'},
                 h('h4',null,`Basic Care (${group.care.filter(x=>!x.log).length} pending)`),
-                group.care.map(x=>h('div',{className:`patient-work-task-row ${x.log?'done':''}`,key:`care-${x.order.id}`},
+                group.care.map((x,careIndex)=>h('div',{className:`patient-work-task-row numbered-task-row ${x.log?'done':''}`,key:`care-${x.order.id}`},
+                  h('span',{className:'task-row-number'},careIndex+1),
                   h('div',null,h('strong',null,x.label),h('small',null,`${x.order.frequency||'Daily'}${x.order.instruction?` · ${x.order.instruction}`:''}`)),
                   x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending'),
                   !x.log&&h('div',{className:'employee-actions'},
@@ -1794,7 +1797,8 @@ Caring with Compassion. Living with Dignity.`;
 
               h('div',{className:'patient-work-section'},
                 h('h4',null,`Physiotherapy (${group.physio.filter(x=>!x.log).length} pending)`),
-                group.physio.map(x=>h('div',{className:`patient-work-task-row ${x.log?'done':''}`,key:`physio-${x.order.id}`},
+                group.physio.map((x,physioIndex)=>h('div',{className:`patient-work-task-row numbered-task-row ${x.log?'done':''}`,key:`physio-${x.order.id}`},
+                  h('span',{className:'task-row-number'},physioIndex+1),
                   h('div',null,h('strong',null,x.label),h('small',null,`${x.time||shift} · ${x.order.frequency||'—'}`)),
                   x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending'),
                   !x.log&&h('div',{className:'employee-actions'},
