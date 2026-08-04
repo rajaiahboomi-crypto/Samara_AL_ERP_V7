@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.27';
-  const APP_BUILD_DATE = '04-Aug-2026 13:05 IST';
+  const APP_VERSION = '1.3.28';
+  const APP_BUILD_DATE = '04-Aug-2026 13:30 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -44,10 +44,10 @@
   const BED_CODE_OPTIONS = ['A','B','C','D'];
   const NAV_SECTIONS = [
     { title:'OVERVIEW', items:['Dashboard','Notifications'] },
-    { title:'ADMIN', items:['Employees','Audit Trail','System Maintenance'] },
+    { title:'ADMIN', items:['Employees','Audit Trail','Alert Settings','System Maintenance'] },
     { title:'ADMISSION', items:['Enquiries','Admissions','Patients','Discharge','Documents'] },
     { title:'MANAGER', items:['Reports','Intelligent Reports','Medication Errors','Recovery Timeline'] },
-    { title:'NURSING', items:['Clinical Dashboard','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Special Nurse','Shift Handover'] },
+    { title:'NURSING', items:['Clinical Dashboard','Clinical Alerts','Shift Tasks','Daily Care','Vital Signs','Medicines','Physiotherapy','Special Nurse','Shift Handover'] },
     { title:'OPERATIONS', items:['Rooms & Beds','Incidents'] },
     { title:'FOOD & DIET', items:['Food & Diet'] },
     { title:'ACCOUNTS / BILLING', items:['Bills & Charges','Billing & Payments'] }
@@ -55,9 +55,9 @@
   const ALL_NAV = NAV_SECTIONS.flatMap(section=>section.items);
   const ROLE_NAV={
     Admin:ALL_NAV,
-    Manager:ALL_NAV.filter(item=>item!=='System Maintenance'),
-    Nurse:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Billing & Payments','Notifications'],
-    Caregiver:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Billing & Payments','Notifications'],
+    Manager:ALL_NAV.filter(item=>!['System Maintenance','Alert Settings'].includes(item)),
+    Nurse:['Clinical Dashboard','Clinical Alerts','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Billing & Payments','Notifications'],
+    Caregiver:['Clinical Dashboard','Clinical Alerts','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Billing & Payments','Notifications'],
     Accounts:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Rooms & Beds','Bills & Charges','Billing & Payments','Reports','Intelligent Reports'],
     Kitchen:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Food & Diet']
   };
@@ -75,7 +75,7 @@
   const sectionsFor = (allowed,role) => {
     if(CLINICAL_ROLES.includes(role)){
       return [
-        {title:'NURSING WORKSPACE',items:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Billing & Payments','Notifications'].filter(item=>allowed.includes(item))}
+        {title:'NURSING WORKSPACE',items:['Clinical Dashboard','Clinical Alerts','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Billing & Payments','Notifications'].filter(item=>allowed.includes(item))}
       ];
     }
     return NAV_SECTIONS.map(section=>({...section,items:section.items.filter(item=>allowed.includes(item))})).filter(section=>section.items.length);
@@ -237,6 +237,155 @@ Caring with Compassion. Living with Dignity.`;
     );
   }
 
+
+  function useClinicalAlertEngine(profile,setPage){
+    const [alerts,setAlerts]=React.useState([]);
+    const [settings,setSettings]=React.useState({
+      setting_key:'global',sound_enabled:true,voice_enabled:false,browser_notifications_enabled:false,
+      medicine_lead_minutes:5,vitals_lead_minutes:5,care_lead_minutes:10,repeat_minutes:5,
+      manager_escalation_minutes:30,medication_error_minutes:60,is_active:true
+    });
+    const [soundUnlocked,setSoundUnlocked]=React.useState(false);
+    const lastPlayed=React.useRef({});
+    const audioContext=React.useRef(null);
+
+    async function unlockSound(){
+      try{
+        const Ctx=window.AudioContext||window.webkitAudioContext;
+        const ctx=audioContext.current||(audioContext.current=new Ctx());
+        if(ctx.state==='suspended')await ctx.resume();
+        setSoundUnlocked(true);
+        const osc=ctx.createOscillator(),gain=ctx.createGain();
+        osc.connect(gain);gain.connect(ctx.destination);osc.frequency.value=440;
+        gain.gain.setValueAtTime(.08,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.18);
+        osc.start();osc.stop(ctx.currentTime+.2);
+      }catch(error){console.warn('Sound unavailable',error)}
+    }
+    function play(priority){
+      if(!settings.sound_enabled||!soundUnlocked)return;
+      try{
+        const ctx=audioContext.current;
+        const pulses=priority==='Critical'?3:priority==='Urgent'?2:1;
+        const osc=ctx.createOscillator(),gain=ctx.createGain(),now=ctx.currentTime;
+        osc.frequency.value=priority==='Critical'?880:priority==='Urgent'?660:440;
+        osc.connect(gain);gain.connect(ctx.destination);gain.gain.setValueAtTime(.0001,now);
+        for(let i=0;i<pulses;i++){const t=now+i*.27;gain.gain.exponentialRampToValueAtTime(.16,t+.02);gain.gain.exponentialRampToValueAtTime(.0001,t+.17)}
+        osc.start(now);osc.stop(now+pulses*.3+.2);
+      }catch(error){}
+    }
+    function speak(a){
+      if(!settings.voice_enabled||!soundUnlocked||!window.speechSynthesis)return;
+      window.speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance(a.voice_text||`${a.title}. ${a.patient_name||''}. ${a.room_label||''}`);
+      u.rate=.92;u.volume=.9;window.speechSynthesis.speak(u);
+    }
+    async function requestNotifications(){
+      if(!('Notification' in window))return false;
+      const permission=await Notification.requestPermission();
+      if(permission==='granted'){setSettings(s=>({...s,browser_notifications_enabled:true}));return true}
+      return false;
+    }
+    async function loadSettings(){
+      const {data}=await client.from('clinical_alert_settings').select('*').eq('is_active',true).order('updated_at',{ascending:false}).limit(1).maybeSingle();
+      if(data)setSettings(s=>({...s,...data}));
+    }
+    async function refresh(){
+      if(!profile)return;
+      const {data,error}=await client.rpc('get_current_clinical_alerts');
+      if(error){console.warn('Alert engine:',error.message);setAlerts([]);return}
+      const list=(data||[]).map(a=>({...a,key:`${a.alert_type}:${a.source_id}:${a.due_at}`}));
+      setAlerts(list);
+      const top=list.find(a=>['Critical','Urgent'].includes(a.priority));
+      if(top){
+        const now=Date.now(),last=lastPlayed.current[top.key]||0;
+        if(now-last>=Math.max(1,Number(settings.repeat_minutes||5))*60000){
+          lastPlayed.current[top.key]=now;play(top.priority);speak(top);
+          if(settings.browser_notifications_enabled&&Notification.permission==='granted'){
+            try{new Notification(top.title,{body:`${top.patient_name||''} · ${top.room_label||''}\n${top.description||''}`,tag:top.key,requireInteraction:top.priority==='Critical'})}catch(_){}
+          }
+        }
+      }
+      if(list.some(a=>Number(a.overdue_minutes)>=Number(settings.manager_escalation_minutes||30))){
+        client.rpc('process_clinical_alert_escalations').then(()=>{});
+      }
+    }
+    React.useEffect(()=>{loadSettings()},[]);
+    React.useEffect(()=>{
+      if(!profile)return;
+      refresh();const timer=setInterval(refresh,60000);
+      return()=>clearInterval(timer);
+    },[profile,settings.repeat_minutes,settings.sound_enabled,settings.voice_enabled,settings.browser_notifications_enabled,soundUnlocked]);
+    async function acknowledge(a,action='Acknowledged',minutes=0){
+      const {data:{user}}=await client.auth.getUser();
+      const {error}=await client.from('clinical_alert_acknowledgements').upsert({
+        alert_key:a.key,alert_type:a.alert_type,source_id:a.source_id,patient_id:a.patient_id,action,
+        snoozed_until:minutes?new Date(Date.now()+minutes*60000).toISOString():null,
+        acknowledged_by:user?.id||profile?.id,acknowledged_at:new Date().toISOString()
+      },{onConflict:'alert_key'});
+      if(error)throw error;await refresh();
+    }
+    return {alerts,settings,setSettings,soundUnlocked,unlockSound,requestNotifications,refresh,acknowledge,setPage};
+  }
+
+  function ClinicalAlertsPage({engine,setPage}){
+    const [filter,setFilter]=React.useState('All');
+    const rows=(engine.alerts||[]).filter(a=>filter==='All'||a.priority===filter);
+    return h(React.Fragment,null,
+      h(Section,{title:'Clinical Alerts',subtitle:'Live nursing reminders, overdue tasks and escalations',
+        actions:h('div',{className:'employee-actions'},
+          h('button',{className:'btn btn-secondary',onClick:engine.refresh},'Refresh'),
+          h('button',{className:'btn btn-secondary',onClick:engine.unlockSound},engine.soundUnlocked?'Sound Enabled':'Enable Sound'),
+          h('button',{className:'btn btn-secondary',onClick:engine.requestNotifications},'Enable Browser Alerts')
+        )},
+        h('div',{className:'field',style:{maxWidth:'300px'}},h('label',null,'Priority'),h('select',{value:filter,onChange:e=>setFilter(e.target.value)},['All','Critical','Urgent','Routine'].map(x=>h('option',{key:x,value:x},x))))
+      ),
+      h(LogTable,{title:`Active Alerts (${rows.length})`,subtitle:'Medicine, vital signs, daily care and physiotherapy',
+        heads:['Priority','Patient','Room','Alert','Due','Overdue','Details','Action'],
+        rows:rows.map(a=>[
+          h('span',{className:'badge',style:a.priority==='Critical'?{background:'#fdecec',color:'#b42318'}:a.priority==='Urgent'?{background:'#fff4dd',color:'#9a6700'}:{background:'#eef5ff',color:'#175cd3'}},a.priority),
+          a.patient_name||'—',a.room_label||'—',a.title,fmt(a.due_at),Number(a.overdue_minutes)>0?`${a.overdue_minutes} min`:'Due soon',a.description||'—',
+          h('div',{className:'employee-actions'},
+            h('button',{className:'btn btn-primary',onClick:()=>setPage(a.target_page||'Clinical Alerts')},'Open'),
+            h('button',{className:'btn btn-secondary',onClick:()=>engine.acknowledge(a,'Snoozed',5)},'Snooze 5'),
+            h('button',{className:'btn btn-secondary',onClick:()=>engine.acknowledge(a,'Acknowledged',0)},'Acknowledge')
+          )
+        ])
+      })
+    );
+  }
+
+  function AlertSettings({profile,engine}){
+    const [form,setForm]=React.useState(engine.settings);
+    const [toast,setToast]=React.useState(null);
+    React.useEffect(()=>setForm(engine.settings),[engine.settings]);
+    async function save(e){
+      e.preventDefault();
+      const {data:{user}}=await client.auth.getUser();
+      const payload={...form,setting_key:'global',is_active:true,updated_by:user?.id||profile.id,updated_at:new Date().toISOString()};
+      const {error}=await client.from('clinical_alert_settings').upsert(payload,{onConflict:'setting_key'});
+      if(error){setToast({type:'error',text:error.message});return}
+      engine.setSettings(payload);setToast({type:'success',text:'Clinical alert settings saved.'});
+    }
+    if(profile?.role!=='Admin')return h(Section,{title:'Alert Settings'},h('div',{className:'message error'},'Administrator access is required.'));
+    return h(React.Fragment,null,
+      h(Section,{title:'Clinical Alert Settings',subtitle:'Sound, voice, repeat interval and escalation thresholds'},
+        h('form',{className:'modal-grid',onSubmit:save},
+          h('label',{className:'check-card'},h('input',{type:'checkbox',checked:!!form.sound_enabled,onChange:e=>setForm({...form,sound_enabled:e.target.checked})}),h('span',null,'Sound alerts')),
+          h('label',{className:'check-card'},h('input',{type:'checkbox',checked:!!form.voice_enabled,onChange:e=>setForm({...form,voice_enabled:e.target.checked})}),h('span',null,'Voice announcements')),
+          h('label',{className:'check-card'},h('input',{type:'checkbox',checked:!!form.browser_notifications_enabled,onChange:e=>setForm({...form,browser_notifications_enabled:e.target.checked})}),h('span',null,'Browser notifications')),
+          miniInput('Medicine lead minutes',form.medicine_lead_minutes,v=>setForm({...form,medicine_lead_minutes:Number(v)}),true,'number'),
+          miniInput('Vitals lead minutes',form.vitals_lead_minutes,v=>setForm({...form,vitals_lead_minutes:Number(v)}),true,'number'),
+          miniInput('Daily care lead minutes',form.care_lead_minutes,v=>setForm({...form,care_lead_minutes:Number(v)}),true,'number'),
+          miniInput('Repeat every minutes',form.repeat_minutes,v=>setForm({...form,repeat_minutes:Number(v)}),true,'number'),
+          miniInput('Manager escalation minutes',form.manager_escalation_minutes,v=>setForm({...form,manager_escalation_minutes:Number(v)}),true,'number'),
+          miniInput('Medication error threshold minutes',form.medication_error_minutes,v=>setForm({...form,medication_error_minutes:Number(v)}),true,'number'),
+          h('button',{className:'btn btn-primary'},'Save Settings')
+        )
+      ),
+      toast&&h('div',{className:`samara-toast ${toast.type}`},h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),h('div',null,h('strong',null,toast.type==='success'?'Saved':'Failed'),h('span',null,toast.text)),h('button',{onClick:()=>setToast(null)},'×'))
+    );
+  }
+
   function App(){
     const [session,setSession]=React.useState(null);
     const [profile,setProfile]=React.useState(null);
@@ -245,6 +394,7 @@ Caring with Compassion. Living with Dignity.`;
     const [mobileDrawerOpen,setMobileDrawerOpen]=React.useState(false);
     const [authMessage,setAuthMessage]=React.useState('');
     const [recoveryMode,setRecoveryMode]=React.useState(false);
+    const alertEngine=useClinicalAlertEngine(profile,setPage);
 
     React.useEffect(()=>{
       const splash=document.getElementById('app-splash');
@@ -338,7 +488,9 @@ Caring with Compassion. Living with Dignity.`;
           page==='Employees'&&h(Employees,{profile}),
           page==='Enquiries'&&h(Enquiries,{profile}),
           page==='Admissions'&&h(Admissions,{profile}),
-          page==='Clinical Dashboard'&&h(ClinicalDashboard,{profile,onNavigate:setPage}),page==='Shift Tasks'&&h(ShiftTasks,{profile}),
+          page==='Clinical Dashboard'&&h(ClinicalDashboard,{profile,onNavigate:setPage}),
+          page==='Clinical Alerts'&&h(ClinicalAlertsPage,{engine:alertEngine,setPage}),
+          page==='Shift Tasks'&&h(ShiftTasks,{profile}),
           page==='Patients'&&h(Patients,{profile}),
           page==='Discharge'&&h(DischargeManagement,{profile}),
           page==='Rooms & Beds'&&h(RoomsBeds,{profile}),
@@ -359,8 +511,21 @@ Caring with Compassion. Living with Dignity.`;
           page==='Medication Errors'&&h(MedicationErrors,{profile,onNavigate:setPage}),
           page==='Notifications'&&h(Notifications,{profile}),
           page==='Audit Trail'&&h(AuditTrail),
+          page==='Alert Settings'&&h(AlertSettings,{profile,engine:alertEngine}),
           page==='System Maintenance'&&h(SystemMaintenance,{profile})
         ),
+        alertEngine.alerts[0]&&h('div',{className:`clinical-alert-popup ${String(alertEngine.alerts[0].priority||'Routine').toLowerCase()}`},
+          h('div',{className:'clinical-alert-popup-head'},h('strong',null,alertEngine.alerts[0].priority==='Critical'?'🔴 ':alertEngine.alerts[0].priority==='Urgent'?'🟠 ':'🔵 ',alertEngine.alerts[0].title)),
+          h('strong',null,alertEngine.alerts[0].patient_name||'Patient'),
+          h('span',null,alertEngine.alerts[0].room_label||''),
+          h('p',null,alertEngine.alerts[0].description||''),
+          h('div',{className:'clinical-alert-popup-actions'},
+            h('button',{className:'btn btn-primary',onClick:()=>setPage(alertEngine.alerts[0].target_page||'Clinical Alerts')},'Open'),
+            h('button',{className:'btn btn-secondary',onClick:()=>alertEngine.acknowledge(alertEngine.alerts[0],'Snoozed',5)},'Snooze 5 min'),
+            h('button',{className:'btn btn-secondary',onClick:()=>alertEngine.acknowledge(alertEngine.alerts[0],'Acknowledged',0)},'Acknowledge')
+          )
+        ),
+        profile&&!alertEngine.soundUnlocked&&h('button',{type:'button',className:'sound-unlock-button',onClick:alertEngine.unlockSound},'🔊 Enable Alert Sound'),
         h(MobileBottomNav,{page,setPage,allowed,profile,onOpenMenu:()=>setMobileDrawerOpen(true)}),
         mobileDrawerOpen&&h(MobileNavigationDrawer,{profile,allowed,page,onNavigate:(next)=>{setPage(next);setMobileDrawerOpen(false)},onClose:()=>setMobileDrawerOpen(false)})
       )

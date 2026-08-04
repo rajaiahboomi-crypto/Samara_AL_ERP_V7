@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.27-profile-name-sql-fix';
+const CACHE = 'samara-erp-1.3.28-clinical-alert-engine';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.27', './app.js?v=1.3.27',
-  './bootstrap-error.js?v=1.3.27', './health-check.js?v=1.3.27',
-  './config.js?v=1.3.27', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.28', './app.js?v=1.3.28',
+  './bootstrap-error.js?v=1.3.28', './health-check.js?v=1.3.28',
+  './config.js?v=1.3.28', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {
@@ -30,3 +30,5 @@ self.addEventListener('fetch', event => {
     return response;
   })));
 });
+
+self.addEventListener('notificationclick',e=>{e.notification.close();e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>list[0]?list[0].focus():clients.openWindow('./')))});

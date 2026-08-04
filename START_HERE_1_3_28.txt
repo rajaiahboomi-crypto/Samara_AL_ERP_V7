@@ -1,0 +1,27 @@
+SAMARA CARE ERP 1.3.28 — COMPLETE CLINICAL ALERT ENGINE
+
+1. Run once in Supabase SQL Editor:
+   47_complete_clinical_alert_engine.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Included:
+- Portal pop-up reminders with priority colours.
+- Sound alerts after one-time Enable Alert Sound click on each device.
+- Optional voice announcements.
+- Optional browser/PWA notifications.
+- Clinical Alerts worklist for medicine, vital signs, daily care and physiotherapy.
+- Snooze, acknowledge and open-task actions.
+- Automatic repeat every configured interval.
+- Manager escalation records after configured delay.
+- Critical medication alert after configured medication-error threshold.
+- Admin-only Alert Settings.
+- Nursing-station/wall-display compatible alert page.
+- Automatic one-minute refresh.
+
+Browser security note:
+Sound and voice cannot start until the user clicks Enable Alert Sound once on that device.
+Browser notifications require the user to grant permission.
