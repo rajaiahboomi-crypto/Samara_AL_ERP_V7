@@ -1,0 +1,29 @@
+SAMARA CARE ERP 1.3.32 — ADMISSION AVAILABLE ROOMS DROPDOWN FIX
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Cause corrected:
+- The Admission page was ordering room_beds by the non-existing field bed_code.
+- The correct database field is bed_no.
+- That query failure caused the dropdown to appear empty.
+
+Dropdown improvements:
+- Shows only rooms/beds marked Available.
+- Occupied, Reserved and Maintenance rooms are excluded.
+- Available options appear in green where supported by the browser.
+- Compact description includes:
+  Room number and bed
+  Room type: Private/Single, Twin Sharing, General, etc.
+  Room rent per day
+  Nursing charge per day
+  Special Nurse charge per day, when fixed
+- Displays the number of available options.
+- If none are available, it directs the user to Admin → Rooms.
+
+Example:
+Room 102-A · Twin Sharing · Room ₹2,000 + Nursing ₹800/day
