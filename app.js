@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.44';
-  const APP_BUILD_DATE = '04-Aug-2026 18:15 IST';
+  const APP_VERSION = '1.3.45';
+  const APP_BUILD_DATE = '04-Aug-2026 18:30 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1680,7 +1680,12 @@ Caring with Compassion. Living with Dignity.`;
           order,
           taskShift,
           label:order.care_type||order.activity||'Care task',
-          log:careLogs.find(x=>x.care_order_id===order.id&&x.shift===taskShift)
+          log:careLogs.find(x=>
+            x.shift===taskShift&&(
+              x.care_order_id===order.id||
+              (!x.care_order_id&&x.patient_id===order.patient_id&&String(x.remarks||'').toLowerCase().startsWith(String(order.care_type||order.activity||'').toLowerCase()))
+            )
+          )
         }));
     });
 
@@ -1697,7 +1702,12 @@ Caring with Compassion. Living with Dignity.`;
           order,
           taskShift,
           label:order.care_type||order.activity||'Care task',
-          log:careLogs.find(x=>x.care_order_id===order.id&&x.shift===taskShift)
+          log:careLogs.find(x=>
+            x.shift===taskShift&&(
+              x.care_order_id===order.id||
+              (!x.care_order_id&&x.patient_id===order.patient_id&&String(x.remarks||'').toLowerCase().startsWith(String(order.care_type||order.activity||'').toLowerCase()))
+            )
+          )
         }))
         .filter(x=>!x.log);
     });
@@ -2845,7 +2855,7 @@ function RoomsBeds({profile}){
     const activeShift=currentShift();
     const [patients]=usePatients();
     const [rows,setRows]=React.useState([]);
-    const [form,setForm]=React.useState({patient_id:'',care_type:'Bathing assistance',shift:currentShift(),status:'Completed',remarks:''});
+    const [form,setForm]=React.useState({patient_id:'',care_order_id:'',care_type:'Bathing assistance',shift:currentShift(),status:'Completed',remarks:''});
     const [saving,setSaving]=React.useState(false);
     const [toast,setToast]=React.useState(null);
     const [returnPage,setReturnPage]=React.useState('');
@@ -2878,6 +2888,7 @@ function RoomsBeds({profile}){
       setForm(current=>({
         ...current,
         patient_id:context.patient_id||current.patient_id,
+        care_order_id:context.care_order_id||current.care_order_id,
         care_type:context.care_type||current.care_type,
         shift:context.shift||activeShift,
         status:context.status||'Completed',
@@ -2901,6 +2912,7 @@ function RoomsBeds({profile}){
       setSaving(true);
       const now=new Date();
       const payload={
+        care_order_id:form.care_order_id||null,
         patient_id:form.patient_id,
         care_date:todayISOIndia(),
         shift:form.shift,
@@ -2918,7 +2930,7 @@ function RoomsBeds({profile}){
       }
 
       showToast('success',`${form.care_type} recorded successfully for the selected patient.`);
-      setForm(current=>({...current,remarks:''}));
+      setForm(current=>({...current,care_order_id:'',remarks:''}));
       await load();
 
       // Audit logging must never block the clinical save.
@@ -2928,6 +2940,7 @@ function RoomsBeds({profile}){
         data?.id||form.patient_id,
         {
           patient_id:form.patient_id,
+          care_order_id:form.care_order_id||null,
           care_activity:form.care_type,
           shift:form.shift,
           status:form.status,
@@ -2941,10 +2954,19 @@ function RoomsBeds({profile}){
 
     return h(React.Fragment,null,
       h(Section,{title:'Daily Care Entry',subtitle:'Bath, restroom, hygiene, feeding, mobility and positioning'},
-        returnPage&&h('div',{className:'return-after-save-note'},`After saving, the system will return automatically to ${returnPage}.`),
+        returnPage&&h('div',{className:'return-after-save-note'},
+          h('strong',null,'Opened from Shift Tasks. '),
+          `After saving, this care task will be marked against the current shift and the system will return automatically to ${returnPage}.`
+        ),
         h('form',{className:'modal-grid',onSubmit:save},
           patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),
-          miniSelect('Care activity',form.care_type,['Bathing assistance','Restroom assistance','Oral hygiene','Feeding assistance','Mobility assistance','Diaper change','Position change','Fluid monitoring','Sleep assistance'],v=>setForm({...form,care_type:v})),
+          h('div',{className:'field'},
+            h('label',null,'Care activity'),
+            h('select',{value:form.care_type,onChange:e=>setForm({...form,care_type:e.target.value})},
+              ['Bathing assistance','Restroom assistance','Oral hygiene','Feeding assistance','Mobility assistance','Diaper change','Position change','Fluid monitoring','Sleep assistance'].map(x=>h('option',{key:x,value:x},x))
+            ),
+            form.care_order_id&&h('small',{className:'linked-task-note'},'Linked to the selected Shift Task')
+          ),
           h('div',{className:'field'},h('label',null,'Shift'),h('select',{value:form.shift,onChange:e=>setForm({...form,shift:e.target.value})},
             h('option',{value:'Day Shift (7 AM–7 PM)',disabled:activeShift!=='Day Shift (7 AM–7 PM)'},`Day Shift (7 AM–7 PM)${activeShift==='Day Shift (7 AM–7 PM)'?' · Active':' · Not active'}`),
             h('option',{value:'Night Shift (7 PM–7 AM)',disabled:activeShift!=='Night Shift (7 PM–7 AM)'},`Night Shift (7 PM–7 AM)${activeShift==='Night Shift (7 PM–7 AM)'?' · Active':' · Not active'}`)

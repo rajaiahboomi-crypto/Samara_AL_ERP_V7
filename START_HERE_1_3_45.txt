@@ -1,0 +1,27 @@
+SAMARA CARE ERP 1.3.45 — SHIFT TASK COMPLETION SYNCHRONISATION
+
+Upload these four files:
+- app.js
+- index.html
+- service-worker.js
+- styles-1.3.45.css
+
+No Supabase SQL is required.
+
+ISSUE FIXED
+A Daily Care entry saved successfully, but Shift Tasks continued to show it as pending.
+
+CAUSE
+The regular Daily Care form saved patient, date, shift and remarks, but it did not save the original care_order_id from the selected Shift Task. Shift Tasks therefore could not match the saved record to the care-plan task.
+
+CORRECTIONS
+- care_order_id now travels from Shift Tasks to Daily Care.
+- Daily Care stores care_order_id in care_logs.
+- After save, the system returns to Shift Tasks.
+- Shift Tasks reloads and marks that exact task Completed / Refused / Not required.
+- Pending counts reduce immediately.
+- Completed counts increase immediately.
+- Historical records without care_order_id are also matched by patient, shift and care-activity text where possible.
+- The Daily Care form shows “Linked to the selected Shift Task” when opened from the worklist.
+
+Direct Daily Care entry from the left menu remains available and is not forced to a care order.
