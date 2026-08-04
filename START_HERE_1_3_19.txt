@@ -1,0 +1,40 @@
+SAMARA CARE ERP 1.3.19 — BILLING VIEW, DISCREPANCY, ADVANCE & HISTORY
+
+1. Run once in Supabase SQL Editor:
+   43_billing_view_discrepancy_advance_history.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Access:
+- Nurse and Caregiver: view bills, charges, payments, advances and history; raise discrepancy queries.
+- Accounts/Admin/Manager: full review, correction, closure and transaction entry.
+- Nurse keeps the separate Raise Bills & Charges workflow.
+- Caregiver cannot create charges but may question an incorrect charge.
+
+Single-click views:
+- Pending Bills as on Date
+- Complete Transaction History
+- Advances / Payments
+
+Summary:
+- Total Charges
+- Payments / Advance
+- Discounts
+- Pending Bills
+- Advance Balance
+- Open Queries
+
+Discrepancy types:
+- Wrong amount
+- Duplicate charge
+- Wrong patient
+- Wrong category
+- Service not provided
+- Wrong date
+- Advance not adjusted
+- Other
+
+Accounts/Admin/Manager records the decision and closes or corrects the query.

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.18';
-  const APP_BUILD_DATE = '04-Aug-2026 18:30 IST';
+  const APP_VERSION = '1.3.19';
+  const APP_BUILD_DATE = '04-Aug-2026 19:10 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -56,8 +56,8 @@
   const ROLE_NAV={
     Admin:ALL_NAV,
     Manager:ALL_NAV,
-    Nurse:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Notifications'],
-    Caregiver:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Notifications'],
+    Nurse:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Billing & Payments','Notifications'],
+    Caregiver:['Clinical Dashboard','Patients','Discharge','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Billing & Payments','Notifications'],
     Accounts:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Rooms & Beds','Bills & Charges','Billing & Payments','Reports','Intelligent Reports'],
     Kitchen:['Notifications','Patients','Discharge','Physiotherapy','Special Nurse','Food & Diet']
   };
@@ -68,13 +68,14 @@
     'Patients':'My Patients',
     'Medicines':'Medication Administration',
     'Bills & Charges':'Raise Bills & Charges',
+    'Billing & Payments':'View Patient Bills',
     'Notifications':'Alerts'
   };
   const displayNavLabel=(item,role)=>CLINICAL_ROLES.includes(role)?(ROLE_LABELS[item]||item):item;
   const sectionsFor = (allowed,role) => {
     if(CLINICAL_ROLES.includes(role)){
       return [
-        {title:'NURSING WORKSPACE',items:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Notifications'].filter(item=>allowed.includes(item))}
+        {title:'NURSING WORKSPACE',items:['Clinical Dashboard','Patients','Shift Tasks','Daily Care','Vital Signs','Medicines','Food & Diet','Physiotherapy','Special Nurse','Shift Handover','Incidents','Bills & Charges','Billing & Payments','Notifications'].filter(item=>allowed.includes(item))}
       ];
     }
     return NAV_SECTIONS.map(section=>({...section,items:section.items.filter(item=>allowed.includes(item))})).filter(section=>section.items.length);
@@ -3300,12 +3301,21 @@ function ShiftHandover({profile}){
 function BillingPayments({profile}){
     const [patients]=usePatients();
     const [rows,setRows]=React.useState([]);
+    const [disputes,setDisputes]=React.useState([]);
+    const [selectedPatient,setSelectedPatient]=React.useState('');
+    const [viewMode,setViewMode]=React.useState('Pending Bills');
     const [form,setForm]=React.useState({patient_id:'',transaction_type:'Charge',category:'Room Charges',amount:'',description:'',payment_mode:'Cash'});
     const [autoBusy,setAutoBusy]=React.useState(false);
     const [message,setMessage]=React.useState('');
     const [toast,setToast]=React.useState(null);
+    const [queryTarget,setQueryTarget]=React.useState(null);
+    const [queryText,setQueryText]=React.useState('');
+    const [queryCategory,setQueryCategory]=React.useState('Wrong amount');
+    const [busy,setBusy]=React.useState(false);
     const toastTimer=React.useRef(null);
-    const canGenerate=['Admin','Manager','Accounts'].includes(profile?.role);
+    const canManage=['Admin','Manager','Accounts'].includes(profile?.role);
+    const canView=['Admin','Manager','Accounts','Nurse','Caregiver'].includes(profile?.role);
+    const canRaiseQuery=['Nurse','Caregiver','Manager','Admin'].includes(profile?.role);
 
     function showToast(type,text){
       clearTimeout(toastTimer.current);
@@ -3315,118 +3325,173 @@ function BillingPayments({profile}){
     React.useEffect(()=>()=>clearTimeout(toastTimer.current),[]);
 
     async function load(){
-      const {data,error}=await client.from('billing_transactions')
-        .select('*,patients(full_name,patient_id,room_no,bed_no)')
-        .order('transaction_date',{ascending:false})
-        .limit(1000);
-      if(error){setMessage(error.message||'Unable to load billing transactions.');setRows([]);return}
-      setMessage('');setRows(data||[]);
+      const [ledgerResult,queryResult]=await Promise.all([
+        client.from('billing_transactions').select('*,patients(full_name,patient_id,room_no,bed_no)').order('transaction_date',{ascending:false}).limit(2000),
+        client.from('billing_discrepancies').select('*').order('created_at',{ascending:false}).limit(500)
+      ]);
+      if(ledgerResult.error){setMessage(ledgerResult.error.message||'Unable to load billing transactions.');setRows([])}
+      else {setMessage('');setRows(ledgerResult.data||[])}
+      if(!queryResult.error)setDisputes(queryResult.data||[]);
     }
 
     async function generateDailyCharges(silent=false){
-      if(!canGenerate)return;
+      if(!canManage)return;
       setAutoBusy(true);
       const {data,error}=await client.rpc('generate_daily_accommodation_charges',{p_charge_date:todayISOIndia()});
       setAutoBusy(false);
-      if(error){
-        if(!silent)showToast('error',error.message||'Unable to generate daily room and nursing charges.');
-        return;
-      }
-      const roomCount=Number(data?.room_charges_created||0);
-      const nursingCount=Number(data?.nursing_charges_created||0);
-      if(!silent||roomCount+nursingCount>0){
-        showToast('success',`${roomCount} room charge(s) and ${nursingCount} nursing charge(s) generated for ${formatDateIN(todayISOIndia())}.`);
-      }
+      if(error){if(!silent)showToast('error',error.message||'Unable to generate daily charges.');return}
+      const roomCount=Number(data?.room_charges_created||0),nursingCount=Number(data?.nursing_charges_created||0);
+      if(!silent||roomCount+nursingCount>0)showToast('success',`${roomCount} room charge(s) and ${nursingCount} nursing charge(s) generated.`);
       await load();
     }
 
     React.useEffect(()=>{
-      (async()=>{
-        await load();
-        if(canGenerate)await generateDailyCharges(true);
-      })();
-      const channel=client.channel('billing-ledger-live')
+      (async()=>{await load();if(canManage)await generateDailyCharges(true)})();
+      const ch=client.channel('billing-review-live')
         .on('postgres_changes',{event:'*',schema:'public',table:'billing_transactions'},load)
+        .on('postgres_changes',{event:'*',schema:'public',table:'billing_discrepancies'},load)
         .subscribe();
-      return()=>client.removeChannel(channel);
+      return()=>client.removeChannel(ch);
     },[]);
 
     async function save(e){
       e.preventDefault();
-      const {error}=await client.from('billing_transactions').insert({
-        ...form,
-        amount:Number(form.amount),
-        transaction_date:new Date().toISOString(),
-        entered_by:profile.id,
-        auto_generated:false
-      });
+      if(!canManage)return;
+      const {error}=await client.from('billing_transactions').insert({...form,amount:Number(form.amount),transaction_date:new Date().toISOString(),entered_by:profile.id,auto_generated:false});
       if(error){showToast('error',error.message);return}
-      setForm({...form,amount:'',description:''});
-      showToast('success','Billing transaction saved successfully.');
-      await load();
+      setForm({...form,amount:'',description:''});showToast('success','Billing transaction saved successfully.');await load();
     }
 
-    const totals=rows.reduce((a,r)=>{
-      a[r.transaction_type]=(a[r.transaction_type]||0)+Number(r.amount||0);
-      return a;
-    },{Charge:0,Payment:0,Discount:0,Refund:0});
-    const due=totals.Charge-totals.Payment-totals.Discount+totals.Refund;
-    const today=todayISOIndia();
-    const todaysAuto=rows.filter(r=>r.auto_generated&&String(r.source_date||'')===today);
-    const roomAuto=todaysAuto.filter(r=>r.category==='Room Charges').reduce((sum,r)=>sum+Number(r.amount||0),0);
-    const nursingAuto=todaysAuto.filter(r=>r.category==='Nursing Charges').reduce((sum,r)=>sum+Number(r.amount||0),0);
+    async function submitQuery(e){
+      e.preventDefault();
+      if(!queryTarget||!queryText.trim())return;
+      setBusy(true);
+      const {data:{user}}=await client.auth.getUser();
+      const {data,error}=await client.from('billing_discrepancies').insert({
+        patient_id:queryTarget.patient_id,
+        billing_transaction_id:queryTarget.id,
+        discrepancy_type:queryCategory,
+        description:queryText.trim(),
+        status:'Open',
+        raised_by:user?.id||profile.id
+      }).select('id').single();
+      setBusy(false);
+      if(error){showToast('error',error.message||'Unable to raise billing query.');return}
+      showToast('success','Billing discrepancy query raised successfully.');
+      setQueryTarget(null);setQueryText('');await load();
+      writeAuditEvent('Billing Discrepancy Raised','Billing',data?.id,{patient_id:queryTarget.patient_id,transaction_id:queryTarget.id,type:queryCategory},'Success');
+    }
+
+    async function closeQuery(row,status){
+      if(!canManage)return;
+      const remarks=prompt(status==='Closed'?'Enter decision / closure remarks:':'Enter correction remarks:');
+      if(!remarks)return;
+      const {data:{user}}=await client.auth.getUser();
+      const {error}=await client.from('billing_discrepancies').update({
+        status,decision:remarks,resolved_by:user?.id||profile.id,resolved_at:new Date().toISOString(),updated_at:new Date().toISOString()
+      }).eq('id',row.id);
+      if(error){showToast('error',error.message);return}
+      showToast('success',`Billing query marked ${status}.`);await load();
+    }
+
+    const patientRows=selectedPatient?rows.filter(r=>r.patient_id===selectedPatient):rows;
+    const totals=patientRows.reduce((a,r)=>{a[r.transaction_type]=(a[r.transaction_type]||0)+Number(r.amount||0);return a},{Charge:0,Payment:0,Discount:0,Refund:0,Advance:0});
+    const payments=totals.Payment+totals.Advance;
+    const outstanding=Math.max(0,totals.Charge-payments-totals.Discount+totals.Refund);
+    const advance=Math.max(0,payments+totals.Discount-totals.Charge-totals.Refund);
+
+    const displayedRows=patientRows.filter(r=>{
+      if(viewMode==='Complete History')return true;
+      if(viewMode==='Advances / Payments')return ['Payment','Advance'].includes(r.transaction_type);
+      return r.transaction_type==='Charge';
+    });
+    const patientDisputes=selectedPatient?disputes.filter(d=>d.patient_id===selectedPatient):disputes;
+    const openDisputes=patientDisputes.filter(d=>!['Closed','Corrected','Rejected'].includes(d.status));
 
     return h(React.Fragment,null,
-      h('div',{className:'grid stats'},
-        [['Charges',totals.Charge],['Payments',totals.Payment],['Discounts',totals.Discount],['Outstanding',due]].map(([a,b])=>
-          h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,`₹${b.toLocaleString('en-IN')}`))
+      h(Section,{title:'Patient Bills, Charges & Transaction History',subtitle:'Single-click pending bills, advances, payments and complete ledger history'},
+        h('div',{className:'modal-grid'},
+          h('div',{className:'field'},h('label',null,'Patient'),h('select',{value:selectedPatient,onChange:e=>setSelectedPatient(e.target.value)},h('option',{value:''},'All patients'),patients.map(p=>h('option',{key:p.id,value:p.id},`${formalName(p)} · ${p.patient_id||'—'}`)))),
+          h('div',{className:'field'},h('label',null,'Quick View'),h('select',{value:viewMode,onChange:e=>setViewMode(e.target.value)},['Pending Bills','Complete History','Advances / Payments'].map(x=>h('option',{key:x,value:x},x)))),
+          h('button',{type:'button',className:'btn btn-primary',onClick:()=>setViewMode('Pending Bills')},'Pending Bills as on Date'),
+          h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setViewMode('Complete History')},'Complete Transaction History')
         )
       ),
-      h(Section,{
-        title:'Automatic Daily Accommodation Charges',
-        subtitle:'Room rent and nursing charges are calculated once per occupied patient per day',
-        actions:canGenerate?h('button',{className:'btn btn-primary',disabled:autoBusy,onClick:()=>generateDailyCharges(false)},autoBusy?'Calculating…':'Generate / Verify Today'):null
-      },
-        h('div',{className:'grid stats'},
-          h('div',{className:'card stat'},h('span',null,'Single / Separate Room'),h('strong',null,'₹3,000'),h('small',null,'Room per day'),h('small',null,'Nursing ₹1,000/day')),
-          h('div',{className:'card stat'},h('span',null,'Twin Sharing'),h('strong',null,'₹2,000'),h('small',null,'Room per day'),h('small',null,'Nursing ₹800/day')),
-          h('div',{className:'card stat'},h('span',null,'General Ward / Room'),h('strong',null,'₹1,800'),h('small',null,'Room per day'),h('small',null,'Nursing ₹750/day')),
-          h('div',{className:'card stat'},h('span',null,`Generated on ${formatDateIN(today)}`),h('strong',null,`₹${(roomAuto+nursingAuto).toLocaleString('en-IN')}`),h('small',null,`Room ₹${roomAuto.toLocaleString('en-IN')} · Nursing ₹${nursingAuto.toLocaleString('en-IN')}`))
-        ),
-        h('p',{className:'small-note'},'The system checks all active patients with an occupied room/bed and creates only missing charges. Reopening or refreshing the page will not create duplicates.')
+      h('div',{className:'grid stats'},
+        [['Total Charges',totals.Charge],['Payments / Advance',payments],['Discounts',totals.Discount],['Pending Bills',outstanding],['Advance Balance',advance],['Open Queries',openDisputes.length]].map(([label,value])=>
+          h('div',{className:'card stat',key:label},h('span',null,label),h('strong',null,typeof value==='number'&&label!=='Open Queries'?`₹${value.toLocaleString('en-IN')}`:value))
+        )
       ),
-      h(Section,{title:'Billing & Payment Entry',subtitle:'Manual charges, receipts, discounts and refunds'},
+      canManage&&h(Section,{title:'Automatic Daily Accommodation Charges',subtitle:'Room and nursing charges are generated once per patient per day',actions:h('button',{className:'btn btn-primary',disabled:autoBusy,onClick:()=>generateDailyCharges(false)},autoBusy?'Calculating…':'Generate / Verify Today')},
+        h('p',{className:'small-note'},'Single/Separate: Room ₹3,000 + Nursing ₹1,000. Twin: Room ₹2,000 + Nursing ₹800. General: Room ₹1,800 + Nursing ₹750.')
+      ),
+      canManage&&h(Section,{title:'Manual Billing & Payment Entry',subtitle:'Accounts/Admin/Manager only'},
         message&&h('div',{className:'message error'},message),
         h('form',{className:'modal-grid',onSubmit:save},
           patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),
-          miniSelect('Transaction',form.transaction_type,['Charge','Payment','Discount','Refund'],v=>setForm({...form,transaction_type:v})),
-          miniSelect('Category',form.category,['Admission Fee','Room Charges','Nursing Charges','Food Charges','Medicine Charges','Physiotherapy','Consumables','Doctor Visit','Equipment','Other'],v=>setForm({...form,category:v})),
+          miniSelect('Transaction',form.transaction_type,['Charge','Payment','Advance','Discount','Refund'],v=>setForm({...form,transaction_type:v})),
+          miniSelect('Category',form.category,['Admission Fee','Room Charges','Nursing Charges','Food Charges','Medicine Charges','Physiotherapy','Consumables','Doctor Visit','Equipment','Advance','Other'],v=>setForm({...form,category:v})),
           miniInput('Amount',form.amount,v=>setForm({...form,amount:v}),true,'number'),
           miniSelect('Payment mode',form.payment_mode,['Cash','UPI','Bank transfer','Card','Cheque','Not applicable'],v=>setForm({...form,payment_mode:v})),
           miniInput('Description / reference',form.description,v=>setForm({...form,description:v})),
-          h('button',{className:'btn btn-primary'},'Save transaction')
+          h('button',{className:'btn btn-primary'},'Save Transaction')
         )
       ),
       h(LogTable,{
-        title:'Patient Ledger',
-        heads:['Patient','Type','Category','Amount','Mode','Description','Source','Date'],
-        rows:rows.map(r=>[
-          r.patients?.full_name,
+        title:viewMode,
+        subtitle:selectedPatient?'Selected patient ledger':'All patient transactions',
+        heads:['Patient','Type','Category','Amount','Mode','Description','Source','Date','Action'],
+        rows:displayedRows.map(r=>[
+          r.patients?.full_name||'—',
           r.transaction_type,
           r.category,
-          `₹${Number(r.amount).toLocaleString('en-IN')}`,
-          r.payment_mode,
+          `₹${Number(r.amount||0).toLocaleString('en-IN')}`,
+          r.payment_mode||'—',
           r.description||'—',
           r.auto_generated?'System generated':'Manual',
-          fmt(r.transaction_date)
+          fmt(r.transaction_date),
+          canRaiseQuery&&r.transaction_type==='Charge'?h('button',{className:'btn btn-secondary',onClick:()=>{setQueryTarget(r);setQueryText('')}},'Raise Query'):h('span',{className:'small-note'},'View')
         ])
       }),
+      h(LogTable,{
+        title:`Billing Discrepancy Queries (${patientDisputes.length})`,
+        subtitle:'Nurse/Caregiver may raise; Accounts/Admin/Manager makes the final decision and closes',
+        heads:['Patient','Transaction','Type','Query','Status','Decision','Raised','Action'],
+        rows:patientDisputes.map(d=>[
+          patientForName(patients,d.patient_id),
+          d.billing_transaction_id||'—',
+          d.discrepancy_type,
+          d.description,
+          h('span',{className:`badge ${d.status==='Open'?'off':''}`},d.status),
+          d.decision||'—',
+          fmt(d.created_at),
+          canManage&&d.status==='Open'?h('div',{className:'employee-actions'},
+            h('button',{className:'btn btn-primary',onClick:()=>closeQuery(d,'Corrected')},'Correct & Close'),
+            h('button',{className:'btn btn-secondary',onClick:()=>closeQuery(d,'Closed')},'Close / Reject')
+          ):h('span',{className:'small-note'},'View only')
+        ])
+      }),
+      queryTarget&&h('div',{className:'modal-backdrop',onClick:e=>{if(e.target===e.currentTarget)setQueryTarget(null)}},
+        h('form',{className:'card modal',onSubmit:submitQuery},
+          h('div',{className:'panel-head'},h('div',null,h('h3',null,'Raise Billing Discrepancy'),h('small',null,`${queryTarget.category} · ₹${Number(queryTarget.amount||0).toLocaleString('en-IN')}`)),h('button',{type:'button',className:'close',onClick:()=>setQueryTarget(null)},'×')),
+          h('div',{className:'modal-grid'},
+            h('div',{className:'field'},h('label',null,'Discrepancy Type'),h('select',{value:queryCategory,onChange:e=>setQueryCategory(e.target.value)},['Wrong amount','Duplicate charge','Wrong patient','Wrong category','Service not provided','Wrong date','Advance not adjusted','Other'].map(x=>h('option',{key:x,value:x},x)))),
+            h('div',{className:'field span-2'},h('label',null,'Query / Explanation'),h('textarea',{required:true,rows:4,value:queryText,onChange:e=>setQueryText(e.target.value),placeholder:'Explain why this billing entry appears incorrect'}))
+          ),
+          h('div',{className:'actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setQueryTarget(null)},'Cancel'),h('button',{className:'btn btn-primary',disabled:busy},busy?'Submitting…':'Raise Query'))
+        )
+      ),
       toast&&h('div',{className:`samara-toast ${toast.type}`,role:'status','aria-live':'polite'},
         h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),
         h('div',null,h('strong',null,toast.type==='success'?'Billing updated':'Billing failed'),h('span',null,toast.text)),
         h('button',{type:'button',onClick:()=>setToast(null)},'×')
       )
     );
+  }
+
+  function patientForName(patients,id){
+    const patient=patients.find(p=>p.id===id);
+    return patient?formalName(patient):'Patient';
   }
   function RecoveryTimeline({profile}){
     const [patients]=usePatients(),[rows,setRows]=React.useState([]),[patient,setPatient]=React.useState(''),[event,setEvent]=React.useState('Walking with support'),[note,setNote]=React.useState('');async function load(){const {data}=await client.from('recovery_events').select('*,patients(full_name)').order('event_at',{ascending:false}).limit(100);setRows(data||[])}React.useEffect(()=>{load()},[]);async function save(e){e.preventDefault();const {error}=await client.from('recovery_events').insert({patient_id:patient,event_type:event,note,recorded_by:profile.id});if(error)return alert(error.message);setNote('');load()}
