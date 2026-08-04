@@ -1,0 +1,30 @@
+SAMARA CARE ERP 1.3.13 — SPECIAL NURSE: OWN EMPLOYEE OR OUTSOURCED
+
+1. Run once in Supabase SQL Editor:
+   38_special_nurse_employee_or_outsourced.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Special Nurse Source:
+- Our Employee
+- Outsourced
+
+For Our Employee:
+- Select from the registered Samara Care employee list.
+- Name and role are linked automatically.
+
+For Outsourced:
+- Outsourced Special Nurse Name
+- Company / Organisation Name — mandatory
+- Organisation Contact Person
+- Organisation Contact Number
+- Agreement / Work Order Reference
+
+The assignment register now displays:
+- Source
+- Company / Organisation
+
+All earlier access permissions, duty status, dates, shifts, duration, responsibilities, notifications and Audit Trail remain unchanged.
