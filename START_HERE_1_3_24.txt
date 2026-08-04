@@ -1,0 +1,28 @@
+SAMARA CARE ERP 1.3.24 — BILLING QUICK VIEW FILTER FIX
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Corrected Quick View behaviour:
+
+ADVANCES / PAYMENTS
+- Shows only Payment and Advance transactions.
+- Shows Today's Collection, total payments and available advance.
+- Shows the patient-specific monthly collection chart.
+- Hides room charges, nursing charges, pending bills and ageing analysis.
+
+PENDING BILLS
+- Shows only genuinely unpaid charge entries.
+- Shows outstanding ageing, room/nursing charges and query action.
+- Hides payment/advance transaction history.
+
+COMPLETE TRANSACTION HISTORY
+- Shows all transaction types for the selected patient.
+- Shows manual Accounts/Admin/Manager transaction entry.
+- Shows billing discrepancy query history.
+
+The top summary cards remain visible as the patient’s overall financial position.
