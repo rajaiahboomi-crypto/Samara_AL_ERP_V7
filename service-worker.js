@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.45-shift-task-completion-sync';
+const CACHE = 'samara-erp-1.3.46-task-activity-preselection';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.45', './app.js?v=1.3.45',
-  './bootstrap-error.js?v=1.3.45', './health-check.js?v=1.3.45',
-  './config.js?v=1.3.45', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.46', './app.js?v=1.3.46',
+  './bootstrap-error.js?v=1.3.46', './health-check.js?v=1.3.46',
+  './config.js?v=1.3.46', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

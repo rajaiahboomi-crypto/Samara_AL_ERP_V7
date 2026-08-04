@@ -1,0 +1,28 @@
+SAMARA CARE ERP 1.3.46 — FORWARDED TASK ACTIVITY PRESELECTION FIX
+
+Upload these four files:
+- app.js
+- index.html
+- service-worker.js
+- styles-1.3.46.css
+
+No Supabase SQL is required.
+
+ISSUE FIXED
+A task opened from Shift Tasks always displayed “Bathing assistance” in Daily Care, even when the selected task was Walking/Mobility, Fluid Intake, Position Change, Oral Hygiene, etc.
+
+CAUSE
+The Daily Care dropdown used shortened labels that did not exactly match the care-plan task names. When the selected value was absent from the dropdown options, the browser displayed the first option, Bathing assistance.
+
+CORRECTIONS
+- Daily Care now uses the exact same activity names as the patient care plan.
+- The forwarded task is preselected correctly.
+- Legacy labels are automatically mapped:
+  Restroom assistance → Restroom/toileting assistance
+  Mobility assistance → Walking/mobility assistance
+  Position change → Position change / bedsore prevention
+  Fluid monitoring → Fluid intake monitoring
+- The linked-task note displays the exact selected activity.
+- The same exact activity is saved in Recent Care Records and Audit Trail.
+
+Version: 1.3.46
