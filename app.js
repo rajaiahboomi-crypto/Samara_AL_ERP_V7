@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.33';
-  const APP_BUILD_DATE = '04-Aug-2026 14:50 IST';
+  const APP_VERSION = '1.3.34';
+  const APP_BUILD_DATE = '04-Aug-2026 15:05 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -2210,7 +2210,7 @@ function RoomsBeds({profile}){
       setBusy(true);setMsg('');
       try{
         const payload={
-          room_no:String(form.room_no||'').trim(),
+          room_no:String(form.room_no||'').trim().toUpperCase(),
           bed_no:String(form.bed_no||'').trim().toUpperCase(),
           room_type:form.room_type,
           room_daily_rate:Number(form.room_daily_rate||0),
@@ -2222,6 +2222,12 @@ function RoomsBeds({profile}){
           updated_at:new Date().toISOString()
         };
         if(!payload.room_no||!payload.bed_no)throw new Error('Room number and bed code are required.');
+        const duplicate=rows.find(r=>
+          String(r.room_no||'').trim().toUpperCase()===payload.room_no
+          &&String(r.bed_no||'').trim().toUpperCase()===payload.bed_no
+          &&r.id!==editing?.id
+        );
+        if(duplicate)throw new Error(`Room ${payload.room_no} / Bed ${payload.bed_no} already exists.`);
         if(payload.room_daily_rate<0||payload.nursing_daily_rate<0||payload.special_nurse_daily_rate<0)throw new Error('Tariff amounts cannot be negative.');
         let result;
         if(editing?.id)result=await client.from('room_beds').update(payload).eq('id',editing.id);
@@ -2326,7 +2332,14 @@ function RoomsBeds({profile}){
         h('div',{className:'panel-head'},h('div',null,h('h3',null,editing?'Edit Room / Bed & Tariff':'Add Room / Bed'),h('small',null,'Tariffs entered here drive automatic patient billing')),h('button',{type:'button',className:'close',onClick:()=>setShow(false)},'×')),
         msg&&h('div',{className:'message error'},msg),
         h('div',{className:'modal-grid'},
-          h('div',{className:'field'},h('label',null,'Room Number'),h('select',{value:form.room_no,onChange:e=>setForm({...form,room_no:e.target.value}),required:true},ROOM_NUMBER_OPTIONS.map(n=>h('option',{key:n,value:n},n)))),
+          h('div',{className:'field'},h('label',null,'Room Number'),h('input',{
+            type:'text',
+            value:form.room_no,
+            onChange:e=>setForm({...form,room_no:e.target.value}),
+            placeholder:'Example: 106 / G-01 / ICU-1',
+            required:true,
+            maxLength:30
+          })),
           h('div',{className:'field'},h('label',null,'Bed Code'),h('select',{value:form.bed_no,onChange:e=>setForm({...form,bed_no:e.target.value}),required:true},BED_CODE_OPTIONS.map(n=>h('option',{key:n,value:n},n)))),
           h('div',{className:'field'},h('label',null,'Room Type'),h('select',{value:form.room_type,onChange:e=>changeRoomType(e.target.value)},['Private / Single','Deluxe','Twin Sharing','Triple Sharing','General','Isolation','Rehabilitation'].map(x=>h('option',{key:x,value:x},x)))),
           miniInput('Room Rent per Day',form.room_daily_rate,v=>setForm({...form,room_daily_rate:v}),true,'number'),
