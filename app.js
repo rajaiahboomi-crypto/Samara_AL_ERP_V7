@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.17';
-  const APP_BUILD_DATE = '04-Aug-2026 17:55 IST';
+  const APP_VERSION = '1.3.18';
+  const APP_BUILD_DATE = '04-Aug-2026 18:30 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -3298,12 +3298,136 @@ function ShiftHandover({profile}){
   }
 
 function BillingPayments({profile}){
-    const [patients]=usePatients(),[rows,setRows]=React.useState([]),[form,setForm]=React.useState({patient_id:'',transaction_type:'Charge',category:'Room Charges',amount:'',description:'',payment_mode:'Cash'});async function load(){const {data}=await client.from('billing_transactions').select('*,patients(full_name)').order('transaction_date',{ascending:false}).limit(200);setRows(data||[])}React.useEffect(()=>{load()},[]);
-    async function save(e){e.preventDefault();const {error}=await client.from('billing_transactions').insert({...form,amount:Number(form.amount),transaction_date:new Date().toISOString(),entered_by:profile.id});if(error)return alert(error.message);setForm({...form,amount:'',description:''});load()}
-    const totals=rows.reduce((a,r)=>{a[r.transaction_type]=(a[r.transaction_type]||0)+Number(r.amount||0);return a},{Charge:0,Payment:0,Discount:0,Refund:0});const due=totals.Charge-totals.Payment-totals.Discount+totals.Refund;
-    return h(React.Fragment,null,h('div',{className:'grid stats'},[['Charges',totals.Charge],['Payments',totals.Payment],['Discounts',totals.Discount],['Outstanding',due]].map(([a,b])=>h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,`₹${b.toLocaleString('en-IN')}`)))),h(Section,{title:'Billing & Payment Entry',subtitle:'Charges, receipts, discounts and refunds'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),miniSelect('Transaction',form.transaction_type,['Charge','Payment','Discount','Refund'],v=>setForm({...form,transaction_type:v})),miniSelect('Category',form.category,['Admission Fee','Room Charges','Nursing Charges','Food Charges','Medicine Charges','Physiotherapy','Consumables','Doctor Visit','Equipment','Other'],v=>setForm({...form,category:v})),miniInput('Amount',form.amount,v=>setForm({...form,amount:v}),true,'number'),miniSelect('Payment mode',form.payment_mode,['Cash','UPI','Bank transfer','Card','Cheque','Not applicable'],v=>setForm({...form,payment_mode:v})),miniInput('Description / reference',form.description,v=>setForm({...form,description:v})),h('button',{className:'btn btn-primary'},'Save transaction'))),h(LogTable,{title:'Patient Ledger',heads:['Patient','Type','Category','Amount','Mode','Description','Date'],rows:rows.map(r=>[r.patients?.full_name,r.transaction_type,r.category,`₹${Number(r.amount).toLocaleString('en-IN')}`,r.payment_mode,r.description||'—',fmt(r.transaction_date)])}))
-  }
+    const [patients]=usePatients();
+    const [rows,setRows]=React.useState([]);
+    const [form,setForm]=React.useState({patient_id:'',transaction_type:'Charge',category:'Room Charges',amount:'',description:'',payment_mode:'Cash'});
+    const [autoBusy,setAutoBusy]=React.useState(false);
+    const [message,setMessage]=React.useState('');
+    const [toast,setToast]=React.useState(null);
+    const toastTimer=React.useRef(null);
+    const canGenerate=['Admin','Manager','Accounts'].includes(profile?.role);
 
+    function showToast(type,text){
+      clearTimeout(toastTimer.current);
+      setToast({type,text});
+      toastTimer.current=setTimeout(()=>setToast(null),4500);
+    }
+    React.useEffect(()=>()=>clearTimeout(toastTimer.current),[]);
+
+    async function load(){
+      const {data,error}=await client.from('billing_transactions')
+        .select('*,patients(full_name,patient_id,room_no,bed_no)')
+        .order('transaction_date',{ascending:false})
+        .limit(1000);
+      if(error){setMessage(error.message||'Unable to load billing transactions.');setRows([]);return}
+      setMessage('');setRows(data||[]);
+    }
+
+    async function generateDailyCharges(silent=false){
+      if(!canGenerate)return;
+      setAutoBusy(true);
+      const {data,error}=await client.rpc('generate_daily_accommodation_charges',{p_charge_date:todayISOIndia()});
+      setAutoBusy(false);
+      if(error){
+        if(!silent)showToast('error',error.message||'Unable to generate daily room and nursing charges.');
+        return;
+      }
+      const roomCount=Number(data?.room_charges_created||0);
+      const nursingCount=Number(data?.nursing_charges_created||0);
+      if(!silent||roomCount+nursingCount>0){
+        showToast('success',`${roomCount} room charge(s) and ${nursingCount} nursing charge(s) generated for ${formatDateIN(todayISOIndia())}.`);
+      }
+      await load();
+    }
+
+    React.useEffect(()=>{
+      (async()=>{
+        await load();
+        if(canGenerate)await generateDailyCharges(true);
+      })();
+      const channel=client.channel('billing-ledger-live')
+        .on('postgres_changes',{event:'*',schema:'public',table:'billing_transactions'},load)
+        .subscribe();
+      return()=>client.removeChannel(channel);
+    },[]);
+
+    async function save(e){
+      e.preventDefault();
+      const {error}=await client.from('billing_transactions').insert({
+        ...form,
+        amount:Number(form.amount),
+        transaction_date:new Date().toISOString(),
+        entered_by:profile.id,
+        auto_generated:false
+      });
+      if(error){showToast('error',error.message);return}
+      setForm({...form,amount:'',description:''});
+      showToast('success','Billing transaction saved successfully.');
+      await load();
+    }
+
+    const totals=rows.reduce((a,r)=>{
+      a[r.transaction_type]=(a[r.transaction_type]||0)+Number(r.amount||0);
+      return a;
+    },{Charge:0,Payment:0,Discount:0,Refund:0});
+    const due=totals.Charge-totals.Payment-totals.Discount+totals.Refund;
+    const today=todayISOIndia();
+    const todaysAuto=rows.filter(r=>r.auto_generated&&String(r.source_date||'')===today);
+    const roomAuto=todaysAuto.filter(r=>r.category==='Room Charges').reduce((sum,r)=>sum+Number(r.amount||0),0);
+    const nursingAuto=todaysAuto.filter(r=>r.category==='Nursing Charges').reduce((sum,r)=>sum+Number(r.amount||0),0);
+
+    return h(React.Fragment,null,
+      h('div',{className:'grid stats'},
+        [['Charges',totals.Charge],['Payments',totals.Payment],['Discounts',totals.Discount],['Outstanding',due]].map(([a,b])=>
+          h('div',{className:'card stat',key:a},h('span',null,a),h('strong',null,`₹${b.toLocaleString('en-IN')}`))
+        )
+      ),
+      h(Section,{
+        title:'Automatic Daily Accommodation Charges',
+        subtitle:'Room rent and nursing charges are calculated once per occupied patient per day',
+        actions:canGenerate?h('button',{className:'btn btn-primary',disabled:autoBusy,onClick:()=>generateDailyCharges(false)},autoBusy?'Calculating…':'Generate / Verify Today'):null
+      },
+        h('div',{className:'grid stats'},
+          h('div',{className:'card stat'},h('span',null,'Single / Separate Room'),h('strong',null,'₹3,000'),h('small',null,'Room per day'),h('small',null,'Nursing ₹1,000/day')),
+          h('div',{className:'card stat'},h('span',null,'Twin Sharing'),h('strong',null,'₹2,000'),h('small',null,'Room per day'),h('small',null,'Nursing ₹800/day')),
+          h('div',{className:'card stat'},h('span',null,'General Ward / Room'),h('strong',null,'₹1,800'),h('small',null,'Room per day'),h('small',null,'Nursing ₹750/day')),
+          h('div',{className:'card stat'},h('span',null,`Generated on ${formatDateIN(today)}`),h('strong',null,`₹${(roomAuto+nursingAuto).toLocaleString('en-IN')}`),h('small',null,`Room ₹${roomAuto.toLocaleString('en-IN')} · Nursing ₹${nursingAuto.toLocaleString('en-IN')}`))
+        ),
+        h('p',{className:'small-note'},'The system checks all active patients with an occupied room/bed and creates only missing charges. Reopening or refreshing the page will not create duplicates.')
+      ),
+      h(Section,{title:'Billing & Payment Entry',subtitle:'Manual charges, receipts, discounts and refunds'},
+        message&&h('div',{className:'message error'},message),
+        h('form',{className:'modal-grid',onSubmit:save},
+          patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),
+          miniSelect('Transaction',form.transaction_type,['Charge','Payment','Discount','Refund'],v=>setForm({...form,transaction_type:v})),
+          miniSelect('Category',form.category,['Admission Fee','Room Charges','Nursing Charges','Food Charges','Medicine Charges','Physiotherapy','Consumables','Doctor Visit','Equipment','Other'],v=>setForm({...form,category:v})),
+          miniInput('Amount',form.amount,v=>setForm({...form,amount:v}),true,'number'),
+          miniSelect('Payment mode',form.payment_mode,['Cash','UPI','Bank transfer','Card','Cheque','Not applicable'],v=>setForm({...form,payment_mode:v})),
+          miniInput('Description / reference',form.description,v=>setForm({...form,description:v})),
+          h('button',{className:'btn btn-primary'},'Save transaction')
+        )
+      ),
+      h(LogTable,{
+        title:'Patient Ledger',
+        heads:['Patient','Type','Category','Amount','Mode','Description','Source','Date'],
+        rows:rows.map(r=>[
+          r.patients?.full_name,
+          r.transaction_type,
+          r.category,
+          `₹${Number(r.amount).toLocaleString('en-IN')}`,
+          r.payment_mode,
+          r.description||'—',
+          r.auto_generated?'System generated':'Manual',
+          fmt(r.transaction_date)
+        ])
+      }),
+      toast&&h('div',{className:`samara-toast ${toast.type}`,role:'status','aria-live':'polite'},
+        h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),
+        h('div',null,h('strong',null,toast.type==='success'?'Billing updated':'Billing failed'),h('span',null,toast.text)),
+        h('button',{type:'button',onClick:()=>setToast(null)},'×')
+      )
+    );
+  }
   function RecoveryTimeline({profile}){
     const [patients]=usePatients(),[rows,setRows]=React.useState([]),[patient,setPatient]=React.useState(''),[event,setEvent]=React.useState('Walking with support'),[note,setNote]=React.useState('');async function load(){const {data}=await client.from('recovery_events').select('*,patients(full_name)').order('event_at',{ascending:false}).limit(100);setRows(data||[])}React.useEffect(()=>{load()},[]);async function save(e){e.preventDefault();const {error}=await client.from('recovery_events').insert({patient_id:patient,event_type:event,note,recorded_by:profile.id});if(error)return alert(error.message);setNote('');load()}
     return h(React.Fragment,null,h(Section,{title:'Recovery Progress Timeline',subtitle:'Track improvement from hospital discharge to return home'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,patient,setPatient),miniSelect('Milestone',event,['Admitted after hospital discharge','Pain reduced','Walking with support','Independent walking','Feeding improved','Restroom independence','Medicine reduced','Wound improved','Physiotherapy goal achieved','Ready for discharge','Other'],setEvent),miniInput('Progress note',note,setNote,true),h('button',{className:'btn btn-primary'},'Add milestone'))),h(LogTable,{title:'Recovery Events',heads:['Patient','Milestone','Note','Date'],rows:rows.map(r=>[r.patients?.full_name,r.event_type,r.note,fmt(r.event_at)])}))

@@ -1,0 +1,37 @@
+SAMARA CARE ERP 1.3.18 — AUTOMATIC DAILY ROOM & NURSING CHARGES
+
+1. Run once in Supabase SQL Editor:
+   42_automatic_daily_room_nursing_charges.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Fixed daily rates:
+SINGLE / SEPARATE ROOM
+- Room rent: ₹3,000 per patient per day
+- Nursing charge: ₹1,000 per patient per day
+
+TWIN SHARING
+- Room rent: ₹2,000 per patient per day
+- Nursing charge: ₹800 per patient per day
+
+GENERAL ROOM / WARD
+- Room rent: ₹1,800 per patient per day
+- Nursing charge: ₹750 per patient per day
+
+How it works:
+- When Admin, Manager or Accounts opens Billing & Payments, the ERP verifies today's charges.
+- Missing room and nursing charges are entered automatically.
+- “Generate / Verify Today” can be used manually.
+- Each patient receives only one Room Charge and one Nursing Charge per date.
+- Refreshing or reopening cannot create duplicate charges.
+- Charges appear directly in the Patient Ledger as “System generated”.
+- Discharged/inactive patients and patients without an occupied bed are not charged.
+- Future-date generation is blocked.
+
+Room type matching:
+- Single, Separate or Private → Single/Separate rate
+- General, Ward or Dormitory → General rate
+- All other sharing types → Twin Sharing rate
