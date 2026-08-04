@@ -1,0 +1,26 @@
+SAMARA CARE ERP 1.3.2 — QUICK REPORT MEDICINE NAMES & FUTURE ADMISSION DATE BLOCK
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Added:
+1. Quick Health WhatsApp Update now shows the names and strengths of medicines actually recorded as Given for the selected report date.
+
+2. Future Admission Dates are denied:
+   - New Patient Admission cannot be saved with a future date.
+   - Existing Patient Edit cannot be saved with a future admission date.
+   - The Admission Date picker cannot select a date later than today.
+   - Intelligent Report generation is blocked when an existing Patient File already contains a future admission date.
+
+Important for the patient shown in the screenshot:
+Open Patients → Edit for R Boominathan and correct Admission Date 25-08-2026 to the actual date. The ERP will not generate/share the report until this incorrect future date is corrected.
+
+After uploading:
+1. Close all ERP windows.
+2. Reopen the app.
+3. Tap “App update available” if shown.
+4. Confirm Version 1.3.2.

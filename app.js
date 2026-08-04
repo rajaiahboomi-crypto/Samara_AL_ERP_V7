@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.1';
-  const APP_BUILD_DATE = '04-Aug-2026 10:40 IST';
+  const APP_VERSION = '1.3.2';
+  const APP_BUILD_DATE = '04-Aug-2026 11:10 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -91,6 +91,12 @@
     return `${formatDateIN(date)} ${formatTimeIN(date)}`;
   };
   const fmt = value => formatDateTimeIN(value);
+  const todayISOIndia = () => {
+    const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+    const get=type=>parts.find(part=>part.type===type)?.value||'';
+    return `${get('year')}-${get('month')}-${get('day')}`;
+  };
+  const isFutureDateIndia = value => Boolean(value&&String(value).slice(0,10)>todayISOIndia());
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#039;'}[ch]));
   const whatsappNumber = value => { const digits=String(value||'').replace(/\D/g,''); if(!digits)return ''; if(digits.length===10)return `91${digits}`; if(digits.length===11&&digits.startsWith('0'))return `91${digits.slice(1)}`; return digits; };
   const whatsappWelcomeUrl = (row,tempPassword='') => {
@@ -1131,6 +1137,7 @@ Caring with Compassion. Living with Dignity.`;
     }
     async function submit(e){
       e.preventDefault();setBusy(true);setMsg('');
+      if(isFutureDateIndia(form.admission_date)){setMsg(`Admission date cannot be later than today (${formatDateIN(todayISOIndia())}). Please correct the date.`);setBusy(false);return}
       if(!photoFiles.length){setMsg('Capture or upload the patient photograph before admission.');setBusy(false);return}
       if(!idFiles.length){setMsg('Upload at least one patient identity document.');setBusy(false);return}
       if(needsHospital&&!dischargeFiles.length){setMsg('Upload the hospital discharge summary or transfer note.');setBusy(false);return}
@@ -1314,6 +1321,7 @@ Caring with Compassion. Living with Dignity.`;
     }
     async function savePatientEdit(e){
       e.preventDefault();setEditBusy(true);setEditMsg('');
+      if(isFutureDateIndia(editForm.admission_date)){setEditMsg(`Admission date cannot be later than today (${formatDateIN(todayISOIndia())}). Please correct the date.`);setEditBusy(false);return}
       const allowed=['title','full_name','age','gender','mobile','address','attendant_name','attendant_phone','diagnosis','referring_doctor','treating_doctor','doctor_phone','hospital_name','admission_type','patient_category','room_no','bed_no','allergies','special_instructions','admission_date','is_active','diet_plan','feeding_instruction','fall_risk','pressure_sore_risk','aspiration_risk','wandering_risk','infection_risk','seizure_history','special_nurse_required','special_nurse_name','special_nurse_shift'];
       const payload={};allowed.forEach(k=>payload[k]=editForm[k]===''?null:editForm[k]);payload.age=editForm.age===''?null:Number(editForm.age);
       const {data,error}=await client.from('patients').update(payload).eq('id',editTarget.id).select().single();
@@ -2355,6 +2363,9 @@ Caring with Compassion. Living with Dignity.`;
         ]);
         const [pats,vitals,care,careOrders,orders,mar,meals,physioOrders,physioSessions,incidents,billing,recovery,handovers,documents,staff,audit]=results.map(safeRows);
         const selectedPatient=pats.find(p=>p.id===patientId)||patients.find(p=>p.id===patientId)||null;
+        if(activeMode==='Patient-wise'&&selectedPatient&&isFutureDateIndia(selectedPatient.admission_date)){
+          throw new Error(`The Patient File contains a future Admission Date (${formatDateIN(selectedPatient.admission_date)}). Please correct it in Patient Edit before generating or sharing the report.`);
+        }
         const dayData={
           vitals:byDay(vitals,reportDate,['recorded_at','created_at']),care:byDay(care,reportDate,['completed_at','created_at','care_date']),careOrders:careOrders.filter(x=>x.is_active!==false),mar:byDay(mar,reportDate,['administered_at','created_at','scheduled_date']),meals:byDay(meals,reportDate,['served_at','created_at','meal_date']),physioSessions:byDay(physioSessions,reportDate,['session_at','created_at','session_date']),incidents:byDay(incidents,reportDate,['incident_at','created_at']),billing:byDay(billing,reportDate,['transaction_date','created_at']),recovery:byDay(recovery,reportDate,['event_at','created_at']),handovers:byDay(handovers,reportDate,['created_at','handover_date']),documents:byDay(documents,reportDate,['created_at','report_date']),audit:byDay(audit,reportDate,['created_at'])
         };
@@ -2422,7 +2433,14 @@ Caring with Compassion. Living with Dignity.`;
       const meals=d.meals||[];
       const physio=d.physioSessions||[];
       const incidents=d.incidents||[];
-      const given=mar.filter(x=>String(x.status||'').toLowerCase()==='given').length;
+      const givenRows=mar.filter(x=>String(x.status||'').toLowerCase()==='given');
+      const given=givenRows.length;
+      const orderMap=Object.fromEntries((d.medicationOrders||[]).map(order=>[order.id,order]));
+      const medicineNames=[...new Set(givenRows.map(row=>{
+        const order=orderMap[row.order_id]||{};
+        return [row.medicine_name||order.medicine_name,row.strength||row.dose||order.strength||order.dose].filter(Boolean).join(' ').trim();
+      }).filter(Boolean))];
+      const medicineList=medicineNames.join(', ');
       const exceptions=mar.filter(x=>!['given','completed'].includes(String(x.status||'').toLowerCase())).length;
       const completedCare=care.filter(x=>['completed','done','given'].includes(String(x.status||'').toLowerCase())).length;
       const mealCount=meals.length;
@@ -2445,7 +2463,7 @@ Caring with Compassion. Living with Dignity.`;
           `தேதி: ${date}`,
           `தற்போதைய நிலை: ${statusTamil}`,
           vitalParts.length?`சமீபத்திய உயிர்க்குறிகள்: ${vitalParts.join(' | ')}`:'இன்றைய உயிர்க்குறி பதிவு இல்லை.',
-          mar.length?`மருந்துகள்: ${given} முறை வழங்கப்பட்டது${exceptions?`; ${exceptions} விதிவிலக்கு/தாமதம் பதிவாகியுள்ளது`:''}.`:'இன்றைய மருந்து நிர்வாக பதிவு இல்லை.',
+          mar.length?`வழங்கப்பட்ட மருந்துகள்: ${given} முறை${medicineList?` — ${medicineList}`:''}${exceptions?`; ${exceptions} விதிவிலக்கு/தாமதம் பதிவாகியுள்ளது`:''}.`:'இன்றைய மருந்து நிர்வாக பதிவு இல்லை.',
           care.length?`தினசரி பராமரிப்பு: ${completedCare} பணிகள் நிறைவு.`:'இன்றைய தினசரி பராமரிப்பு பதிவு இல்லை.',
           mealCount?`உணவு/திரவ பதிவு: ${mealCount}.`:'இன்றைய உணவு/திரவ பதிவு இல்லை.',
           physio.length?`உடற்பயிற்சி: ${physioCompleted} அமர்வுகள் நிறைவு.`:'இன்றைய உடற்பயிற்சி பதிவு இல்லை.',
@@ -2457,7 +2475,7 @@ Caring with Compassion. Living with Dignity.`;
         `Report date: ${date}`,
         `Current status: ${status}`,
         vitalParts.length?`Latest vitals: ${vitalParts.join(' | ')}`:'No vital-sign reading was recorded for the selected date.',
-        mar.length?`Medicines: ${given} administration${given===1?'':'s'} recorded${exceptions?`; ${exceptions} exception${exceptions===1?'':'s'} require review`:''}.`:'No medicine administration was recorded for the selected date.',
+        mar.length?`Medicines given: ${given} administration${given===1?'':'s'} recorded${medicineList?` — ${medicineList}`:''}${exceptions?`; ${exceptions} exception${exceptions===1?'':'s'} require review`:''}.`:'No medicine administration was recorded for the selected date.',
         care.length?`Daily care: ${completedCare} task${completedCare===1?'':'s'} completed.`:'No daily-care activity was recorded for the selected date.',
         mealCount?`Food and intake: ${mealCount} record${mealCount===1?'':'s'} available.`:'No food or intake record was entered for the selected date.',
         physio.length?`Physiotherapy: ${physioCompleted} session${physioCompleted===1?'':'s'} completed.`:'No physiotherapy session was recorded for the selected date.',
@@ -2693,7 +2711,7 @@ function Reports(){const [data,setData]=React.useState({patients:[],billing:[],i
   function miniInput(label,value,onChange,required=false,type='text'){return h('div',{className:'field'},h('label',null,label),h('input',{type,value:value||'',required,onChange:e=>onChange(e.target.value)}))}
   function miniSelect(label,value,options,onChange){return h('div',{className:'field'},h('label',null,label),h('select',{value,onChange:e=>onChange(e.target.value)},options.map(x=>h('option',{key:x,value:x},x))))}
 
-  function field(label,key,form,setForm,required,type='text'){return h('div',{className:'field',key},h('label',null,label),h('input',{type,value:form[key],required,onChange:e=>setForm({...form,[key]:e.target.value})}))}
+  function field(label,key,form,setForm,required,type='text'){const inputProps={type,value:form[key],required,onChange:e=>setForm({...form,[key]:e.target.value})};if(type==='date'&&key==='admission_date')inputProps.max=todayISOIndia();return h('div',{className:'field',key},h('label',null,label),h('input',inputProps))}
   function selectField(label,key,form,setForm,options){return h('div',{className:'field',key},h('label',null,label),h('select',{value:form[key],onChange:e=>setForm({...form,[key]:e.target.value})},options.map(x=>h('option',{key:x,value:x},x))))}
 
   ReactDOM.createRoot(document.getElementById('root')).render(h(App));
