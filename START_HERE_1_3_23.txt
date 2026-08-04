@@ -1,0 +1,22 @@
+SAMARA CARE ERP 1.3.23 — STARTUP FIX & PATIENT-FILTERED BILLING
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Critical fix:
+- Corrected the JavaScript syntax error in version 1.3.22 that caused the app to remain on the splash screen.
+- The package has been syntax-tested before delivery.
+
+Billing behaviour:
+- No financial details appear until a patient is selected.
+- After selection, every card, chart, table, query and transaction relates only to that patient.
+- Pending Bills displays only genuinely unpaid charges.
+- Complete History and Advances/Payments are patient-specific.
+- Manual transaction entry is locked to the selected patient.
+- No other patient’s details appear in the window.
+
+Version: 1.3.23

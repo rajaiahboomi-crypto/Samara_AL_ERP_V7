@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.22';
-  const APP_BUILD_DATE = '04-Aug-2026 20:40 IST';
+  const APP_VERSION = '1.3.23';
+  const APP_BUILD_DATE = '04-Aug-2026 12:40 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -1809,7 +1809,6 @@ Caring with Compassion. Living with Dignity.`;
           h('div',{className:'actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setShow(false)},'Cancel'),h('button',{className:'btn btn-primary',disabled:busy},busy?'Saving…':editing?'Update Formalities':'Initiate Discharge'))
         )
       ),
-      ),
       toast&&h('div',{className:`samara-toast ${toast.type}`,role:'status','aria-live':'polite'},
         h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),
         h('div',null,h('strong',null,toast.type==='success'?'Discharge updated':'Discharge failed'),h('span',null,toast.text)),
@@ -3394,11 +3393,6 @@ function BillingPayments({profile}){
     const outstanding=Math.max(0,totals.Charge-payments-totals.Discount+totals.Refund);
     const advance=Math.max(0,payments+totals.Discount-totals.Charge-totals.Refund);
 
-    const displayedRows=viewMode==='Complete History'
-      ?patientRows
-      :viewMode==='Advances / Payments'
-        ?patientRows.filter(r=>['Payment','Advance'].includes(r.transaction_type))
-        :unpaidCharges;
     const patientDisputes=selectedPatient?disputes.filter(d=>d.patient_id===selectedPatient):disputes;
     const openDisputes=patientDisputes.filter(d=>!['Closed','Corrected','Rejected'].includes(d.status));
 
@@ -3432,6 +3426,12 @@ function BillingPayments({profile}){
         return {...r,pending_amount:Math.max(0,amount-adjusted),age_days:chargeAgeDays(r)};
       })
       .filter(r=>r.pending_amount>0);
+
+    const displayedRows=viewMode==='Complete History'
+      ?patientRows
+      :viewMode==='Advances / Payments'
+        ?patientRows.filter(r=>['Payment','Advance'].includes(r.transaction_type))
+        :unpaidCharges;
 
     const ageing={
       '0–30 days':unpaidCharges.filter(r=>r.age_days<=30).reduce((s,r)=>s+r.pending_amount,0),
@@ -3474,115 +3474,128 @@ function BillingPayments({profile}){
     };
 
     return h(React.Fragment,null,
-      h(Section,{title:'Patient Bills, Charges & Transaction History',subtitle:'Single-click pending bills, advances, payments and complete ledger history'},
+      h(Section,{title:'Patient Bills, Charges & Transaction History',subtitle:'Select one patient to view only that patient’s financial records'},
         h('div',{className:'modal-grid'},
-          h('div',{className:'field'},h('label',null,'Patient'),h('select',{value:selectedPatient,onChange:e=>{const value=e.target.value;setSelectedPatient(value);setForm(current=>({...current,patient_id:value}))}},h('option',{value:''},'Select patient'),patients.map(p=>h('option',{key:p.id,value:p.id},`${formalName(p)} · ${p.patient_id||'—'}`)))),
+          h('div',{className:'field'},h('label',null,'Patient'),h('select',{value:selectedPatient,onChange:e=>{const value=e.target.value;setSelectedPatient(value);setForm(current=>({...current,patient_id:value}))}},
+            h('option',{value:''},'Select patient'),
+            patients.map(p=>h('option',{key:p.id,value:p.id},`${formalName(p)} · ${p.patient_id||'—'}`))
+          )),
           h('div',{className:'field'},h('label',null,'Quick View'),h('select',{value:viewMode,onChange:e=>setViewMode(e.target.value)},['Pending Bills','Complete History','Advances / Payments'].map(x=>h('option',{key:x,value:x},x)))),
-          h('button',{type:'button',className:'btn btn-primary',onClick:()=>setViewMode('Pending Bills')},'Pending Bills as on Date'),
-          h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setViewMode('Complete History')},'Complete Transaction History')
+          h('button',{type:'button',className:'btn btn-primary',disabled:!selectedPatient,onClick:()=>setViewMode('Pending Bills')},'Pending Bills as on Date'),
+          h('button',{type:'button',className:'btn btn-secondary',disabled:!selectedPatient,onClick:()=>setViewMode('Complete History')},'Complete Transaction History')
         )
       ),
-      !selectedPatient&&h(Section,{title:'Select a Patient',subtitle:'Choose a patient above to view only that patient’s bills, advances, payments, pending amount, transaction history and billing queries.'}),
+
+      !selectedPatient&&h(Section,{title:'Select a Patient',subtitle:'No financial details are displayed until a patient is selected.'},
+        h('p',{className:'small-note'},'Choose a patient above to view that patient’s charges, payments, advances, outstanding balance, transaction history, ageing analysis and billing queries.')
+      ),
+
       selectedPatient&&h(React.Fragment,null,
-      h('div',{className:'grid stats'},
-        h('div',{className:'card stat',style:cardStyle('charge')},h('span',null,'Total Charges'),h('strong',{style:{color:cardStyle('charge').color}},`₹${totals.Charge.toLocaleString('en-IN')}`)),
-        h('div',{className:'card stat',style:cardStyle('payment')},h('span',null,'Payments / Advance'),h('strong',{style:{color:cardStyle('payment').color}},`₹${payments.toLocaleString('en-IN')}`)),
-        h('div',{className:'card stat',style:cardStyle('discount')},h('span',null,'Discounts'),h('strong',{style:{color:cardStyle('discount').color}},`₹${totals.Discount.toLocaleString('en-IN')}`)),
-        h('div',{className:'card stat',style:cardStyle('pending',outstanding)},h('span',null,'Pending Bills'),h('strong',{style:{color:cardStyle('pending',outstanding).color}},`₹${outstanding.toLocaleString('en-IN')}`)),
-        h('div',{className:'card stat',style:cardStyle('advance')},h('span',null,'Advance Balance'),h('strong',{style:{color:cardStyle('advance').color}},`₹${advance.toLocaleString('en-IN')}`)),
-        h('div',{className:'card stat',style:cardStyle('query')},h('span',null,'Open Queries'),h('strong',{style:{color:cardStyle('query').color}},openDisputes.length))
-      ),
-      h('div',{className:'grid stats',style:{marginTop:'14px'}},
-        h('div',{className:'card stat',style:cardStyle('payment')},h('span',null,"Today's Collection"),h('strong',{style:{color:cardStyle('payment').color}},`₹${todayCollection.toLocaleString('en-IN')}`)),
-        h('div',{className:'card stat',style:cardStyle('charge')},h('span',null,'Outstanding > 7 Days'),h('strong',{style:{color:cardStyle('charge').color}},`₹${overdue7Amount.toLocaleString('en-IN')}`),h('small',null,`${overdue7.length} pending item(s)`)),
-        h('div',{className:'card stat',style:cardStyle('neutral')},h('span',null,'Room Rent Generated Today'),h('strong',null,`₹${roomGeneratedToday.toLocaleString('en-IN')}`)),
-        h('div',{className:'card stat',style:cardStyle('neutral')},h('span',null,'Nursing Charges Today'),h('strong',null,`₹${nursingGeneratedToday.toLocaleString('en-IN')}`))
-      ),
-      canManage&&h(Section,{title:'Manual Billing & Payment Entry',subtitle:'Accounts/Admin/Manager only'},
-        message&&h('div',{className:'message error'},message),
-        h('form',{className:'modal-grid',onSubmit:save},
-          h('div',{className:'field'},h('label',null,'Patient'),h('input',{value:selectedPatientName,readOnly:true})),
-          miniSelect('Transaction',form.transaction_type,['Charge','Payment','Advance','Discount','Refund'],v=>setForm({...form,transaction_type:v})),
-          miniSelect('Category',form.category,['Admission Fee','Room Charges','Nursing Charges','Food Charges','Medicine Charges','Physiotherapy','Consumables','Doctor Visit','Equipment','Advance','Other'],v=>setForm({...form,category:v})),
-          miniInput('Amount',form.amount,v=>setForm({...form,amount:v}),true,'number'),
-          miniSelect('Payment mode',form.payment_mode,['Cash','UPI','Bank transfer','Card','Cheque','Not applicable'],v=>setForm({...form,payment_mode:v})),
-          miniInput('Description / reference',form.description,v=>setForm({...form,description:v})),
-          h('button',{className:'btn btn-primary'},'Save Transaction')
-        )
-      ),
-      selectedPatient&&h(Section,{title:'Automatic Accommodation Charges',subtitle:`System-generated charges for ${selectedPatientName}`},
         h('div',{className:'grid stats'},
-          h('div',{className:'card stat'},h('span',null,'Room Charge Today'),h('strong',null,`₹${selectedRoomChargeToday.toLocaleString('en-IN')}`)),
-          h('div',{className:'card stat'},h('span',null,'Nursing Charge Today'),h('strong',null,`₹${selectedNursingChargeToday.toLocaleString('en-IN')}`))
+          h('div',{className:'card stat',style:cardStyle('charge')},h('span',null,'Total Charges'),h('strong',{style:{color:cardStyle('charge').color}},`₹${totals.Charge.toLocaleString('en-IN')}`)),
+          h('div',{className:'card stat',style:cardStyle('payment')},h('span',null,'Payments / Advance'),h('strong',{style:{color:cardStyle('payment').color}},`₹${payments.toLocaleString('en-IN')}`)),
+          h('div',{className:'card stat',style:cardStyle('discount')},h('span',null,'Discounts'),h('strong',{style:{color:cardStyle('discount').color}},`₹${totals.Discount.toLocaleString('en-IN')}`)),
+          h('div',{className:'card stat',style:cardStyle('pending',outstanding)},h('span',null,'Pending Bills'),h('strong',{style:{color:cardStyle('pending',outstanding).color}},`₹${outstanding.toLocaleString('en-IN')}`)),
+          h('div',{className:'card stat',style:cardStyle('advance')},h('span',null,'Advance Balance'),h('strong',{style:{color:cardStyle('advance').color}},`₹${advance.toLocaleString('en-IN')}`)),
+          h('div',{className:'card stat',style:cardStyle('query')},h('span',null,'Open Queries'),h('strong',{style:{color:cardStyle('query').color}},openDisputes.length))
         ),
-        h('p',{className:'small-note'},'Only this patient’s system-generated accommodation charges are shown. No other patient’s billing data is included.')
-      ),
-      h('div',{className:'grid two',style:{marginTop:'16px'}},
-        h(Section,{title:'Outstanding Ageing Analysis',subtitle:'Pending charges grouped by age'},
+
+        h('div',{className:'grid stats',style:{marginTop:'14px'}},
+          h('div',{className:'card stat',style:cardStyle('payment')},h('span',null,"Today's Collection"),h('strong',{style:{color:cardStyle('payment').color}},`₹${todayCollection.toLocaleString('en-IN')}`)),
+          h('div',{className:'card stat',style:cardStyle('charge')},h('span',null,'Outstanding > 7 Days'),h('strong',{style:{color:cardStyle('charge').color}},`₹${overdue7Amount.toLocaleString('en-IN')}`),h('small',null,`${overdue7.length} pending item(s)`)),
+          h('div',{className:'card stat',style:cardStyle('neutral')},h('span',null,'Room Rent Generated Today'),h('strong',null,`₹${selectedRoomChargeToday.toLocaleString('en-IN')}`)),
+          h('div',{className:'card stat',style:cardStyle('neutral')},h('span',null,'Nursing Charges Today'),h('strong',null,`₹${selectedNursingChargeToday.toLocaleString('en-IN')}`))
+        ),
+
+        canManage&&h(Section,{title:'Manual Billing & Payment Entry',subtitle:`Transaction entry for ${selectedPatientName}`},
+          message&&h('div',{className:'message error'},message),
+          h('form',{className:'modal-grid',onSubmit:save},
+            h('div',{className:'field'},h('label',null,'Patient'),h('input',{value:selectedPatientName,readOnly:true})),
+            miniSelect('Transaction',form.transaction_type,['Charge','Payment','Advance','Discount','Refund'],v=>setForm({...form,transaction_type:v})),
+            miniSelect('Category',form.category,['Admission Fee','Room Charges','Nursing Charges','Food Charges','Medicine Charges','Physiotherapy','Consumables','Doctor Visit','Equipment','Advance','Other'],v=>setForm({...form,category:v})),
+            miniInput('Amount',form.amount,v=>setForm({...form,amount:v}),true,'number'),
+            miniSelect('Payment mode',form.payment_mode,['Cash','UPI','Bank transfer','Card','Cheque','Not applicable'],v=>setForm({...form,payment_mode:v})),
+            miniInput('Description / reference',form.description,v=>setForm({...form,description:v})),
+            h('button',{className:'btn btn-primary'},'Save Transaction')
+          )
+        ),
+
+        h(Section,{title:'Automatic Accommodation Charges',subtitle:`System-generated charges for ${selectedPatientName}`},
           h('div',{className:'grid stats'},
-            Object.entries(ageing).map(([label,value])=>h('div',{className:'card stat',key:label,style:cardStyle(value>0?'charge':'payment')},
-              h('span',null,label),
-              h('strong',{style:{color:cardStyle(value>0?'charge':'payment').color}},`₹${value.toLocaleString('en-IN')}`)
-            ))
+            h('div',{className:'card stat'},h('span',null,'Room Charge Today'),h('strong',null,`₹${selectedRoomChargeToday.toLocaleString('en-IN')}`)),
+            h('div',{className:'card stat'},h('span',null,'Nursing Charge Today'),h('strong',null,`₹${selectedNursingChargeToday.toLocaleString('en-IN')}`))
+          ),
+          h('p',{className:'small-note'},'Only this patient’s automatic room and nursing charges are displayed.')
+        ),
+
+        h('div',{className:'grid two',style:{marginTop:'16px'}},
+          h(Section,{title:'Outstanding Ageing Analysis',subtitle:`Pending charges for ${selectedPatientName}`},
+            h('div',{className:'grid stats'},
+              Object.entries(ageing).map(([label,value])=>h('div',{className:'card stat',key:label,style:cardStyle(value>0?'charge':'payment')},
+                h('span',null,label),
+                h('strong',{style:{color:cardStyle(value>0?'charge':'payment').color}},`₹${value.toLocaleString('en-IN')}`)
+              ))
+            )
+          ),
+          h(Section,{title:'Monthly Collections',subtitle:`Payments and advances received from ${selectedPatientName}`},
+            h('div',{style:{display:'flex',alignItems:'flex-end',gap:'12px',height:'190px',padding:'12px 6px 4px'}},
+              monthlyRevenue.map(item=>h('div',{key:item.label,style:{flex:'1',textAlign:'center'}},
+                h('div',{title:`₹${item.value.toLocaleString('en-IN')}`,style:{height:`${Math.max(6,(item.value/monthlyMax)*135)}px`,background:'#118553',borderRadius:'9px 9px 3px 3px',minWidth:'24px',margin:'0 auto 8px'}}),
+                h('strong',{style:{display:'block',fontSize:'12px'}},item.label),
+                h('small',null,item.value?`₹${Math.round(item.value/1000)}k`:'₹0')
+              ))
+            )
           )
         ),
-        h(Section,{title:'Monthly Collections',subtitle:'Payments and advances received during the last six months'},
-          h('div',{style:{display:'flex',alignItems:'flex-end',gap:'12px',height:'190px',padding:'12px 6px 4px'}},
-            monthlyRevenue.map(item=>h('div',{key:item.label,style:{flex:'1',textAlign:'center'}},
-              h('div',{title:`₹${item.value.toLocaleString('en-IN')}`,style:{height:`${Math.max(6,(item.value/monthlyMax)*135)}px`,background:'#118553',borderRadius:'9px 9px 3px 3px',minWidth:'24px',margin:'0 auto 8px'}}),
-              h('strong',{style:{display:'block',fontSize:'12px'}},item.label),
-              h('small',null,item.value?`₹${Math.round(item.value/1000)}k`:'₹0')
-            ))
-          )
-        )
+
+        h(LogTable,{
+          title:'Top Pending Bills',
+          subtitle:`Pending charge items for ${selectedPatientName}`,
+          heads:['Category','Original Charge','Pending','Age','Date'],
+          rows:unpaidCharges.slice().sort((a,b)=>b.pending_amount-a.pending_amount||b.age_days-a.age_days).slice(0,10).map(r=>[
+            r.category||'—',
+            `₹${Number(r.amount||0).toLocaleString('en-IN')}`,
+            `₹${Number(r.pending_amount||0).toLocaleString('en-IN')}`,
+            `${r.age_days} day(s)`,
+            fmt(r.transaction_date)
+          ])
+        }),
+
+        h(LogTable,{
+          title:viewMode,
+          subtitle:`Financial records for ${selectedPatientName}`,
+          heads:['Type','Category','Amount','Mode','Description','Source','Date','Action'],
+          rows:displayedRows.map(r=>[
+            r.transaction_type,
+            r.category,
+            `₹${Number(r.amount||0).toLocaleString('en-IN')}`,
+            r.payment_mode||'—',
+            r.description||'—',
+            r.auto_generated?'System generated':'Manual',
+            fmt(r.transaction_date),
+            canRaiseQuery&&r.transaction_type==='Charge'?h('button',{className:'btn btn-secondary',onClick:()=>{setQueryTarget(r);setQueryText('')}},'Raise Query'):h('span',{className:'small-note'},'View')
+          ])
+        }),
+
+        h(LogTable,{
+          title:`Billing Discrepancy Queries (${patientDisputes.length})`,
+          subtitle:`Queries for ${selectedPatientName}`,
+          heads:['Transaction','Type','Query','Status','Decision','Raised','Action'],
+          rows:patientDisputes.map(d=>[
+            d.billing_transaction_id||'—',
+            d.discrepancy_type,
+            d.description,
+            h('span',{className:`badge ${d.status==='Open'?'off':''}`},d.status),
+            d.decision||'—',
+            fmt(d.created_at),
+            canManage&&d.status==='Open'?h('div',{className:'employee-actions'},
+              h('button',{className:'btn btn-primary',onClick:()=>closeQuery(d,'Corrected')},'Correct & Close'),
+              h('button',{className:'btn btn-secondary',onClick:()=>closeQuery(d,'Closed')},'Close / Reject')
+            ):h('span',{className:'small-note'},'View only')
+          ])
+        })
       ),
-      h(LogTable,{
-        title:'Top Pending Bills',
-        subtitle:'Oldest and highest pending charge items requiring follow-up',
-        heads:['Patient','Category','Original Charge','Pending','Age','Date'],
-        rows:unpaidCharges.slice().sort((a,b)=>b.pending_amount-a.pending_amount||b.age_days-a.age_days).slice(0,10).map(r=>[
-          r.patients?.full_name||'—',
-          r.category||'—',
-          `₹${Number(r.amount||0).toLocaleString('en-IN')}`,
-          `₹${Number(r.pending_amount||0).toLocaleString('en-IN')}`,
-          `${r.age_days} day(s)`,
-          fmt(r.transaction_date)
-        ])
-      }),
-      h(LogTable,{
-        title:viewMode,
-        subtitle:selectedPatient?'Selected patient ledger':'All patient transactions',
-        heads:['Patient','Type','Category','Amount','Mode','Description','Source','Date','Action'],
-        rows:displayedRows.map(r=>[
-          r.patients?.full_name||'—',
-          r.transaction_type,
-          r.category,
-          `₹${Number(r.amount||0).toLocaleString('en-IN')}`,
-          r.payment_mode||'—',
-          r.description||'—',
-          r.auto_generated?'System generated':'Manual',
-          fmt(r.transaction_date),
-          canRaiseQuery&&r.transaction_type==='Charge'?h('button',{className:'btn btn-secondary',onClick:()=>{setQueryTarget(r);setQueryText('')}},'Raise Query'):h('span',{className:'small-note'},'View')
-        ])
-      }),
-      h(LogTable,{
-        title:`Billing Discrepancy Queries (${patientDisputes.length})`,
-        subtitle:'Nurse/Caregiver may raise; Accounts/Admin/Manager makes the final decision and closes',
-        heads:['Patient','Transaction','Type','Query','Status','Decision','Raised','Action'],
-        rows:patientDisputes.map(d=>[
-          patientForName(patients,d.patient_id),
-          d.billing_transaction_id||'—',
-          d.discrepancy_type,
-          d.description,
-          h('span',{className:`badge ${d.status==='Open'?'off':''}`},d.status),
-          d.decision||'—',
-          fmt(d.created_at),
-          canManage&&d.status==='Open'?h('div',{className:'employee-actions'},
-            h('button',{className:'btn btn-primary',onClick:()=>closeQuery(d,'Corrected')},'Correct & Close'),
-            h('button',{className:'btn btn-secondary',onClick:()=>closeQuery(d,'Closed')},'Close / Reject')
-          ):h('span',{className:'small-note'},'View only')
-        ])
-      }),
+
       queryTarget&&h('div',{className:'modal-backdrop',onClick:e=>{if(e.target===e.currentTarget)setQueryTarget(null)}},
         h('form',{className:'card modal',onSubmit:submitQuery},
           h('div',{className:'panel-head'},h('div',null,h('h3',null,'Raise Billing Discrepancy'),h('small',null,`${queryTarget.category} · ₹${Number(queryTarget.amount||0).toLocaleString('en-IN')}`)),h('button',{type:'button',className:'close',onClick:()=>setQueryTarget(null)},'×')),
@@ -3593,17 +3606,13 @@ function BillingPayments({profile}){
           h('div',{className:'actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setQueryTarget(null)},'Cancel'),h('button',{className:'btn btn-primary',disabled:busy},busy?'Submitting…':'Raise Query'))
         )
       ),
+
       toast&&h('div',{className:`samara-toast ${toast.type}`,role:'status','aria-live':'polite'},
         h('span',{className:'samara-toast-icon'},toast.type==='success'?'✓':'!'),
         h('div',null,h('strong',null,toast.type==='success'?'Billing updated':'Billing failed'),h('span',null,toast.text)),
         h('button',{type:'button',onClick:()=>setToast(null)},'×')
       )
     );
-  }
-
-  function patientForName(patients,id){
-    const patient=patients.find(p=>p.id===id);
-    return patient?formalName(patient):'Patient';
   }
   function RecoveryTimeline({profile}){
     const [patients]=usePatients(),[rows,setRows]=React.useState([]),[patient,setPatient]=React.useState(''),[event,setEvent]=React.useState('Walking with support'),[note,setNote]=React.useState('');async function load(){const {data}=await client.from('recovery_events').select('*,patients(full_name)').order('event_at',{ascending:false}).limit(100);setRows(data||[])}React.useEffect(()=>{load()},[]);async function save(e){e.preventDefault();const {error}=await client.from('recovery_events').insert({patient_id:patient,event_type:event,note,recorded_by:profile.id});if(error)return alert(error.message);setNote('');load()}
