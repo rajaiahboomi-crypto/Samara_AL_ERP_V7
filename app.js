@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.25';
+  const APP_VERSION = '1.3.27';
   const APP_BUILD_DATE = '04-Aug-2026 13:05 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
@@ -3159,6 +3159,16 @@ function ShiftHandover({profile}){
       if(row.status==='Partially Approved')return 'Partially Approved';
       return 'Pending';
     };
+    const decisionByLabel=row=>{
+      if(actionLabel(row)==='Pending')return '—';
+      const name=row.decision_by_name||'Authorised user';
+      const role=row.decision_by_role?` · ${row.decision_by_role}`:'';
+      return `${name}${role}`;
+    };
+    const decisionTimeLabel=row=>{
+      if(actionLabel(row)==='Pending')return '—';
+      return row.decision_date||row.approved_at?fmt(row.decision_date||row.approved_at):'—';
+    };
     const actionBadge=row=>{
       const label=actionLabel(row);
       const style=label==='Approved'
@@ -3301,6 +3311,8 @@ function ShiftHandover({profile}){
       currency(row.final_amount),
       row.urgency||'Routine',
       h('span',{className:`badge ${['Approved','Posted','Partially Approved'].includes(row.status)?'':'off'}`},row.status||'Raised'),
+      decisionByLabel(row),
+      decisionTimeLabel(row),
       h('div',{className:'employee-actions'},
         actionBadge(row),
         canFinalise&&actionLabel(row)==='Pending'&&h('button',{className:'btn btn-secondary',onClick:()=>openEdit(row)},'Review / Enter Fee'),
@@ -3321,8 +3333,8 @@ function ShiftHandover({profile}){
       ),
       h(LogTable,{
         title:`Bill & Charge Requests (${tableRows.length})`,
-        subtitle:'Action shows Pending, Approved, Partially Approved or Rejected. Approved amounts are transferred to Billing & Payments.',
-        heads:['Patient','Date','Category','Description','Provider','Bill Available','Requested / Estimate','Final Charge','Urgency','Request Status','Action / Decision'],
+        subtitle:'Action shows Pending, Approved, Partially Approved or Rejected, together with the decision-maker and exact timestamp.',
+        heads:['Patient','Date','Category','Description','Provider','Bill Available','Requested / Estimate','Final Charge','Urgency','Request Status','Decision By','Decision Date & Time','Action / Decision'],
         rows:tableRows
       }),
       !loading&&!message&&!tableRows.length&&h('div',{className:'card panel'},h('p',{className:'small-note'},'No bill or charge request has been raised.')),

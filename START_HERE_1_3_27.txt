@@ -1,0 +1,17 @@
+SAMARA CARE ERP 1.3.27 — DECISION-BY SQL PROFILE NAME FIX
+
+The previous SQL failed because the profiles table does not contain a column named username.
+
+1. Run this corrected SQL in Supabase:
+   46_bill_charge_decision_by_timestamp_FIXED.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Important:
+- You do not need to undo the failed SQL.
+- The earlier ALTER TABLE statements that succeeded are safe.
+- The corrected script uses profiles.full_name only.
+- Decision By, Role and Decision Date & Time remain unchanged.
