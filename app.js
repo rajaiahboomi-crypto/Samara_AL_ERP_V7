@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.3';
-  const APP_BUILD_DATE = '04-Aug-2026 11:45 IST';
+  const APP_VERSION = '1.3.4';
+  const APP_BUILD_DATE = '04-Aug-2026 12:10 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -20,6 +20,20 @@
   const client = sdk.createClient(cfg.supabaseUrl, cfg.supabasePublishableKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
+
+  async function writeAuditEvent(action,entity='System',entityId=null,details=null,result='Success'){
+    try{
+      const {data:{user}}=await client.auth.getUser();
+      if(!user)return;
+      await client.rpc('record_audit_event',{
+        p_action:action,
+        p_entity:entity,
+        p_entity_id:entityId?String(entityId):null,
+        p_details:details||{},
+        p_result:result
+      });
+    }catch(error){console.warn('Audit event could not be recorded:',error)}
+  }
 
   const ROLES = ['Admin','Manager','Nurse','Caregiver','Accounts','Kitchen'];
   const EMPLOYEE_TITLES = ['Dr.','Prof.','Mr.','Mrs.','Ms.','Miss','Shri','Smt.','Rev.','Fr.','Br.','Sr.','Other'];
@@ -421,6 +435,7 @@ Caring with Compassion. Living with Dignity.`;
         setMessage(error.message==='Invalid login credentials'?'Incorrect Login ID or password.':error.message);
       }else{
         try{await securityRequest({action:'login_success',login_id:normalized})}catch(_error){}
+        await writeAuditEvent('User Login','Authentication',normalized,{login_id:normalized},'Success');
       }
       setBusy(false);
     }
@@ -523,7 +538,7 @@ Caring with Compassion. Living with Dignity.`;
           },displayNavLabel(item,profile.role))))
         );
       })),
-      h('div',{className:'sidebar-footer'},h('div',{className:'user-chip'},h('strong',null,formalName(profile)),h('small',null,`${profile.login_id} · ${profile.role}`)),h('button',{className:'btn btn-secondary full',onClick:()=>client.auth.signOut()},'Sign out'))
+      h('div',{className:'sidebar-footer'},h('div',{className:'user-chip'},h('strong',null,formalName(profile)),h('small',null,`${profile.login_id} · ${profile.role}`)),h('button',{className:'btn btn-secondary full',onClick:async()=>{await writeAuditEvent('User Logout','Authentication',profile.id,{login_id:profile.login_id},'Success');await client.auth.signOut()}},'Sign out'))
     );
   }
 
@@ -571,6 +586,7 @@ Caring with Compassion. Living with Dignity.`;
     async function signOut(){
       if(!window.confirm('Are you sure you want to sign out?'))return;
       onClose();
+      await writeAuditEvent('User Logout','Authentication',profile.id,{login_id:profile.login_id},'Success');
       await client.auth.signOut();
     }
     return h('div',{className:'mobile-drawer-layer',role:'presentation',onClick:e=>{if(e.target===e.currentTarget)onClose()}},
@@ -2708,7 +2724,97 @@ function Reports(){const [data,setData]=React.useState({patients:[],billing:[],i
 
   function Notifications({profile}){const [rows,setRows]=React.useState([]),[title,setTitle]=React.useState(''),[message,setMessage]=React.useState('');async function load(){const {data}=await client.from('notifications').select('*').order('created_at',{ascending:false}).limit(100);setRows(data||[])}React.useEffect(()=>{load()},[]);async function save(e){e.preventDefault();const {error}=await client.from('notifications').insert({title,message,priority:'Normal',created_by:profile.id});if(error)return alert(error.message);setTitle('');setMessage('');load()}return h(React.Fragment,null,['Admin','Manager'].includes(profile.role)&&h(Section,{title:'Create Notification'},h('form',{className:'modal-grid',onSubmit:save},miniInput('Title',title,setTitle,true),miniInput('Message',message,setMessage,true),h('button',{className:'btn btn-primary'},'Publish'))),h(LogTable,{title:'Notifications',heads:['Title','Message','Priority','Date'],rows:rows.map(r=>[r.title,r.message,r.priority,fmt(r.created_at)])}))}
 
-  function AuditTrail(){const [rows,setRows]=React.useState([]);React.useEffect(()=>{client.from('audit_log').select('*').order('created_at',{ascending:false}).limit(200).then(({data})=>setRows(data||[]))},[]);return h(LogTable,{title:'Audit Trail',subtitle:'Recent system activity',heads:['Action','Entity','Record','User','Date'],rows:rows.map(r=>[r.action,r.entity,r.entity_id||'—',r.user_id||'—',fmt(r.created_at)])})}
+  function AuditTrail(){
+    const [rows,setRows]=React.useState([]);
+    const [profiles,setProfiles]=React.useState([]);
+    const [loading,setLoading]=React.useState(true);
+    const [message,setMessage]=React.useState('');
+    const [fromDate,setFromDate]=React.useState('');
+    const [toDate,setToDate]=React.useState('');
+    const [entityFilter,setEntityFilter]=React.useState('All');
+    const [resultFilter,setResultFilter]=React.useState('All');
+    const [userFilter,setUserFilter]=React.useState('All');
+    const [search,setSearch]=React.useState('');
+
+    async function load(){
+      setLoading(true);setMessage('');
+      const [logs,users]=await Promise.all([
+        client.from('audit_log').select('*').order('created_at',{ascending:false}).limit(2000),
+        client.from('profiles').select('id,auth_user_id,title,full_name,login_id,role')
+      ]);
+      if(logs.error)setMessage(logs.error.message||'Unable to load audit trail.');
+      setRows(logs.data||[]);setProfiles(users.data||[]);setLoading(false);
+    }
+    React.useEffect(()=>{load();const ch=client.channel('audit-trail-live').on('postgres_changes',{event:'INSERT',schema:'public',table:'audit_log'},load).subscribe();return()=>client.removeChannel(ch)},[]);
+
+    const profileFor=id=>profiles.find(p=>p.id===id||p.auth_user_id===id)||null;
+    const userName=row=>{const p=profileFor(row.user_id);return p?`${formalName(p)} · ${p.role}`:(row.user_name||row.user_id||'System');};
+    const dateOnly=value=>String(value||'').slice(0,10);
+    const entities=[...new Set(rows.map(r=>r.entity).filter(Boolean))].sort();
+    const users=[...new Set(rows.map(r=>r.user_id).filter(Boolean))];
+    const filtered=rows.filter(r=>{
+      const date=dateOnly(r.created_at);
+      const text=[r.action,r.entity,r.entity_id,r.result,r.user_name,JSON.stringify(r.details||{}),JSON.stringify(r.new_data||{})].join(' ').toLowerCase();
+      return (!fromDate||date>=fromDate)&&(!toDate||date<=toDate)&&
+        (entityFilter==='All'||r.entity===entityFilter)&&
+        (resultFilter==='All'||String(r.result||'Success')===resultFilter)&&
+        (userFilter==='All'||String(r.user_id||'')===userFilter)&&
+        (!search.trim()||text.includes(search.trim().toLowerCase()));
+    });
+
+    function detailSummary(row){
+      const d=row.details||{};
+      if(d.summary)return d.summary;
+      if(d.login_id)return `Login ID: ${d.login_id}`;
+      const changed=row.old_data&&row.new_data?Object.keys(row.new_data).filter(k=>JSON.stringify(row.old_data?.[k])!==JSON.stringify(row.new_data?.[k])).filter(k=>!['updated_at'].includes(k)).slice(0,8):[];
+      if(changed.length)return `Changed: ${changed.join(', ')}`;
+      return row.entity_id?`Record: ${row.entity_id}`:'—';
+    }
+
+    function exportCsv(){
+      const headers=['Date & Time','User','Role','Action','Module / Entity','Record','Result','Details'];
+      const lines=[headers,...filtered.map(r=>{
+        const p=profileFor(r.user_id);
+        return [fmt(r.created_at),p?formalName(p):(r.user_name||r.user_id||'System'),p?.role||r.user_role||'—',r.action||'—',r.entity||'—',r.entity_id||'—',r.result||'Success',detailSummary(r)];
+      })].map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob=new Blob([lines],{type:'text/csv;charset=utf-8'});
+      const url=URL.createObjectURL(blob),a=document.createElement('a');
+      a.href=url;a.download=`Samara_Audit_Trail_${todayISOIndia()}.csv`;a.click();URL.revokeObjectURL(url);
+    }
+
+    return h(React.Fragment,null,
+      h(Section,{title:'Audit Trail',subtitle:'Admin-only record of system activity, clinical entries and data changes'},
+        message&&h('div',{className:'message error'},message),
+        h('div',{className:'modal-grid'},
+          h('div',{className:'field'},h('label',null,'From date'),h('input',{type:'date',value:fromDate,max:todayISOIndia(),onChange:e=>setFromDate(e.target.value)})),
+          h('div',{className:'field'},h('label',null,'To date'),h('input',{type:'date',value:toDate,max:todayISOIndia(),onChange:e=>setToDate(e.target.value)})),
+          h('div',{className:'field'},h('label',null,'Module'),h('select',{value:entityFilter,onChange:e=>setEntityFilter(e.target.value)},h('option',{value:'All'},'All modules'),entities.map(x=>h('option',{key:x,value:x},x)))),
+          h('div',{className:'field'},h('label',null,'User'),h('select',{value:userFilter,onChange:e=>setUserFilter(e.target.value)},h('option',{value:'All'},'All users'),users.map(id=>h('option',{key:id,value:id},userName({user_id:id}))))),
+          h('div',{className:'field'},h('label',null,'Result'),h('select',{value:resultFilter,onChange:e=>setResultFilter(e.target.value)},['All','Success','Failed'].map(x=>h('option',{key:x,value:x},x)))),
+          h('div',{className:'field'},h('label',null,'Search'),h('input',{value:search,onChange:e=>setSearch(e.target.value),placeholder:'Action, record or details'})),
+          h('button',{type:'button',className:'btn btn-secondary',onClick:load},loading?'Loading…':'Refresh'),
+          h('button',{type:'button',className:'btn btn-secondary',onClick:exportCsv,disabled:!filtered.length},'Export Excel / CSV')
+        )
+      ),
+      h(Section,{title:`Audit Records (${filtered.length})`,subtitle:'Latest records appear first'},
+        h('div',{className:'table-wrap'},h('table',{className:'table'},
+          h('thead',null,h('tr',null,['Date & Time','User','Action','Module','Record','Result','Details'].map(x=>h('th',{key:x},x)))),
+          h('tbody',null,
+            filtered.map(r=>h('tr',{key:r.id},
+              h('td',null,fmt(r.created_at)),
+              h('td',null,userName(r)),
+              h('td',null,r.action||'—'),
+              h('td',null,r.entity||'—'),
+              h('td',null,r.entity_id||'—'),
+              h('td',null,h('span',{className:`badge ${String(r.result||'Success')==='Failed'?'off':''}`},r.result||'Success')),
+              h('td',null,detailSummary(r))
+            )),
+            !filtered.length?h('tr',null,h('td',{colSpan:7,className:'empty'},loading?'Loading audit records…':'No audit records match the selected filters.')):null
+          )
+        ))
+      )
+    );
+  }
 
   function LogTable({title,subtitle,heads,rows}){
     return h(Section,{title,subtitle},
