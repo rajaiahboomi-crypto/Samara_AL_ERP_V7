@@ -1,0 +1,17 @@
+SAMARA CARE ERP 1.3.42 — RETURN TO SHIFT TASKS AFTER SAVE
+
+Upload:
+- app.js
+- index.html
+- service-worker.js
+- styles-1.3.42.css
+
+No Supabase SQL is required.
+
+When Daily Care, Medication Administration or Physiotherapy is opened from Shift Tasks:
+- The regular clinical form opens with the relevant task preselected.
+- After a successful save, confirmation appears briefly.
+- The ERP automatically returns to Shift Tasks.
+- The worklist refreshes and the completed item no longer remains pending.
+
+When these modules are opened directly from the left menu, the page remains open after saving.

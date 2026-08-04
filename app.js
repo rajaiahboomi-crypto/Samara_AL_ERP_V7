@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.41';
-  const APP_BUILD_DATE = '04-Aug-2026 17:30 IST';
+  const APP_VERSION = '1.3.42';
+  const APP_BUILD_DATE = '04-Aug-2026 17:45 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -557,11 +557,11 @@ Caring with Compassion. Living with Dignity.`;
           page==='Patients'&&h(Patients,{profile}),
           page==='Discharge'&&h(DischargeManagement,{profile}),
           page==='Rooms'&&h(RoomsBeds,{profile}),
-          page==='Daily Care'&&h(DailyCare,{profile}),
+          page==='Daily Care'&&h(DailyCare,{profile,onNavigate:setPage}),
           page==='Vital Signs'&&h(VitalSigns,{profile}),
-          page==='Medicines'&&h(Medicines,{profile}),
+          page==='Medicines'&&h(Medicines,{profile,onNavigate:setPage}),
           page==='Food & Diet'&&h(FoodDiet,{profile}),
-          page==='Physiotherapy'&&h(Physiotherapy,{profile}),
+          page==='Physiotherapy'&&h(Physiotherapy,{profile,onNavigate:setPage}),
           page==='Special Nurse'&&h(SpecialNurseManagement,{profile}),
           page==='Shift Handover'&&h(ShiftHandover,{profile}),
           page==='Incidents'&&h(Incidents,{profile}),
@@ -1540,7 +1540,7 @@ Caring with Compassion. Living with Dignity.`;
     const [loading,setLoading]=React.useState(true);
     const [expanded,setExpanded]=React.useState({});
     function openRegularTask(page,context){
-      saveTaskNavigationContext({page,...context});
+      saveTaskNavigationContext({page,return_page:'Shift Tasks',...context});
       onNavigate?.(page);
     }
     const patientFields='id,patient_id,full_name,room_no,bed_no,special_nurse_required,special_nurse_name,special_nurse_shift,fall_risk,pressure_sore_risk,aspiration_risk,wandering_risk,infection_risk,seizure_history,oxygen_required,dressing_required';
@@ -2325,6 +2325,7 @@ Caring with Compassion. Living with Dignity.`;
     const [editing,setEditing]=React.useState(null);
     const [busy,setBusy]=React.useState(false);
     const [toast,setToast]=React.useState(null);
+    const [returnPage,setReturnPage]=React.useState('');
     const toastTimer=React.useRef(null);
     const initial={
       patient_id:'',
@@ -2834,7 +2835,7 @@ function RoomsBeds({profile}){
     );
   }
 
-  function DailyCare({profile}){
+  function DailyCare({profile,onNavigate}){
     const activeShift=currentShift();
     const [patients]=usePatients();
     const [rows,setRows]=React.useState([]);
@@ -2875,6 +2876,7 @@ function RoomsBeds({profile}){
         status:context.status||'Completed',
         remarks:current.remarks
       }));
+      setReturnPage(context.return_page||'');
       clearTaskNavigationContext();
     },[]);
 
@@ -2911,6 +2913,7 @@ function RoomsBeds({profile}){
       showToast('success',`${form.care_type} recorded successfully for the selected patient.`);
       setForm(current=>({...current,remarks:''}));
       await load();
+      if(returnPage&&onNavigate)setTimeout(()=>onNavigate(returnPage),650);
 
       // Audit logging must never block the clinical save.
       writeAuditEvent(
@@ -2931,6 +2934,7 @@ function RoomsBeds({profile}){
 
     return h(React.Fragment,null,
       h(Section,{title:'Daily Care Entry',subtitle:'Bath, restroom, hygiene, feeding, mobility and positioning'},
+        returnPage&&h('div',{className:'return-after-save-note'},'After saving, the system will return automatically to Shift Tasks.'),
         h('form',{className:'modal-grid',onSubmit:save},
           patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),
           miniSelect('Care activity',form.care_type,['Bathing assistance','Restroom assistance','Oral hygiene','Feeding assistance','Mobility assistance','Diaper change','Position change','Fluid monitoring','Sleep assistance'],v=>setForm({...form,care_type:v})),
@@ -2980,7 +2984,7 @@ function RoomsBeds({profile}){
     );
   }
 
-  function Medicines({profile}){
+  function Medicines({profile,onNavigate}){
     const today=new Date().toISOString().slice(0,10);
     const [state,setState]=React.useState({loading:true,orders:[],mar:[],patients:[],error:''});
     const [tab,setTab]=React.useState('Active Prescriptions');
@@ -2989,6 +2993,7 @@ function RoomsBeds({profile}){
     const [marForm,setMarForm]=React.useState({scheduled_time:'',status:'Given',administered_at:'',remarks:'',late_entry_reason:'',late_entry_justification:''});
     const [marBusy,setMarBusy]=React.useState(false);
     const [marMessage,setMarMessage]=React.useState('');
+    const [returnPage,setReturnPage]=React.useState('');
     const taskNavigationHandled=React.useRef(false);
 
     function localDateTimeValue(date=new Date()){
@@ -3078,6 +3083,7 @@ function RoomsBeds({profile}){
       const {error}=await client.from('medication_administrations').insert(payload);
       if(error){setMarMessage(error.message||'Unable to save the Medication Administration Record.');setMarBusy(false);return;}
       setMarBusy(false);setMarTarget(null);setTab('Today’s MAR');await load();
+      if(returnPage&&onNavigate)setTimeout(()=>onNavigate(returnPage),650);
     }
 
     async function load(){
@@ -3104,6 +3110,7 @@ function RoomsBeds({profile}){
       const context=readTaskNavigationContext('Medicines');
       if(!context)return;
       taskNavigationHandled.current=true;
+      setReturnPage(context.return_page||'');
       setPatientFilter(context.patient_id||'');
       setTab('Active Prescriptions');
       const target=state.orders.find(order=>order.id===context.order_id)
@@ -3441,7 +3448,7 @@ function RoomsBeds({profile}){
     return h(React.Fragment,null,h(Section,{title:'Food & Diet',subtitle:'Meal service, intake and feeding assistance'},h('form',{className:'modal-grid',onSubmit:save},patientSelect(patients,form.patient_id,v=>setForm({...form,patient_id:v})),miniSelect('Meal',form.meal_type,['Breakfast','Lunch','Evening snack','Dinner','Tube feed','Other'],v=>setForm({...form,meal_type:v})),miniInput('Menu / feed',form.menu,v=>setForm({...form,menu:v}),true),miniSelect('Consumption',form.consumption_status,['Consumed fully','Consumed partially','Refused','Vomited','Tube feed completed'],v=>setForm({...form,consumption_status:v})),miniInput('Remarks',form.remarks,v=>setForm({...form,remarks:v})),h('button',{className:'btn btn-primary'},'Save meal record'))),h(LogTable,{title:'Recent Meal Records',heads:['Patient','Meal','Menu','Consumption','Time'],rows:rows.map(r=>[r.patients?.full_name,r.meal_type,r.menu,r.consumption_status,fmt(r.served_at)])}))
   }
 
-  function Physiotherapy({profile}){
+  function Physiotherapy({profile,onNavigate}){
     const canEnter=['Admin','Manager','Nurse','Caregiver'].includes(profile?.role);
     const [plans,setPlans]=React.useState([]);
     const [patients,setPatients]=React.useState([]);
@@ -3451,6 +3458,7 @@ function RoomsBeds({profile}){
     const [entryPlan,setEntryPlan]=React.useState(null);
     const [saving,setSaving]=React.useState(false);
     const [toast,setToast]=React.useState(null);
+    const [returnPage,setReturnPage]=React.useState('');
     const toastTimer=React.useRef(null);
     const [form,setForm]=React.useState({
       session_date:todayISOIndia(),
@@ -3515,6 +3523,7 @@ function RoomsBeds({profile}){
       const context=readTaskNavigationContext('Physiotherapy');
       if(!context)return;
       taskNavigationHandled.current=true;
+      setReturnPage(context.return_page||'');
       const target=plans.find(plan=>plan.id===context.plan_id)
         ||plans.find(plan=>plan.patient_id===context.patient_id);
       if(target){
@@ -3583,6 +3592,7 @@ function RoomsBeds({profile}){
       showToast('success',`Physiotherapy session marked as ${form.status}.`);
       setEntryPlan(null);
       await load();
+      if(returnPage&&onNavigate)setTimeout(()=>onNavigate(returnPage),650);
       writeAuditEvent('Physiotherapy Session Recorded','Physiotherapy',data?.id||entryPlan.id,{
         patient_id:entryPlan.patient_id,
         therapy:entryPlan.therapy_type,
