@@ -1,0 +1,34 @@
+SAMARA CARE ERP 1.3.25 — BILL & CHARGE ACTION / DECISION STATUS
+
+1. Run once in Supabase SQL Editor:
+   45_bill_charge_action_decision_status.sql
+
+2. Upload and replace only:
+   app.js
+   index.html
+   service-worker.js
+
+Action / Decision now clearly shows:
+- Pending
+- Approved
+- Partially Approved
+- Rejected
+
+For Nurse:
+- The final action is visible in the Action / Decision column.
+- Pending requests can still be edited.
+- Approved, partially approved and rejected requests are view-only.
+
+For Admin / Manager / Accounts:
+- Approve — posts the full approved amount.
+- Partially Approve — asks for the approved amount and mandatory remarks.
+- Reject — asks for the rejection reason.
+- Each final decision is protected against duplicate posting.
+
+Colour coding:
+- Approved: Green
+- Partially Approved: Amber
+- Rejected: Red
+- Pending: Grey
+
+The approved or partially approved amount is automatically posted to Billing & Payments.

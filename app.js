@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.24';
-  const APP_BUILD_DATE = '04-Aug-2026 12:50 IST';
+  const APP_VERSION = '1.3.25';
+  const APP_BUILD_DATE = '04-Aug-2026 13:05 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -3152,6 +3152,24 @@ function ShiftHandover({profile}){
       return p.id?`${formalName(p)} · ${p.patient_id||'—'}${p.room_no?` · Room ${p.room_no}${p.bed_no?`-${p.bed_no}`:''}`:''}`:'Patient not linked';
     };
     const currency=value=>value!==null&&value!==undefined&&value!==''?`₹${Number(value||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`:'—';
+    const actionLabel=row=>{
+      if(row.approval_status)return row.approval_status;
+      if(row.status==='Rejected')return 'Rejected';
+      if(row.status==='Posted'||row.status==='Approved')return 'Approved';
+      if(row.status==='Partially Approved')return 'Partially Approved';
+      return 'Pending';
+    };
+    const actionBadge=row=>{
+      const label=actionLabel(row);
+      const style=label==='Approved'
+        ?{background:'#e8f7ee',color:'#087a3d'}
+        :label==='Partially Approved'
+          ?{background:'#fff4dd',color:'#9a6700'}
+          :label==='Rejected'
+            ?{background:'#fdecec',color:'#b42318'}
+            :{background:'#eef2f6',color:'#475467'};
+      return h('span',{className:'badge',style},label);
+    };
 
     function openNew(){
       setEditing(null);
@@ -3196,6 +3214,7 @@ function ShiftHandover({profile}){
         requested_for_date:form.requested_for_date,
         remarks:form.remarks||null,
         status:editing?.status||'Raised',
+        approval_status:editing?.approval_status||'Pending',
         raised_by:editing?.raised_by||user?.id||profile?.id,
         updated_at:new Date().toISOString()
       };
@@ -3211,27 +3230,64 @@ function ShiftHandover({profile}){
       },'Success');
     }
 
-    async function finalise(row){
+    async function approveFull(row){
       if(!canFinalise)return;
-      const amount=Number(row.final_amount||row.requested_amount||row.estimated_amount||0);
-      if(!amount){showToast('error','Enter the final fee/charge before approval.');openEdit(row);return}
-      if(!confirm(`Approve ${currency(amount)} for ${patientLabel(row.patient_id)} and post it to the Patient Ledger?`))return;
+      const amount=Number(row.requested_amount||row.estimated_amount||row.final_amount||0);
+      if(!amount){showToast('error','Enter the requested or final fee before approval.');openEdit(row);return}
+      if(!confirm(`Approve the full amount ${currency(amount)} for ${patientLabel(row.patient_id)} and post it to the Patient Ledger?`))return;
       setBusy(true);
-      const {data,error}=await client.rpc('approve_bill_charge_request',{p_request_id:row.id,p_final_amount:amount});
+      const {data,error}=await client.rpc('decide_bill_charge_request',{
+        p_request_id:row.id,
+        p_decision:'Approved',
+        p_approved_amount:amount,
+        p_remarks:'Approved in full'
+      });
       setBusy(false);
       if(error){showToast('error',error.message||'Unable to approve and post the charge.');return}
-      showToast('success','Charge approved and posted to the Patient Ledger.');
+      showToast('success','Charge approved in full and posted to the Patient Ledger.');
       await load();
-      writeAuditEvent('Bill/Charge Approved','Bills & Charges',row.id,{patient_id:row.patient_id,final_amount:amount,ledger_posted:true},'Success');
+      writeAuditEvent('Bill/Charge Approved','Bills & Charges',row.id,{patient_id:row.patient_id,approved_amount:amount,decision:'Approved'},'Success');
+    }
+
+    async function approvePartial(row){
+      if(!canFinalise)return;
+      const requested=Number(row.requested_amount||row.estimated_amount||0);
+      const value=prompt(`Requested amount: ${currency(requested)}\nEnter the partially approved amount:`,row.final_amount||'');
+      if(value===null)return;
+      const amount=Number(value);
+      if(!amount||amount<=0){showToast('error','Enter a valid partially approved amount.');return}
+      if(requested&&amount>=requested){showToast('error','Partial approval must be less than the requested amount. Use Approve Full for the full amount.');return}
+      const remarks=prompt('Enter the reason or remarks for partial approval:');
+      if(!remarks)return;
+      setBusy(true);
+      const {data,error}=await client.rpc('decide_bill_charge_request',{
+        p_request_id:row.id,
+        p_decision:'Partially Approved',
+        p_approved_amount:amount,
+        p_remarks:remarks
+      });
+      setBusy(false);
+      if(error){showToast('error',error.message||'Unable to partially approve the charge.');return}
+      showToast('success',`Charge partially approved for ${currency(amount)} and posted to the Patient Ledger.`);
+      await load();
+      writeAuditEvent('Bill/Charge Partially Approved','Bills & Charges',row.id,{patient_id:row.patient_id,requested_amount:requested,approved_amount:amount,remarks},'Success');
     }
 
     async function reject(row){
       if(!canFinalise)return;
-      const reason=prompt('Reason for rejecting/cancelling this charge request:');
+      const reason=prompt('Reason for rejecting this charge request:');
       if(!reason)return;
-      const {error}=await client.from('bill_charge_requests').update({status:'Rejected',approval_remarks:reason,updated_at:new Date().toISOString()}).eq('id',row.id);
-      if(error){showToast('error',error.message);return}
+      setBusy(true);
+      const {data,error}=await client.rpc('decide_bill_charge_request',{
+        p_request_id:row.id,
+        p_decision:'Rejected',
+        p_approved_amount:0,
+        p_remarks:reason
+      });
+      setBusy(false);
+      if(error){showToast('error',error.message||'Unable to reject the charge request.');return}
       showToast('success','Charge request rejected.');await load();
+      writeAuditEvent('Bill/Charge Rejected','Bills & Charges',row.id,{patient_id:row.patient_id,reason},'Success');
     }
 
     const tableRows=rows.map(row=>[
@@ -3244,11 +3300,14 @@ function ShiftHandover({profile}){
       currency(row.requested_amount||row.estimated_amount),
       currency(row.final_amount),
       row.urgency||'Routine',
-      h('span',{className:`badge ${['Approved','Posted'].includes(row.status)?'':'off'}`},row.status||'Raised'),
+      h('span',{className:`badge ${['Approved','Posted','Partially Approved'].includes(row.status)?'':'off'}`},row.status||'Raised'),
       h('div',{className:'employee-actions'},
-        (canFinalise||row.status==='Raised')&&row.status!=='Posted'&&row.status!=='Rejected'&&h('button',{className:'btn btn-secondary',onClick:()=>openEdit(row)},canFinalise?'Review / Enter Fee':'Edit'),
-        canFinalise&&!['Posted','Rejected'].includes(row.status)&&h('button',{className:'btn btn-primary',disabled:busy,onClick:()=>finalise(row)},'Approve & Post'),
-        canFinalise&&!['Posted','Rejected'].includes(row.status)&&h('button',{className:'btn btn-danger',onClick:()=>reject(row)},'Reject')
+        actionBadge(row),
+        canFinalise&&actionLabel(row)==='Pending'&&h('button',{className:'btn btn-secondary',onClick:()=>openEdit(row)},'Review / Enter Fee'),
+        !canFinalise&&actionLabel(row)==='Pending'&&row.status==='Raised'&&h('button',{className:'btn btn-secondary',onClick:()=>openEdit(row)},'Edit'),
+        canFinalise&&actionLabel(row)==='Pending'&&h('button',{className:'btn btn-primary',disabled:busy,onClick:()=>approveFull(row)},'Approve'),
+        canFinalise&&actionLabel(row)==='Pending'&&h('button',{className:'btn btn-secondary',disabled:busy,onClick:()=>approvePartial(row)},'Partially Approve'),
+        canFinalise&&actionLabel(row)==='Pending'&&h('button',{className:'btn btn-danger',disabled:busy,onClick:()=>reject(row)},'Reject')
       )
     ]);
 
@@ -3262,8 +3321,8 @@ function ShiftHandover({profile}){
       ),
       h(LogTable,{
         title:`Bill & Charge Requests (${tableRows.length})`,
-        subtitle:'Approved charges are automatically transferred to Billing & Payments',
-        heads:['Patient','Date','Category','Description','Provider','Bill Available','Requested / Estimate','Final Charge','Urgency','Status','Action'],
+        subtitle:'Action shows Pending, Approved, Partially Approved or Rejected. Approved amounts are transferred to Billing & Payments.',
+        heads:['Patient','Date','Category','Description','Provider','Bill Available','Requested / Estimate','Final Charge','Urgency','Request Status','Action / Decision'],
         rows:tableRows
       }),
       !loading&&!message&&!tableRows.length&&h('div',{className:'card panel'},h('p',{className:'small-note'},'No bill or charge request has been raised.')),
