@@ -1,0 +1,21 @@
+SAMARA CARE ERP 1.2.11 — WHATSAPP STARTUP ERROR FIX
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Fixed:
+- ReferenceError: reportStatusText is not defined
+- WhatsApp dialog now opens correctly from Intelligent Reports.
+- WhatsApp sharing remains restricted to Admin and Manager.
+- Nurse, Caregiver, Accounts and Kitchen remain blocked.
+- Existing report, PDF and Communication History functions are unchanged.
+
+After uploading:
+1. Close all ERP windows.
+2. Reopen the ERP.
+3. Tap “App update available” if shown.
+4. Generate a Patient Intelligent Report and test WhatsApp.

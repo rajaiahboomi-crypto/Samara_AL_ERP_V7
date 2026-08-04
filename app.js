@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.2.10';
-  const APP_BUILD_DATE = '04-Aug-2026 09:35 IST';
+  const APP_VERSION = '1.2.11';
+  const APP_BUILD_DATE = '04-Aug-2026 09:50 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -2374,6 +2374,74 @@ Caring with Compassion. Living with Dignity.`;
       return [opening,clinical,staffing,finance,close];
     }
 
+    const selectedPatient=()=>report?.mode==='Patient-wise'?(report.patient||patients.find(p=>p.id===patientId)):null;
+    const relativeName=p=>p?.attendant_name||p?.relative_name||p?.emergency_contact_name||p?.family_contact_name||'Authorised Relative';
+    const patientPhone=p=>p?.mobile||p?.patient_mobile||p?.phone||'';
+    const relativePhone=p=>p?.attendant_phone||p?.relative_phone||p?.emergency_contact_phone||p?.family_contact_phone||p?.reference_contact||'';
+    const reportStatusText=()=>{
+    const p=selectedPatient();
+    if(!p)return '';
+    const date=report?.date||reportDate;
+    const base=`${formalName(p)}'s care report dated ${date} has been prepared by Samara Care.`;
+    return base;
+    };
+    function buildWhatsAppMessage(p,recipientType){
+    const recipient=recipientType==='Patient'?(formalName(p)||'Resident'):relativeName(p);
+    const patientLabel=formalName(p)||'the resident';
+    const date=report?.date||reportDate;
+    if(shareLanguage==='Tamil'){
+      if(shareType==='Full Intelligent Report'){
+        return `வணக்கம் ${recipient},\n\n${patientLabel} அவர்களின் ${date} தேதியிட்ட முழுமையான Intelligent Patient Report தயாராக உள்ளது. இந்த அறிக்கை ரகசியமானது; அங்கீகரிக்கப்பட்ட பெறுநருக்காக மட்டுமே பகிரப்படுகிறது.\n\nWhatsApp-இல் இணைக்கப்பட்ட PDF அறிக்கையைப் பார்க்கவும். மருத்துவ அவசர நிலை இருந்தால், Samara Care குழுவை நேரடியாக தொடர்புகொள்ளவும்.\n\nSamara Health Care LLP`;
+      }
+      return `வணக்கம் ${recipient},\n\n${patientLabel} அவர்களின் ${date} தேதியிட்ட தினசரி பராமரிப்பு மற்றும் உடல்நிலை சுருக்கம் Samara Care-ல் தயாராக உள்ளது. தற்போதைய பதிவுகளின் அடிப்படையில் பராமரிப்பு தொடர்ந்து கண்காணிக்கப்படுகிறது.\n\nகூடுதல் விளக்கம் தேவைப்பட்டால் Samara Care குழுவை தொடர்புகொள்ளவும்.\n\nSamara Health Care LLP`;
+    }
+    if(shareType==='Full Intelligent Report'){
+      return `Dear ${recipient},\n\nPlease find the full Intelligent Patient Report for ${patientLabel}, dated ${date}.\n\nThis report is confidential and intended only for the authorised recipient. Please review the attached PDF. For any urgent clinical concern, contact the Samara Care team directly.\n\nRegards,\nSamara Health Care LLP`;
+    }
+    return `Dear ${recipient},\n\nThis is a quick care update for ${patientLabel}, dated ${date}. The latest care and clinical records have been reviewed in Samara Care ERP and the resident continues to be monitored according to the active care plan.\n\nPlease contact the Samara Care team for any clarification.\n\nRegards,\nSamara Health Care LLP`;
+    }
+    async function recordCommunication(p,recipientType,number,messageText){
+    const {data:{user}}=await client.auth.getUser();
+    const payload={
+      patient_id:p.id,
+      communication_type:shareType,
+      method:'WhatsApp',
+      recipient_type:recipientType,
+      recipient_name:recipientType==='Patient'?(formalName(p)||p.full_name):relativeName(p),
+      recipient_number:number,
+      report_date:report?.date||reportDate,
+      status:'WhatsApp Opened',
+      message_preview:messageText.slice(0,500),
+      sent_by:user?.id||profile?.auth_user_id||profile?.id
+    };
+    const {error}=await client.from('patient_communications').insert(payload);
+    if(error)console.warn('Communication history could not be saved:',error);
+    }
+    async function openWhatsAppShare(){
+    if(!['Admin','Manager'].includes(profile.role))return alert('WhatsApp report sharing is available only to Admin and Manager.');
+    const p=selectedPatient();
+    if(!p)return alert('Generate a patient report before sharing.');
+    const targets=shareRecipient==='Both'?['Patient','Relative']:[shareRecipient];
+    const missing=[];
+    const prepared=[];
+    targets.forEach(type=>{
+      const raw=type==='Patient'?patientPhone(p):relativePhone(p);
+      const number=whatsappNumber(raw);
+      if(!number)missing.push(type);
+      else prepared.push({type,number,text:buildWhatsAppMessage(p,type)});
+    });
+    if(missing.length)return alert(`WhatsApp number is not available for: ${missing.join(', ')}. Please update the Patient File first.`);
+    if(shareType==='Full Intelligent Report'){
+      alert('Please first use “Print / Save PDF” to save the report. WhatsApp will now open with the prepared message; attach the saved PDF manually before sending.');
+    }
+    setShareBusy(true);
+    for(const item of prepared){
+      window.open(`https://wa.me/${item.number}?text=${encodeURIComponent(item.text)}`,'_blank','noopener');
+      await recordCommunication(p,item.type,item.number,item.text);
+    }
+    setShareBusy(false);setShareOpen(false);loadCommunicationHistory();
+    }
+
     const patientReportBody=()=>{
       const p=report.patient||{};
       const d=report.data||{};
@@ -2402,73 +2470,6 @@ Caring with Compassion. Living with Dignity.`;
         h('div',{className:'clinical-box-rows'},rows.map(([label,value])=>h('div',{className:'clinical-box-row',key:label},h('span',null,label),h('strong',null,value)))),
         note?h('div',{className:'clinical-box-note'},note):null
       );
-      const selectedPatient=()=>report?.mode==='Patient-wise'?(report.patient||patients.find(p=>p.id===patientId)):null;
-    const relativeName=p=>p?.attendant_name||p?.relative_name||p?.emergency_contact_name||p?.family_contact_name||'Authorised Relative';
-    const patientPhone=p=>p?.mobile||p?.patient_mobile||p?.phone||'';
-    const relativePhone=p=>p?.attendant_phone||p?.relative_phone||p?.emergency_contact_phone||p?.family_contact_phone||p?.reference_contact||'';
-    const reportStatusText=()=>{
-      const p=selectedPatient();
-      if(!p)return '';
-      const date=report?.date||reportDate;
-      const base=`${formalName(p)}'s care report dated ${date} has been prepared by Samara Care.`;
-      return base;
-    };
-    function buildWhatsAppMessage(p,recipientType){
-      const recipient=recipientType==='Patient'?(formalName(p)||'Resident'):relativeName(p);
-      const patientLabel=formalName(p)||'the resident';
-      const date=report?.date||reportDate;
-      if(shareLanguage==='Tamil'){
-        if(shareType==='Full Intelligent Report'){
-          return `வணக்கம் ${recipient},\n\n${patientLabel} அவர்களின் ${date} தேதியிட்ட முழுமையான Intelligent Patient Report தயாராக உள்ளது. இந்த அறிக்கை ரகசியமானது; அங்கீகரிக்கப்பட்ட பெறுநருக்காக மட்டுமே பகிரப்படுகிறது.\n\nWhatsApp-இல் இணைக்கப்பட்ட PDF அறிக்கையைப் பார்க்கவும். மருத்துவ அவசர நிலை இருந்தால், Samara Care குழுவை நேரடியாக தொடர்புகொள்ளவும்.\n\nSamara Health Care LLP`;
-        }
-        return `வணக்கம் ${recipient},\n\n${patientLabel} அவர்களின் ${date} தேதியிட்ட தினசரி பராமரிப்பு மற்றும் உடல்நிலை சுருக்கம் Samara Care-ல் தயாராக உள்ளது. தற்போதைய பதிவுகளின் அடிப்படையில் பராமரிப்பு தொடர்ந்து கண்காணிக்கப்படுகிறது.\n\nகூடுதல் விளக்கம் தேவைப்பட்டால் Samara Care குழுவை தொடர்புகொள்ளவும்.\n\nSamara Health Care LLP`;
-      }
-      if(shareType==='Full Intelligent Report'){
-        return `Dear ${recipient},\n\nPlease find the full Intelligent Patient Report for ${patientLabel}, dated ${date}.\n\nThis report is confidential and intended only for the authorised recipient. Please review the attached PDF. For any urgent clinical concern, contact the Samara Care team directly.\n\nRegards,\nSamara Health Care LLP`;
-      }
-      return `Dear ${recipient},\n\nThis is a quick care update for ${patientLabel}, dated ${date}. The latest care and clinical records have been reviewed in Samara Care ERP and the resident continues to be monitored according to the active care plan.\n\nPlease contact the Samara Care team for any clarification.\n\nRegards,\nSamara Health Care LLP`;
-    }
-    async function recordCommunication(p,recipientType,number,messageText){
-      const {data:{user}}=await client.auth.getUser();
-      const payload={
-        patient_id:p.id,
-        communication_type:shareType,
-        method:'WhatsApp',
-        recipient_type:recipientType,
-        recipient_name:recipientType==='Patient'?(formalName(p)||p.full_name):relativeName(p),
-        recipient_number:number,
-        report_date:report?.date||reportDate,
-        status:'WhatsApp Opened',
-        message_preview:messageText.slice(0,500),
-        sent_by:user?.id||profile?.auth_user_id||profile?.id
-      };
-      const {error}=await client.from('patient_communications').insert(payload);
-      if(error)console.warn('Communication history could not be saved:',error);
-    }
-    async function openWhatsAppShare(){
-      if(!['Admin','Manager'].includes(profile.role))return alert('WhatsApp report sharing is available only to Admin and Manager.');
-      const p=selectedPatient();
-      if(!p)return alert('Generate a patient report before sharing.');
-      const targets=shareRecipient==='Both'?['Patient','Relative']:[shareRecipient];
-      const missing=[];
-      const prepared=[];
-      targets.forEach(type=>{
-        const raw=type==='Patient'?patientPhone(p):relativePhone(p);
-        const number=whatsappNumber(raw);
-        if(!number)missing.push(type);
-        else prepared.push({type,number,text:buildWhatsAppMessage(p,type)});
-      });
-      if(missing.length)return alert(`WhatsApp number is not available for: ${missing.join(', ')}. Please update the Patient File first.`);
-      if(shareType==='Full Intelligent Report'){
-        alert('Please first use “Print / Save PDF” to save the report. WhatsApp will now open with the prepared message; attach the saved PDF manually before sending.');
-      }
-      setShareBusy(true);
-      for(const item of prepared){
-        window.open(`https://wa.me/${item.number}?text=${encodeURIComponent(item.text)}`,'_blank','noopener');
-        await recordCommunication(p,item.type,item.number,item.text);
-      }
-      setShareBusy(false);setShareOpen(false);loadCommunicationHistory();
-    }
     return h(React.Fragment,null,
         h('div',{className:'hospital-report-title'},
           h('strong',null,'SAMARA HEALTH CARE LLP'),
