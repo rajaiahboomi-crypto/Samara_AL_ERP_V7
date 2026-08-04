@@ -1,0 +1,38 @@
+SAMARA CARE ERP 1.3.41 — REGULAR TASK WINDOW NAVIGATION
+
+Upload these four files:
+- app.js
+- index.html
+- service-worker.js
+- styles-1.3.41.css
+
+No Supabase SQL is required.
+
+CORRECTED
+The Shift Tasks page is now a worklist and navigation screen only.
+
+The Complete / Exception buttons no longer attempt to save directly from the worklist.
+This removes the ON CONFLICT error:
+“there is no unique or exclusion constraint matching the ON CONFLICT specification”.
+
+BUTTON BEHAVIOUR
+
+Medicine:
+- Complete opens Medicines / Medication Administration.
+- The patient, medicine, scheduled time and intended status are preselected.
+
+Basic Care:
+- Complete opens the regular Daily Care Entry window.
+- Patient, care activity, active shift and Completed status are preselected.
+- Exception opens the same regular window with Refused status selected.
+
+Vital Signs:
+- Enter Vitals continues to open the regular Vital Signs window.
+
+Physiotherapy:
+- Complete opens the regular Physiotherapy Session window.
+- Patient, plan and Completed status are preselected.
+- Postpone opens the same window with Pending status selected.
+
+The Nurse/Caregiver reviews the regular form and then saves the clinical entry there.
+This preserves the normal validation, remarks, audit trail and confirmation process.

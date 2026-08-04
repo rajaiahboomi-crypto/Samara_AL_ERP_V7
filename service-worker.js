@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.40-date-numbered-layout';
+const CACHE = 'samara-erp-1.3.41-regular-task-navigation';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.40', './app.js?v=1.3.40',
-  './bootstrap-error.js?v=1.3.40', './health-check.js?v=1.3.40',
-  './config.js?v=1.3.40', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.41', './app.js?v=1.3.41',
+  './bootstrap-error.js?v=1.3.41', './health-check.js?v=1.3.41',
+  './config.js?v=1.3.41', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

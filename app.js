@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.40';
-  const APP_BUILD_DATE = '04-Aug-2026 17:10 IST';
+  const APP_VERSION = '1.3.41';
+  const APP_BUILD_DATE = '04-Aug-2026 17:30 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -123,6 +123,36 @@
       if(updated!==node.nodeValue)node.nodeValue=updated;
     });
   };
+  const TASK_NAVIGATION_KEY='samara_regular_task_context';
+  const saveTaskNavigationContext = context => {
+    try{
+      sessionStorage.setItem(TASK_NAVIGATION_KEY,JSON.stringify({
+        ...context,
+        created_at:new Date().toISOString()
+      }));
+    }catch(error){console.warn('Task navigation context could not be saved.',error)}
+  };
+  const readTaskNavigationContext = expectedPage => {
+    try{
+      const raw=sessionStorage.getItem(TASK_NAVIGATION_KEY);
+      if(!raw)return null;
+      const context=JSON.parse(raw);
+      if(expectedPage&&context?.page!==expectedPage)return null;
+      const age=Date.now()-new Date(context.created_at||0).getTime();
+      if(!Number.isFinite(age)||age>10*60*1000){
+        sessionStorage.removeItem(TASK_NAVIGATION_KEY);
+        return null;
+      }
+      return context;
+    }catch(error){
+      sessionStorage.removeItem(TASK_NAVIGATION_KEY);
+      return null;
+    }
+  };
+  const clearTaskNavigationContext = () => {
+    try{sessionStorage.removeItem(TASK_NAVIGATION_KEY)}catch(_error){}
+  };
+
   const todayISOIndia = () => {
     const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
     const get=type=>parts.find(part=>part.type===type)?.value||'';
@@ -1509,6 +1539,10 @@ Caring with Compassion. Living with Dignity.`;
     const [vitals,setVitals]=React.useState([]);
     const [loading,setLoading]=React.useState(true);
     const [expanded,setExpanded]=React.useState({});
+    function openRegularTask(page,context){
+      saveTaskNavigationContext({page,...context});
+      onNavigate?.(page);
+    }
     const patientFields='id,patient_id,full_name,room_no,bed_no,special_nurse_required,special_nurse_name,special_nurse_shift,fall_risk,pressure_sore_risk,aspiration_risk,wandering_risk,infection_risk,seizure_history,oxygen_required,dressing_required';
 
     async function load(){
@@ -1798,8 +1832,12 @@ Caring with Compassion. Living with Dignity.`;
                   h('div',null,h('strong',null,x.label),h('small',null,`${x.time} · ${x.order.route||'—'} · ${x.order.food_instruction||'—'}`)),
                   x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending'),
                   !x.log&&h('div',{className:'employee-actions'},
-                    h('button',{className:'btn btn-primary',onClick:()=>logMedicine(x.order,x.time,'Given')},'Given'),
-                    h('button',{className:'btn btn-danger',onClick:()=>logMedicine(x.order,x.time,'Refused')},'Exception')
+                    h('button',{className:'btn btn-primary',onClick:()=>openRegularTask('Medicines',{
+                      patient_id:x.patient_id,order_id:x.order.id,scheduled_time:x.time,status:'Given'
+                    })},'Complete'),
+                    h('button',{className:'btn btn-danger',onClick:()=>openRegularTask('Medicines',{
+                      patient_id:x.patient_id,order_id:x.order.id,scheduled_time:x.time,status:'Refused'
+                    })},'Exception')
                   )
                 )),
                 group.medicines.length===0&&h('div',{className:'empty compact'},'No medicine due in this shift.')
@@ -1812,8 +1850,12 @@ Caring with Compassion. Living with Dignity.`;
                   h('div',null,h('strong',null,x.label),h('small',null,`${x.order.frequency||'Daily'}${x.order.instruction?` · ${x.order.instruction}`:''}`)),
                   x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending'),
                   !x.log&&h('div',{className:'employee-actions'},
-                    h('button',{className:'btn btn-primary',onClick:()=>logCare(x,'Completed',x.taskShift)},'Complete'),
-                    h('button',{className:'btn btn-danger',onClick:()=>logCare(x,'Refused',x.taskShift)},'Exception')
+                    h('button',{className:'btn btn-primary',onClick:()=>openRegularTask('Daily Care',{
+                      patient_id:x.patient_id,care_order_id:x.order.id,care_type:x.label,shift:x.taskShift,status:'Completed'
+                    })},'Complete'),
+                    h('button',{className:'btn btn-danger',onClick:()=>openRegularTask('Daily Care',{
+                      patient_id:x.patient_id,care_order_id:x.order.id,care_type:x.label,shift:x.taskShift,status:'Refused'
+                    })},'Exception')
                   )
                 )),
                 group.care.length===0&&h('div',{className:'empty compact'},'No basic-care task in this shift.')
@@ -1835,8 +1877,12 @@ Caring with Compassion. Living with Dignity.`;
                   h('div',null,h('strong',null,x.label),h('small',null,`${x.time||shift} · ${x.order.frequency||'—'}`)),
                   x.log?h('span',{className:'badge'},x.log.status):h('span',{className:'pill warning'},'Pending'),
                   !x.log&&h('div',{className:'employee-actions'},
-                    h('button',{className:'btn btn-primary',onClick:()=>logPhysio(x.order,'Completed')},'Complete'),
-                    h('button',{className:'btn btn-danger',onClick:()=>logPhysio(x.order,'Postponed')},'Postpone')
+                    h('button',{className:'btn btn-primary',onClick:()=>openRegularTask('Physiotherapy',{
+                      patient_id:x.patient_id,plan_id:x.order.id,status:'Completed'
+                    })},'Complete'),
+                    h('button',{className:'btn btn-danger',onClick:()=>openRegularTask('Physiotherapy',{
+                      patient_id:x.patient_id,plan_id:x.order.id,status:'Pending'
+                    })},'Postpone')
                   )
                 )),
                 group.physio.length===0&&h('div',{className:'empty compact'},'No physiotherapy task in this shift.')
@@ -2818,6 +2864,19 @@ function RoomsBeds({profile}){
       return true;
     }
     React.useEffect(()=>{load()},[]);
+    React.useEffect(()=>{
+      const context=readTaskNavigationContext('Daily Care');
+      if(!context)return;
+      setForm(current=>({
+        ...current,
+        patient_id:context.patient_id||current.patient_id,
+        care_type:context.care_type||current.care_type,
+        shift:context.shift||activeShift,
+        status:context.status||'Completed',
+        remarks:current.remarks
+      }));
+      clearTaskNavigationContext();
+    },[]);
 
     async function save(e){
       e.preventDefault();
@@ -2930,6 +2989,7 @@ function RoomsBeds({profile}){
     const [marForm,setMarForm]=React.useState({scheduled_time:'',status:'Given',administered_at:'',remarks:'',late_entry_reason:'',late_entry_justification:''});
     const [marBusy,setMarBusy]=React.useState(false);
     const [marMessage,setMarMessage]=React.useState('');
+    const taskNavigationHandled=React.useRef(false);
 
     function localDateTimeValue(date=new Date()){
       const pad=n=>String(n).padStart(2,'0');
@@ -3038,6 +3098,22 @@ function RoomsBeds({profile}){
         .subscribe();
       return()=>client.removeChannel(ch);
     },[]);
+
+    React.useEffect(()=>{
+      if(state.loading||taskNavigationHandled.current)return;
+      const context=readTaskNavigationContext('Medicines');
+      if(!context)return;
+      taskNavigationHandled.current=true;
+      setPatientFilter(context.patient_id||'');
+      setTab('Active Prescriptions');
+      const target=state.orders.find(order=>order.id===context.order_id)
+        ||state.orders.find(order=>order.patient_id===context.patient_id);
+      if(target){
+        openMar(target,context.scheduled_time||'');
+        setMarForm(current=>({...current,status:context.status||current.status}));
+      }
+      clearTaskNavigationContext();
+    },[state.loading,state.orders]);
 
     const activeOrders=state.orders.filter(orderActive);
     const todayRows=[];
@@ -3432,6 +3508,21 @@ function RoomsBeds({profile}){
         .subscribe();
       return()=>client.removeChannel(channel);
     },[]);
+
+    const taskNavigationHandled=React.useRef(false);
+    React.useEffect(()=>{
+      if(loading||taskNavigationHandled.current)return;
+      const context=readTaskNavigationContext('Physiotherapy');
+      if(!context)return;
+      taskNavigationHandled.current=true;
+      const target=plans.find(plan=>plan.id===context.plan_id)
+        ||plans.find(plan=>plan.patient_id===context.patient_id);
+      if(target){
+        openEntry(target);
+        setForm(current=>({...current,status:context.status||'Completed'}));
+      }
+      clearTaskNavigationContext();
+    },[loading,plans]);
 
     const patientFor=id=>patients.find(p=>p.id===id)||{};
     const planFor=id=>plans.find(p=>p.id===id)||{};
