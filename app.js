@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.19';
-  const APP_BUILD_DATE = '04-Aug-2026 19:10 IST';
+  const APP_VERSION = '1.3.20';
+  const APP_BUILD_DATE = '04-Aug-2026 19:45 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -3408,6 +3408,73 @@ function BillingPayments({profile}){
     const patientDisputes=selectedPatient?disputes.filter(d=>d.patient_id===selectedPatient):disputes;
     const openDisputes=patientDisputes.filter(d=>!['Closed','Corrected','Rejected'].includes(d.status));
 
+    const today=todayISOIndia();
+    const todayCollection=patientRows
+      .filter(r=>['Payment','Advance'].includes(r.transaction_type)&&String(r.transaction_date||'').slice(0,10)===today)
+      .reduce((sum,r)=>sum+Number(r.amount||0),0);
+    const roomGeneratedToday=patientRows
+      .filter(r=>r.category==='Room Charges'&&String(r.transaction_date||'').slice(0,10)===today)
+      .reduce((sum,r)=>sum+Number(r.amount||0),0);
+    const nursingGeneratedToday=patientRows
+      .filter(r=>r.category==='Nursing Charges'&&String(r.transaction_date||'').slice(0,10)===today)
+      .reduce((sum,r)=>sum+Number(r.amount||0),0);
+
+    const chargeAgeDays=row=>{
+      const d=new Date(row.transaction_date);
+      if(Number.isNaN(d.getTime()))return 0;
+      return Math.max(0,Math.floor((Date.now()-d.getTime())/86400000));
+    };
+    const paymentCredit=patientRows
+      .filter(r=>['Payment','Advance','Discount'].includes(r.transaction_type))
+      .reduce((sum,r)=>sum+Number(r.amount||0),0);
+    let remainingCredit=paymentCredit;
+    const unpaidCharges=patientRows
+      .filter(r=>r.transaction_type==='Charge')
+      .sort((a,b)=>new Date(a.transaction_date)-new Date(b.transaction_date))
+      .map(r=>{
+        const amount=Number(r.amount||0);
+        const adjusted=Math.min(amount,remainingCredit);
+        remainingCredit=Math.max(0,remainingCredit-adjusted);
+        return {...r,pending_amount:Math.max(0,amount-adjusted),age_days:chargeAgeDays(r)};
+      })
+      .filter(r=>r.pending_amount>0);
+
+    const ageing={
+      '0–30 days':unpaidCharges.filter(r=>r.age_days<=30).reduce((s,r)=>s+r.pending_amount,0),
+      '31–60 days':unpaidCharges.filter(r=>r.age_days>=31&&r.age_days<=60).reduce((s,r)=>s+r.pending_amount,0),
+      '61–90 days':unpaidCharges.filter(r=>r.age_days>=61&&r.age_days<=90).reduce((s,r)=>s+r.pending_amount,0),
+      'Above 90 days':unpaidCharges.filter(r=>r.age_days>90).reduce((s,r)=>s+r.pending_amount,0)
+    };
+    const overdue7=unpaidCharges.filter(r=>r.age_days>7);
+    const overdue7Amount=overdue7.reduce((s,r)=>s+r.pending_amount,0);
+
+    const monthlyRevenue=Array.from({length:6},(_,i)=>{
+      const date=new Date();
+      date.setMonth(date.getMonth()-(5-i),1);
+      const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,'0');
+      const key=`${y}-${m}`;
+      const value=rows.filter(r=>['Payment','Advance'].includes(r.transaction_type)&&String(r.transaction_date||'').slice(0,7)===key).reduce((s,r)=>s+Number(r.amount||0),0);
+      return {label:new Intl.DateTimeFormat('en-IN',{month:'short'}).format(date),value};
+    });
+    const monthlyMax=Math.max(1,...monthlyRevenue.map(x=>x.value));
+
+    const cardStyle=(kind,value=0)=>{
+      const palette={
+        charge:{background:'#fff1f1',border:'1px solid #f2b8b8',color:'#b42318'},
+        payment:{background:'#eaf8ef',border:'1px solid #a9dfbb',color:'#087a3d'},
+        advance:{background:'#eef5ff',border:'1px solid #b7cff4',color:'#175cd3'},
+        discount:{background:'#fff6e8',border:'1px solid #f5d19a',color:'#b54708'},
+        query:{background:'#f7f0ff',border:'1px solid #d8bdf4',color:'#7a2ca3'},
+        neutral:{background:'#f4f6f6',border:'1px solid #d7dfdc',color:'#344054'}
+      };
+      if(kind==='pending'){
+        if(Number(value)<=0)return palette.payment;
+        if(Number(value)<=5000)return palette.discount;
+        return palette.charge;
+      }
+      return palette[kind]||palette.neutral;
+    };
+
     return h(React.Fragment,null,
       h(Section,{title:'Patient Bills, Charges & Transaction History',subtitle:'Single-click pending bills, advances, payments and complete ledger history'},
         h('div',{className:'modal-grid'},
@@ -3418,9 +3485,18 @@ function BillingPayments({profile}){
         )
       ),
       h('div',{className:'grid stats'},
-        [['Total Charges',totals.Charge],['Payments / Advance',payments],['Discounts',totals.Discount],['Pending Bills',outstanding],['Advance Balance',advance],['Open Queries',openDisputes.length]].map(([label,value])=>
-          h('div',{className:'card stat',key:label},h('span',null,label),h('strong',null,typeof value==='number'&&label!=='Open Queries'?`₹${value.toLocaleString('en-IN')}`:value))
-        )
+        h('div',{className:'card stat',style:cardStyle('charge')},h('span',null,'Total Charges'),h('strong',{style:{color:cardStyle('charge').color}},`₹${totals.Charge.toLocaleString('en-IN')}`)),
+        h('div',{className:'card stat',style:cardStyle('payment')},h('span',null,'Payments / Advance'),h('strong',{style:{color:cardStyle('payment').color}},`₹${payments.toLocaleString('en-IN')}`)),
+        h('div',{className:'card stat',style:cardStyle('discount')},h('span',null,'Discounts'),h('strong',{style:{color:cardStyle('discount').color}},`₹${totals.Discount.toLocaleString('en-IN')}`)),
+        h('div',{className:'card stat',style:cardStyle('pending',outstanding)},h('span',null,'Pending Bills'),h('strong',{style:{color:cardStyle('pending',outstanding).color}},`₹${outstanding.toLocaleString('en-IN')}`)),
+        h('div',{className:'card stat',style:cardStyle('advance')},h('span',null,'Advance Balance'),h('strong',{style:{color:cardStyle('advance').color}},`₹${advance.toLocaleString('en-IN')}`)),
+        h('div',{className:'card stat',style:cardStyle('query')},h('span',null,'Open Queries'),h('strong',{style:{color:cardStyle('query').color}},openDisputes.length))
+      ),
+      h('div',{className:'grid stats',style:{marginTop:'14px'}},
+        h('div',{className:'card stat',style:cardStyle('payment')},h('span',null,"Today's Collection"),h('strong',{style:{color:cardStyle('payment').color}},`₹${todayCollection.toLocaleString('en-IN')}`)),
+        h('div',{className:'card stat',style:cardStyle('charge')},h('span',null,'Outstanding > 7 Days'),h('strong',{style:{color:cardStyle('charge').color}},`₹${overdue7Amount.toLocaleString('en-IN')}`),h('small',null,`${overdue7.length} pending item(s)`)),
+        h('div',{className:'card stat',style:cardStyle('neutral')},h('span',null,'Room Rent Generated Today'),h('strong',null,`₹${roomGeneratedToday.toLocaleString('en-IN')}`)),
+        h('div',{className:'card stat',style:cardStyle('neutral')},h('span',null,'Nursing Charges Today'),h('strong',null,`₹${nursingGeneratedToday.toLocaleString('en-IN')}`))
       ),
       canManage&&h(Section,{title:'Automatic Daily Accommodation Charges',subtitle:'Room and nursing charges are generated once per patient per day',actions:h('button',{className:'btn btn-primary',disabled:autoBusy,onClick:()=>generateDailyCharges(false)},autoBusy?'Calculating…':'Generate / Verify Today')},
         h('p',{className:'small-note'},'Single/Separate: Room ₹3,000 + Nursing ₹1,000. Twin: Room ₹2,000 + Nursing ₹800. General: Room ₹1,800 + Nursing ₹750.')
@@ -3437,6 +3513,38 @@ function BillingPayments({profile}){
           h('button',{className:'btn btn-primary'},'Save Transaction')
         )
       ),
+      h('div',{className:'grid two',style:{marginTop:'16px'}},
+        h(Section,{title:'Outstanding Ageing Analysis',subtitle:'Pending charges grouped by age'},
+          h('div',{className:'grid stats'},
+            Object.entries(ageing).map(([label,value])=>h('div',{className:'card stat',key:label,style:cardStyle(value>0?'charge':'payment')},
+              h('span',null,label),
+              h('strong',{style:{color:cardStyle(value>0?'charge':'payment').color}},`₹${value.toLocaleString('en-IN')}`)
+            ))
+          )
+        ),
+        h(Section,{title:'Monthly Collections',subtitle:'Payments and advances received during the last six months'},
+          h('div',{style:{display:'flex',alignItems:'flex-end',gap:'12px',height:'190px',padding:'12px 6px 4px'}},
+            monthlyRevenue.map(item=>h('div',{key:item.label,style:{flex:'1',textAlign:'center'}},
+              h('div',{title:`₹${item.value.toLocaleString('en-IN')}`,style:{height:`${Math.max(6,(item.value/monthlyMax)*135)}px`,background:'#118553',borderRadius:'9px 9px 3px 3px',minWidth:'24px',margin:'0 auto 8px'}}),
+              h('strong',{style:{display:'block',fontSize:'12px'}},item.label),
+              h('small',null,item.value?`₹${Math.round(item.value/1000)}k`:'₹0')
+            ))
+          )
+        )
+      ),
+      h(LogTable,{
+        title:'Top Pending Bills',
+        subtitle:'Oldest and highest pending charge items requiring follow-up',
+        heads:['Patient','Category','Original Charge','Pending','Age','Date'],
+        rows:unpaidCharges.slice().sort((a,b)=>b.pending_amount-a.pending_amount||b.age_days-a.age_days).slice(0,10).map(r=>[
+          r.patients?.full_name||'—',
+          r.category||'—',
+          `₹${Number(r.amount||0).toLocaleString('en-IN')}`,
+          `₹${Number(r.pending_amount||0).toLocaleString('en-IN')}`,
+          `${r.age_days} day(s)`,
+          fmt(r.transaction_date)
+        ])
+      }),
       h(LogTable,{
         title:viewMode,
         subtitle:selectedPatient?'Selected patient ledger':'All patient transactions',

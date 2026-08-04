@@ -1,0 +1,33 @@
+SAMARA CARE ERP 1.3.20 — ACCOUNTS DASHBOARD COLOUR CODING & FINANCIAL ANALYSIS
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+Colour coding:
+- Total Charges: Red
+- Payments / Advance: Green
+- Advance Balance: Blue
+- Discounts: Orange
+- Open Queries: Purple
+- Pending Bills:
+  • ₹0: Green
+  • ₹1–₹5,000: Orange
+  • Above ₹5,000: Red
+
+New Accounts Dashboard cards:
+- Today's Collection
+- Outstanding above 7 days
+- Room Rent Generated Today
+- Nursing Charges Generated Today
+
+New financial analysis:
+- Outstanding Ageing: 0–30, 31–60, 61–90 and Above 90 days
+- Monthly Collections chart for the last six months
+- Top 10 Pending Bills
+- Existing single-click Pending Bills, Complete History and Advances/Payments remain
+
+Version: 1.3.20
