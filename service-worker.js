@@ -1,8 +1,8 @@
-const CACHE = 'samara-erp-1.3.0-indian-date-time-standard';
+const CACHE = 'samara-erp-1.3.1-quick-health-whatsapp';
 const SHELL = [
-  './', './index.html', './styles.css?v=1.3.0', './app.js?v=1.3.0',
-  './bootstrap-error.js?v=1.3.0', './health-check.js?v=1.3.0',
-  './config.js?v=1.3.0', './manifest.webmanifest',
+  './', './index.html', './styles.css?v=1.3.1', './app.js?v=1.3.1',
+  './bootstrap-error.js?v=1.3.1', './health-check.js?v=1.3.1',
+  './config.js?v=1.3.1', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', event => {

@@ -1,0 +1,28 @@
+SAMARA CARE ERP 1.3.1 — QUICK HEALTH WHATSAPP REPORT
+
+Upload and replace only:
+- app.js
+- index.html
+- service-worker.js
+
+No Supabase SQL is required.
+
+How it works:
+1. Admin/Manager opens Intelligent Reports.
+2. Selects a patient and report date.
+3. Generates the Patient Report.
+4. Clicks WhatsApp.
+5. Selects Quick Health Update.
+6. The ERP automatically creates and previews a concise report using the actual selected-date records:
+   - Current clinical status
+   - Latest available vital signs
+   - Medicine administrations and exceptions
+   - Daily-care completion
+   - Food/intake records
+   - Physiotherapy
+   - Incidents
+7. Choose English or Tamil.
+8. Click Open WhatsApp, review and send.
+
+The quick report does not invent missing values. When a section has no record, it states that no entry was recorded.
+WhatsApp access remains restricted to Admin and Manager.

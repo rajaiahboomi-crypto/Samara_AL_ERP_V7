@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.0';
-  const APP_BUILD_DATE = '04-Aug-2026 10:10 IST';
+  const APP_VERSION = '1.3.1';
+  const APP_BUILD_DATE = '04-Aug-2026 10:40 IST';
   const APP_SCHEMA_VERSION = '24';
   window.APP_VERSION = APP_VERSION;
   window.SAMARA_BUILD = Object.freeze({
@@ -2409,6 +2409,63 @@ Caring with Compassion. Living with Dignity.`;
     const base=`${formalName(p)}'s care report dated ${date} has been prepared by Samara Care.`;
     return base;
     };
+    function quickHealthSummary(language='English'){
+      const p=selectedPatient();
+      const d=report?.data||{};
+      if(!p)return '';
+      const measured=reportVitals(d.vitals||[]);
+      const lastVital=latest(measured,['recorded_at','created_at']);
+      const assessment=conditionAssessment(p,d.vitals||[],d.incidents||[],d.mar||[]);
+      const status=assessment.tone==='critical'?'Clinical review required':assessment.tone==='warning'?'Under observation':'Stable';
+      const mar=d.mar||[];
+      const care=d.care||[];
+      const meals=d.meals||[];
+      const physio=d.physioSessions||[];
+      const incidents=d.incidents||[];
+      const given=mar.filter(x=>String(x.status||'').toLowerCase()==='given').length;
+      const exceptions=mar.filter(x=>!['given','completed'].includes(String(x.status||'').toLowerCase())).length;
+      const completedCare=care.filter(x=>['completed','done','given'].includes(String(x.status||'').toLowerCase())).length;
+      const mealCount=meals.length;
+      const physioCompleted=physio.filter(x=>String(x.status||'').toLowerCase()==='completed').length;
+      const vitalParts=[];
+      if(lastVital){
+        const sys=vitalMeasurement(lastVital,'systolic'),dia=vitalMeasurement(lastVital,'diastolic');
+        const pulse=vitalMeasurement(lastVital,'pulse'),spo2=vitalMeasurement(lastVital,'spo2');
+        const temp=vitalMeasurement(lastVital,'temperature'),sugar=vitalMeasurement(lastVital,'blood_sugar');
+        if(sys!==null||dia!==null)vitalParts.push(`BP ${sys??'—'}/${dia??'—'} mmHg`);
+        if(pulse!==null)vitalParts.push(`Pulse ${pulse}/min`);
+        if(spo2!==null)vitalParts.push(`SpO₂ ${spo2}%`);
+        if(temp!==null)vitalParts.push(`Temperature ${temp}°`);
+        if(sugar!==null)vitalParts.push(`${lastVital.blood_sugar_type||'RBS'} ${sugar} mg/dL`);
+      }
+      const date=formatDateIN(report?.date||reportDate);
+      if(language==='Tamil'){
+        const statusTamil=status==='Stable'?'நிலை சீராக உள்ளது':status==='Under observation'?'கண்காணிப்பில் உள்ளார்':'மருத்துவ பரிசீலனை தேவை';
+        const lines=[
+          `தேதி: ${date}`,
+          `தற்போதைய நிலை: ${statusTamil}`,
+          vitalParts.length?`சமீபத்திய உயிர்க்குறிகள்: ${vitalParts.join(' | ')}`:'இன்றைய உயிர்க்குறி பதிவு இல்லை.',
+          mar.length?`மருந்துகள்: ${given} முறை வழங்கப்பட்டது${exceptions?`; ${exceptions} விதிவிலக்கு/தாமதம் பதிவாகியுள்ளது`:''}.`:'இன்றைய மருந்து நிர்வாக பதிவு இல்லை.',
+          care.length?`தினசரி பராமரிப்பு: ${completedCare} பணிகள் நிறைவு.`:'இன்றைய தினசரி பராமரிப்பு பதிவு இல்லை.',
+          mealCount?`உணவு/திரவ பதிவு: ${mealCount}.`:'இன்றைய உணவு/திரவ பதிவு இல்லை.',
+          physio.length?`உடற்பயிற்சி: ${physioCompleted} அமர்வுகள் நிறைவு.`:'இன்றைய உடற்பயிற்சி பதிவு இல்லை.',
+          incidents.length?`சம்பவங்கள்: ${incidents.length} பதிவு — மேலாண்மை பரிசீலனை தேவை.`:'சம்பவம் எதுவும் பதிவாகவில்லை.'
+        ];
+        return lines.join('\n');
+      }
+      const lines=[
+        `Report date: ${date}`,
+        `Current status: ${status}`,
+        vitalParts.length?`Latest vitals: ${vitalParts.join(' | ')}`:'No vital-sign reading was recorded for the selected date.',
+        mar.length?`Medicines: ${given} administration${given===1?'':'s'} recorded${exceptions?`; ${exceptions} exception${exceptions===1?'':'s'} require review`:''}.`:'No medicine administration was recorded for the selected date.',
+        care.length?`Daily care: ${completedCare} task${completedCare===1?'':'s'} completed.`:'No daily-care activity was recorded for the selected date.',
+        mealCount?`Food and intake: ${mealCount} record${mealCount===1?'':'s'} available.`:'No food or intake record was entered for the selected date.',
+        physio.length?`Physiotherapy: ${physioCompleted} session${physioCompleted===1?'':'s'} completed.`:'No physiotherapy session was recorded for the selected date.',
+        incidents.length?`Incidents: ${incidents.length} event${incidents.length===1?'':'s'} recorded and requiring review.`:'Incidents: None recorded.'
+      ];
+      return lines.join('\n');
+    }
+
     function buildWhatsAppMessage(p,recipientType){
     const recipient=recipientType==='Patient'?(formalName(p)||'Resident'):relativeName(p);
     const patientLabel=formalName(p)||'the resident';
@@ -2417,12 +2474,12 @@ Caring with Compassion. Living with Dignity.`;
       if(shareType==='Full Intelligent Report'){
         return `வணக்கம் ${recipient},\n\n${patientLabel} அவர்களின் ${date} தேதியிட்ட முழுமையான Intelligent Patient Report தயாராக உள்ளது. இந்த அறிக்கை ரகசியமானது; அங்கீகரிக்கப்பட்ட பெறுநருக்காக மட்டுமே பகிரப்படுகிறது.\n\nWhatsApp-இல் இணைக்கப்பட்ட PDF அறிக்கையைப் பார்க்கவும். மருத்துவ அவசர நிலை இருந்தால், Samara Care குழுவை நேரடியாக தொடர்புகொள்ளவும்.\n\nSamara Health Care LLP`;
       }
-      return `வணக்கம் ${recipient},\n\n${patientLabel} அவர்களின் ${date} தேதியிட்ட தினசரி பராமரிப்பு மற்றும் உடல்நிலை சுருக்கம் Samara Care-ல் தயாராக உள்ளது. தற்போதைய பதிவுகளின் அடிப்படையில் பராமரிப்பு தொடர்ந்து கண்காணிக்கப்படுகிறது.\n\nகூடுதல் விளக்கம் தேவைப்பட்டால் Samara Care குழுவை தொடர்புகொள்ளவும்.\n\nSamara Health Care LLP`;
+      return `வணக்கம் ${recipient},\n\n${patientLabel} அவர்களின் விரைவு உடல்நிலை அறிக்கை\n\n${quickHealthSummary('Tamil')}\n\nஇந்த சுருக்கம் தேர்ந்தெடுக்கப்பட்ட தேதிக்கான Samara Care ERP பதிவுகளிலிருந்து உருவாக்கப்பட்டது. கூடுதல் விளக்கம் அல்லது அவசர மருத்துவ உதவி தேவைப்பட்டால் Samara Care குழுவை தொடர்புகொள்ளவும்.\n\nSamara Health Care LLP`;
     }
     if(shareType==='Full Intelligent Report'){
       return `Dear ${recipient},\n\nPlease find the full Intelligent Patient Report for ${patientLabel}, dated ${date}.\n\nThis report is confidential and intended only for the authorised recipient. Please review the attached PDF. For any urgent clinical concern, contact the Samara Care team directly.\n\nRegards,\nSamara Health Care LLP`;
     }
-    return `Dear ${recipient},\n\nThis is a quick care update for ${patientLabel}, dated ${date}. The latest care and clinical records have been reviewed in Samara Care ERP and the resident continues to be monitored according to the active care plan.\n\nPlease contact the Samara Care team for any clarification.\n\nRegards,\nSamara Health Care LLP`;
+    return `Dear ${recipient},\n\nQuick Health Update for ${patientLabel}\n\n${quickHealthSummary('English')}\n\nThis update is generated from the records entered in Samara Care ERP for the selected date. Please contact the Samara Care team for clarification or urgent clinical concerns.\n\nRegards,\nSamara Health Care LLP`;
     }
     async function recordCommunication(p,recipientType,number,messageText){
     const {data:{user}}=await client.auth.getUser();
@@ -2599,7 +2656,11 @@ Caring with Compassion. Living with Dignity.`;
             h('div',{className:'field span-2'},h('label',null,'Patient WhatsApp'),h('input',{value:patientPhone(selectedPatient())||'',readOnly:true,placeholder:'Not available'})),
             h('div',{className:'field span-2'},h('label',null,`${relativeName(selectedPatient())} WhatsApp`),h('input',{value:relativePhone(selectedPatient())||'',readOnly:true,placeholder:'Not available'}))
           ),
-          h('div',{className:'message'},shareType==='Full Intelligent Report'?'Save the report as PDF first. WhatsApp will open with the prepared message; attach the PDF manually before sending.':'WhatsApp will open with a prepared text update. Please review it before sending.'),
+          shareType==='Quick Health Update'&&h('div',{className:'card panel',style:{marginTop:'12px'}},
+            h('h4',null,'Quick Health Update Preview'),
+            h('pre',{style:{whiteSpace:'pre-wrap',fontFamily:'inherit',margin:0,lineHeight:'1.55'}},quickHealthSummary(shareLanguage))
+          ),
+          h('div',{className:'message'},shareType==='Full Intelligent Report'?'Save the report as PDF first. WhatsApp will open with the prepared message; attach the PDF manually before sending.':'The quick health update has been generated from the selected patient report. Please review it before opening WhatsApp.'),
           h('div',{className:'actions'},h('button',{type:'button',className:'btn btn-secondary',onClick:()=>setShareOpen(false)},'Cancel'),h('button',{type:'button',className:'btn btn-whatsapp',disabled:shareBusy,onClick:openWhatsAppShare},shareBusy?'Opening WhatsApp…':'Open WhatsApp'))
         )
       )
